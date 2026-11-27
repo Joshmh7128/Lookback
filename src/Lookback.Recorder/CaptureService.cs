@@ -432,6 +432,12 @@ internal sealed partial class CaptureService : IAsyncDisposable
                 var profile = new ProfileRunner(owner._bus, catalog, profileId, game.Match.Method, game.Id, freq, publishCandidates: false);
                 profile.ApplyHints(game.Hints, SystemClock.Instance.Now);
                 var clipper = new ClipperRunner(owner._bus, catalog, profileId, game.Id, freq);
+
+                // The analyzer named its signals when capture started: before the session was
+                // announced and before the profile and clipper subscribed. Name them again now, or
+                // the profile fires no events, the clipper proposes nothing, and pages that join
+                // late (the profiler) see no signals.
+                session.Analyzer.PublishSchemas();
                 LogLive(owner._logger, game.Match.DisplayName, ticker.EncoderName, plan.Tier.Name, plan.RingLength.TotalSeconds, audio.Reason);
                 return new Live(owner, game, session, ring, ticker, captureWatch, gameAac, micAac, gameAudio, mic, recording, profile, clipper);
             }

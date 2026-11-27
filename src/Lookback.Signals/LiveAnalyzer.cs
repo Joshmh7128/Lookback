@@ -24,6 +24,7 @@ public sealed class LiveAnalyzer : IAsyncDisposable
     private const int AudioPool = 64;
 
     private readonly AnalysisFormat _format;
+    private readonly IClock _clock;
     private readonly long _frequency;
     private readonly VideoSignalBank _videoBank;
     private readonly AudioSignalBank _audioBank;
@@ -51,6 +52,7 @@ public sealed class LiveAnalyzer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(bus);
         ArgumentNullException.ThrowIfNull(clock);
         _format = format ?? AnalysisFormat.Default;
+        _clock = clock;
         _frequency = clock.Frequency;
         _frameTicks = QpcTime.Rescale(1, _format.FramesPerSecond, _frequency);
         _videoBank = VideoSignalBank.CreateDefault(_format, extraVideoSignals);
@@ -80,6 +82,20 @@ public sealed class LiveAnalyzer : IAsyncDisposable
     }
 
     public AnalysisFormat Format => _format;
+
+    /// <summary>
+    /// Publishes both signal schemas again. Signal frames mean nothing without
+    /// them, and the analyzer first publishes them as it is built: before its
+    /// session is announced (the late-join snapshot starts a session afresh at
+    /// <c>SessionStarted</c>) and before consumers created after it (the
+    /// profile runner, the clipper) subscribe. Call it once those are in place.
+    /// </summary>
+    public void PublishSchemas()
+    {
+        long now = _clock.Now;
+        _videoPublisher.PublishSchema(now);
+        _audioPublisher.PublishSchema(now);
+    }
 
     public long DroppedVideo => Interlocked.Read(ref _droppedVideo);
 

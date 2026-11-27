@@ -96,6 +96,7 @@ public sealed class CaptureServiceTests : IAsyncDisposable
 
         using var bus = new InProcessEventBus();
         using IEventSubscription all = bus.Subscribe("*", capacity: 1 << 18);
+        string? liveId = null;
         await using var sessions = new SessionDirectory(bus);
         await using CaptureService capture = CaptureService.Start(bus, options, sessions, NullLogger.Instance);
 
@@ -108,10 +109,14 @@ public sealed class CaptureServiceTests : IAsyncDisposable
             SessionStarted? started = null;
             Assert.True(await UntilAsync(() => (started = sessions.Session(sessionId)) is not null, TimeSpan.FromSeconds(5), ct));
             Assert.Equal(SourceKind.LiveGame, started!.SourceKind);
+
+            // The recorder records one game at a time; a real game already running is recorded instead.
+            Assert.SkipWhen(started.GameProfile != "generic", $"another game is running ({started.Title}): close it to run this test");
             Assert.Equal("generic", started.GameProfile);
 
             // Record a while, then save the last few seconds as if the clipper had proposed them.
             await Task.Delay(TimeSpan.FromSeconds(7), ct);
+            liveId = sessionId;
             long now = SystemClock.Instance.Now, f = SystemClock.Instance.Frequency;
             Envelope cand = new EnvelopeFactory(SystemClock.Instance, sessionId, "test").Create(Topics.ClipCandidate);
             cand.ClipCandidate = new ClipCandidate { CandidateId = "t1", StartQpc = (ulong)(now - (5 * f)), EndQpc = (ulong)(now - f), PeakQpc = (ulong)(now - (3 * f)), GameProfile = "generic" };
@@ -138,13 +143,27 @@ public sealed class CaptureServiceTests : IAsyncDisposable
 
         // Detection gives an exiting game a few seconds' grace, then the session ends.
         Assert.True(await UntilAsync(() => capture.LiveSessionId is null, TimeSpan.FromSeconds(20), ct), "the session did not end after the game exited");
-        bool ended = false;
+        bool ended = false, started2 = false, schemaAfterStart = false, curve = false;
         while (all.TryRead(out Envelope? e))
         {
             ended |= e!.PayloadCase == Envelope.PayloadOneofCase.SessionEnded;
+            if (e.SessionId != liveId)
+            {
+                continue;
+            }
+
+            started2 |= e.PayloadCase == Envelope.PayloadOneofCase.SessionStarted;
+            schemaAfterStart |= started2 && e.Topic == Topics.SignalsVideo && e.PayloadCase == Envelope.PayloadOneofCase.SignalSchema;
+            curve |= e.Topic == Topics.SignalsClipper && e.PayloadCase == Envelope.PayloadOneofCase.SignalFrame;
         }
 
         Assert.True(ended);
+
+        // The profile and the clipper read the live signals: the clipper published its excitement
+        // curve, which it does only for frames it can name. And the video schema came again after
+        // the session started, so a page that joins late (the profiler) can name them too.
+        Assert.True(curve, "the clipper never read the live signals (it never saw their schema)");
+        Assert.True(schemaAfterStart, "no video schema after SessionStarted: late joiners cannot name the signals");
     }
 
     private static string Run(string exe, string args)
