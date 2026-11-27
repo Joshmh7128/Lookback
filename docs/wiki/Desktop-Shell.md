@@ -263,7 +263,9 @@ sequenceDiagram
   socket. The viewer's partition is in memory (no `persist:`), so cookies,
   cache and storage vanish with it. The video id is sent as `videoRef`, which
   the recorder does not keep, and the shell never logs it. No audio is sent:
-  the only audio the shell could tap is the whole system mix.
+  the recorder hears the player by process loopback of the shell's own
+  process tree, never the whole system (see
+  [Official-Player Calibration](Official-Player-Calibration#the-players-sound)).
 - **Panel.** The recorder's calibration panel is docked at the right
   (`calibrate#token=…`); "Panel" in the viewer bar hides it.
 
@@ -333,5 +335,5 @@ desktop, so they are run by hand).
 
 - Ratings and the library are in memory until the recorder implements the
   agreed commands; footage analysis goes through the testbench until then.
-- Video only in calibration (see [Official-Player Calibration](Official-Player-Calibration#limits)).
+- The player's sound needs Windows 10 2004 (19041) or later; before that, calibration is video only (see [Official-Player Calibration](Official-Player-Calibration#the-players-sound)).
 - No packaging yet: `resources/recorder` is looked up, but no installer builds it.

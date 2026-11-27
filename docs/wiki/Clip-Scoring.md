@@ -108,9 +108,11 @@ line format and three differences:
  "ratedAt":"2026-11-27T12:00:00+00:00","source":"clipper-check","derivedWrite":"user-rating-with-features","platform":"youtube"}
 ```
 
-The viewer sends no audio, so the audio features (`loudness_z`, `onset_rate`,
+When the recorder could not hear the player (no shell to isolate, or Windows
+older than 19041), the audio features (`loudness_z`, `onset_rate`,
 `silent_fraction`, `audio_coverage`, `flux_z`, `loudness_z_max`) are stored as
 missing rather than as silence; training imputes them like any missing value.
+With the player's sound they are measured like those of your recordings.
 `ml/tests/data/check_rating_sample.jsonl` is the exact line C# writes, and the
 Python tests load it. See [Data Retention](Data-Retention#your-clipper-check-ratings).
 

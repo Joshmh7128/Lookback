@@ -11,6 +11,7 @@ using Lookback.Profiles.Detection;
 using Lookback.Profiles.Model;
 using Lookback.Profiles.Regions;
 using Lookback.Signals;
+using Lookback.Signals.Audio;
 using Lookback.Signals.Video;
 using Lookback.Stream.SessionLog;
 
@@ -26,11 +27,15 @@ namespace Lookback.Calibration;
 /// is <see cref="CalibrationEdits"/> the user confirms, through
 /// <see cref="CalibrationWriter"/>.
 /// <para>
-/// The clipper runs on the player's frames too (video only: the viewer sends
-/// no audio), and its candidates feed <see cref="Check"/>, where the user can
+/// The clipper runs on the player's frames too, and its candidates feed <see cref="Check"/>, where the user can
 /// judge them to see how accurate the clipper is. The check is memory only and
 /// is cleared when the player stops; the host may save the user's ratings,
 /// numbers only, through <c>RatingStore.AppendCheck</c>.
+/// </para>
+/// <para>
+/// When the host feeds the player's sound (<see cref="OnAudio"/>: the recorder
+/// captures the desktop shell's own process tree, never the whole system),
+/// the clipper hears it too; otherwise the session is video only.
 /// </para>
 /// </summary>
 public sealed class OfficialPlayerSession : IAsyncDisposable
@@ -41,14 +46,18 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
     private readonly VideoFrame _frame;
     private readonly CalibrationProbe _probe;
     private readonly Lock _gate = new();
+    private readonly Lock _audioGate = new();
     private readonly string _baseId;
     private readonly ProfileCatalog _catalog;
     private Pipeline? _pipeline;
     private long _originQpc;
     private int _generation;
+    private long _audioHops;
+    private Pipeline? _audioSchemaFor;
 
     private sealed record Pipeline(
         string SessionId, SessionStarted Started, EnvelopeFactory Factory, VideoSignalBank Bank, SignalPublisher Publisher,
+        AudioSignalBank AudioBank, SignalPublisher AudioPublisher,
         ProfileRunner? Runner, ClipperRunner Clipper, ThresholdTuner? Tuner, GameProfile? Resolved);
 
     public OfficialPlayerSession(IEventBus bus, ProfileCatalog catalog, string platform, IClock? clock = null)
@@ -81,6 +90,15 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
     public string? ProfileId { get; private set; }
 
     public long VideoFrames { get; private set; }
+
+    /// <summary>Hops of the player's sound analysed so far (see <see cref="OnAudio"/>).</summary>
+    public long AudioHops => Interlocked.Read(ref _audioHops);
+
+    /// <summary>True once the player's sound has reached the analysis: the clipper and the check have audio.</summary>
+    public bool HasAudio => AudioHops > 0;
+
+    /// <summary>Seconds of the player's sound analysed so far.</summary>
+    public double AudioSeconds => (double)AudioHops * _format.HopSamples / _format.SampleRate;
 
     public SessionStarted? Started => _pipeline?.Started;
 
@@ -141,6 +159,11 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         var factory = new EnvelopeFactory(_clock, sessionId, "official-player");
         var publisher = new SignalPublisher(_bus, new EnvelopeFactory(_clock, sessionId, "signals.video"),
             Topics.SignalsVideo, SignalPublisher.VideoSchemaId, SignalFamily.Video, bank.Names);
+
+        // The player's sound, when the host feeds it (OnAudio); its schema goes out with the first hop.
+        AudioSignalBank audioBank = AudioSignalBank.CreateDefault(_format);
+        var audioPublisher = new SignalPublisher(_bus, new EnvelopeFactory(_clock, sessionId, "signals.audio"),
+            Topics.SignalsAudio, SignalPublisher.AudioSchemaId, SignalFamily.Audio, audioBank.Names);
         // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
         ProfileRunner? runner = profileId is null ? null : new ProfileRunner(_bus, catalog, profileId, DetectionMethod.Manual, sessionId, _clock.Frequency, publishCandidates: false);
         ClipperRunner clipper = profileId is null
@@ -156,7 +179,7 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         publisher.PublishSchema(now);
         lock (_gate)
         {
-            _pipeline = new Pipeline(sessionId, started, factory, bank, publisher, runner, clipper, tuner, resolved);
+            _pipeline = new Pipeline(sessionId, started, factory, bank, publisher, audioBank, audioPublisher, runner, clipper, tuner, resolved);
         }
     }
 
@@ -188,6 +211,39 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
             ReadOnlySpan<float> values = p.Bank.Process(_frame);
             p.Publisher.Publish(qpc, qpc + QpcTime.Rescale(1, _format.FramesPerSecond, _clock.Frequency), values);
             p.Tuner?.OnFrame(qpc, values);
+        }
+    }
+
+    /// <summary>
+    /// One hop of the player's sound: mono at the analysis rate, stamped with
+    /// capture QPC, as the recorder's process loopback of the desktop shell
+    /// delivers it. Analysed in memory like the frames and never stored. The
+    /// viewer stamps frames with the same real-time clock, so the two line up.
+    /// Call from one audio thread; it never waits on frame analysis.
+    /// </summary>
+    public void OnAudio(AudioBlock block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        if (block.Count <= 0 || block.SampleRate != _format.SampleRate)
+        {
+            return;
+        }
+
+        lock (_audioGate)
+        {
+            if (Volatile.Read(ref _pipeline) is not { } p)
+            {
+                return;
+            }
+
+            if (!ReferenceEquals(_audioSchemaFor, p))
+            {
+                p.AudioPublisher.PublishSchema(block.Qpc);
+                _audioSchemaFor = p;
+            }
+
+            p.AudioPublisher.Publish(block.Qpc, block.Qpc + QpcTime.Rescale(block.Count, block.SampleRate, _clock.Frequency), p.AudioBank.Process(block));
+            Interlocked.Increment(ref _audioHops);
         }
     }
 

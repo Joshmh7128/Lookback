@@ -38,7 +38,7 @@ internal sealed partial class StreamHostService(
 
         // Official-player sessions are ephemeral: the calibration host keeps
         // frames and features in memory and writes only numbers the user confirms.
-        _calibration = o.OfficialPlayer ? new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = o.ProfilesDirectory, Ratings = new RatingStore(o.ResolvedDatasetsDirectory) }) : null;
+        _calibration = o.OfficialPlayer ? new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = o.ProfilesDirectory, Ratings = new RatingStore(o.ResolvedDatasetsDirectory), PlayerAudio = PlayerAudioSource.For(o.ParentProcessId, logger) }) : null;
 
         // Control commands from the shell: ratings (stored behind RetentionRules) and footage analysis.
         ControlService? control = null;

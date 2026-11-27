@@ -79,9 +79,10 @@ public sealed class ClipperCheck
     /// What may be saved of a rating: the stars, the candidate's heuristic score
     /// and features, its place in this run and the run id. Null when the check
     /// has no such candidate. <paramref name="profile"/> applies when the
-    /// candidate names none.
+    /// candidate names none; <paramref name="videoOnly"/> stores the audio
+    /// features as missing (the player's sound never reached the analysis).
     /// </summary>
-    public CheckRatingInput? RatingFor(string candidateId, int stars, string platform, string? profile)
+    public CheckRatingInput? RatingFor(string candidateId, int stars, string platform, string? profile, bool videoOnly = true)
     {
         lock (_lock)
         {
@@ -99,6 +100,7 @@ public sealed class ClipperCheck
                 Stars = stars,
                 HeuristicScore = e.Candidate.HeuristicScore,
                 ClipperFeatures = e.Features,
+                VideoOnly = videoOnly,
             };
         }
     }

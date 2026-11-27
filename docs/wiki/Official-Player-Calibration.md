@@ -130,14 +130,47 @@ by default, `--Recorder:DatasetsDirectory` to change). A host without a rating
 store keeps ratings in memory, and the panel says so. Training uses the
 check's ratings beside your own footage's; `--no-check-ratings` leaves them out.
 
-**Limits.** The viewer sends video only, so the clipper's audio components
-(loudness, onsets) do not contribute and the saved audio features are
-missing, and YouTube footage carries
-compression, webcams and overlays a direct recording would not. Read the
-scores as a sanity check of what the clipper picks, not as its accuracy on
-your own recordings. Candidates appear several seconds after the moment: the
-clipper closes one only when nothing more can extend it, and with no audio
-stream it waits an extra 5 s before giving up on audio.
+**Limits.** YouTube footage carries compression, webcams and overlays a
+direct recording would not, so read the scores as a sanity check of what the
+clipper picks, not as its accuracy on your own recordings. Without the
+player's sound (see [The player's sound](#the-players-sound)) the clipper's
+audio components do not contribute and the saved audio features are missing.
+Candidates appear several seconds after the moment: the clipper closes one
+only when nothing more can extend it, and with no audio stream it waits an
+extra 5 s before giving up on audio.
+
+## The player's sound
+
+The recorder hears the player the way it hears a game: **process loopback**
+(Windows 10 2004, build 19041, and later) of the desktop shell that started
+it (`Recorder:ParentProcessId`), with the shell's child processes, because
+Chromium plays the embed's audio from a child process. It is never the
+whole system: official players get no endpoint fallback, so other apps,
+calls or music are not heard. The sound is analysed in memory like the frames
+(loudness, spectral flux, onsets) and never encoded or stored.
+`PlayerAudioSource` in the recorder starts it when a player starts and stops
+it with the player; `OfficialPlayerSession.OnAudio` analyses each hop.
+
+The panel's status line says how much was heard ("1689 frames analysed · 56 s
+of the player's sound"), or why the player is video only: the recorder was
+started without a shell to isolate, Windows is older than 19041, or process
+loopback failed to start.
+
+The viewer stamps frames with real time since its start message, and WASAPI
+stamps audio with the same clock, so the two line up within milliseconds
+without any sync step. With sound, the clipper scores moments as it does on
+your recordings: a loud and bright moment scores higher than a silent flash,
+which on its own may stay under the threshold.
+
+Anything else the shell itself plays while the viewer runs (a clip preview in
+the library) is heard too; the viewer is the only window that plays sound in
+normal use.
+
+Checked on AETHER (Windows 10 19045) through the real recorder and panel: a
+stand-in shell process spawned a child that played a tone with loud bursts
+aligned to the frames' flashes. The panel counted the sound in real time, the
+clipper closed a candidate whose reason was flash and loudness together, and
+the saved rating carried its loudness and silence numbers.
 
 ## The sender (desktop shell)
 
@@ -148,7 +181,7 @@ with microseconds since the start message. It sends `start` when the player
 starts playing and `stop` when the video ends, the source or profile
 changes, or the window closes. Frames are dropped rather than queued when the
 socket backs up. The viewer's browser partition is in memory, and no audio is
-sent. Checked end to end on Windows with a YouTube video and a live Twitch
+sent: the recorder hears the player itself ([The player's sound](#the-players-sound)). Checked end to end on Windows with a YouTube video and a live Twitch
 channel: about 150 frames in 5 s, none dropped, all analysed by the panel.
 
 ## Wire format of `/ingest`
@@ -159,14 +192,14 @@ All binary values are little-endian. Same token and Origin checks as `/events`.
 |---|---|
 | text | `{"type":"start","platform":"youtube"\|"twitch","videoRef":"…","profile":"cs2"}`; `profile` is optional |
 | binary kind 1 | `byte 1, int64 µs since start, uint16 width, uint16 height, BGRA8 pixels` (384x216 preferred; other sizes are scaled) |
-| binary kind 2 | `byte 2, int64 µs, uint32 sample rate, float32 mono PCM`; accepted and ignored for now |
+| binary kind 2 | `byte 2, int64 µs, uint32 sample rate, float32 mono PCM`; accepted and ignored (the recorder captures the player's sound itself) |
 | text | `{"type":"stop"}` |
 
 ## Limits
 
-- Video only for now: the embed's audio cannot be tapped cleanly (the shell
-  could only capture the whole system mix), so audio boosts do not
-  contribute during calibration.
+- The player's sound needs Windows build 19041 or later and the recorder
+  started by the shell; otherwise calibration and the clipper check are video
+  only, and the panel says so.
 - Marks are human-timed; the 2.5 s lead absorbs reaction time, but marks far
   from the moment add noise. More marks help.
 - Proposals are at 8-pixel granularity of the analysis frame (about 2% of the

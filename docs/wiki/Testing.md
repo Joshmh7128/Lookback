@@ -346,12 +346,16 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | `ClipperCheckTests.cs` | `Precision_recall_and_breakdowns_follow_the_judgments` | Precision, recall (marked moments found or missed), mean rating, per-reason and per-score breakdowns on hand-made candidates; duplicates ignored; QA failures shown |
 | | `Tolerance_clearing_and_reset` | A mark just past a window still counts as covered; 0 clears a rating; reset forgets everything |
 | | `The_clipper_runs_on_player_frames_and_its_candidates_are_judged_in_memory_only` | The real clipper on an official-player session's frames (video only) proposes candidates for flashes; judging and missed marks work through the panel's commands and show in its state; with no rating store nothing is written; stopping the player clears the check |
+| | `With_the_players_sound_the_clipper_hears_it_and_saved_ratings_keep_audio_features` | The host's audio hook gets the official, ephemeral header; hops fed alongside the frames reach the analysis (`audioSeconds` in the panel state); the saved rating carries loudness and silence numbers; stopping the player stops the hook |
+| | `Without_an_audio_source_the_panel_says_video_only` | A hook that returns null leaves the player video only and the panel's note says so |
 | | `With_a_rating_store_your_ratings_are_saved_as_numbers_only` | Judging through the panel saves one line: stars, the clipper's features, a random run id, no times and not the candidate id; the panel shows it saved; profiles untouched; a reset starts a new run |
 
 ## `Lookback.Recorder.Tests`
 
 | File | Test | What it proves |
 |---|---|---|
+| `PlayerAudioSourceTests.cs` | `Without_a_shell_process_there_is_no_audio_hook` | No `ParentProcessId` (or 0): the official player stays video only |
+| | `With_a_shell_process_on_windows_there_is_one` | With a shell pid the hook exists on Windows, and only there |
 | `ControlServiceTests.cs` | `A_rating_of_an_owned_session_is_stored_and_published` | `rate` on a known candidate writes one line to `datasets/<game>/ratings.jsonl`, acks `stored`, and publishes `ClipRating` on the bus |
 | | `Official_player_ratings_are_refused_and_nothing_is_written` | An ephemeral session's rating gets `ephemeral` and no file is created |
 | | `Unknown_sessions_and_candidates_are_refused` | `unknown-session` and `unknown-candidate`, nothing written |

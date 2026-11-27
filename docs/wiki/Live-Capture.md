@@ -124,7 +124,7 @@ flowchart LR
 |---|---|---|---|
 | Live game, owned | Process loopback of the game on 19041+; endpoint loopback before that, or if process loopback fails or stays silent (`FallbackReason` and the log say why) | If asked | Yes |
 | Live game, ephemeral | As above | No | No (analysis only) |
-| Official player | Process loopback of the player on 19041+ only, with no fallback; **never endpoint loopback**, which would pick up everything else the machine plays. Before 19041 it gets no audio | No | Never: no encoder, ring or store |
+| Official player | Process loopback of the player (the desktop shell's process tree, see [Official-Player Calibration](Official-Player-Calibration#the-players-sound)) on 19041+ only, with no fallback; **never endpoint loopback**, which would pick up everything else the machine plays. Before 19041 it gets no audio | No | Never: no encoder, ring or store |
 
 ### Process loopback on Windows 10
 

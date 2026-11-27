@@ -1,8 +1,10 @@
+using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using Lookback.Calibration.Check;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
 using Lookback.Core.Time;
+using Lookback.Media.Frames;
 using Lookback.Scoring.Features;
 using Lookback.Scoring.Ratings;
 
@@ -26,16 +28,24 @@ public sealed class ClipperCheckTests : IDisposable
         Directory.Delete(_datasets, recursive: true);
     }
 
-    /// <summary>40 s of moving noise with three full-frame flashes, at 12, 22 and 32 s; a missed-highlight mark at 23 s; then a flush.</summary>
-    private static async Task FeedAsync(CalibrationHost host, OfficialPlayerSession session)
+    private static bool Flash(double t) => (t is >= 12 and < 12.4) || (t is >= 22 and < 22.4) || (t is >= 32 and < 32.4);
+
+    /// <summary>
+    /// 40 s of moving noise with three full-frame flashes, at 12, 22 and 32 s; a missed-highlight mark at 23 s; then a flush.
+    /// With <paramref name="audio"/>, the player's sound too, interleaved in time: quiet noise with a loud burst at each flash.
+    /// </summary>
+    private static async Task FeedAsync(CalibrationHost host, OfficialPlayerSession session, Action<AudioBlock>? audio = null)
     {
         session.SetOrigin(0);
         var rng = new Random(7);
         byte[] px = new byte[Synthetic.W * Synthetic.H * 4];
+        AnalysisFormat f = AnalysisFormat.Default;
+        var hop = new AudioBlock(f.SampleRate, f.HopSamples) { Count = f.HopSamples };
+        long sample = 0;
         for (int i = 0; i < 40 * 30; i++)
         {
             double t = i / 30.0;
-            bool flash = (t is >= 12 and < 12.4) || (t is >= 22 and < 22.4) || (t is >= 32 and < 32.4);
+            bool flash = Flash(t);
             for (int p = 0; p < px.Length; p += 4)
             {
                 byte v = flash ? (byte)250 : (byte)rng.Next(40, 120);
@@ -44,6 +54,20 @@ public sealed class ClipperCheckTests : IDisposable
             }
 
             session.OnVideo(i * 33_333L, Synthetic.W, Synthetic.H, px);
+            for (long until = (i + 1L) * f.SampleRate / 30; audio is not null && sample + f.HopSamples <= until; sample += f.HopSamples)
+            {
+                Span<float> s = MemoryMarshal.CreateSpan(ref MemoryMarshal.GetReference(hop.Samples), hop.Count);
+                float level = Flash((double)sample / f.SampleRate) ? 0.8f : 0.01f;
+                for (int k = 0; k < s.Length; k++)
+                {
+                    s[k] = level * (float)((rng.NextDouble() * 2) - 1);
+                }
+
+                hop.FirstSample = sample;
+                hop.Qpc = QpcTime.Rescale(sample, f.SampleRate, session.Check.Frequency);
+                audio(hop);
+            }
+
             if (i == (int)(23 * 30))
             {
                 await host.CommandAsync(JsonNode.Parse("""{"type":"missed"}"""));
@@ -201,5 +225,65 @@ public sealed class ClipperCheckTests : IDisposable
         await host.CommandAsync(JsonNode.Parse("""{"type":"check-reset"}""")!);
         Assert.NotEqual(run, session.Check.RunId);
         Assert.Single(store.ReadChecks("generic").Records);
+    }
+
+    private sealed class Handle : IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
+    public async Task With_the_players_sound_the_clipper_hears_it_and_saved_ratings_keep_audio_features()
+    {
+        using var bus = new InProcessEventBus();
+        var store = new RatingStore(_datasets);
+        var handle = new Handle();
+        SessionStarted? header = null;
+        Action<AudioBlock>? feed = null;
+        await using var host = new CalibrationHost(bus, new CalibrationHostOptions
+        {
+            ProfilesDirectory = _dir,
+            Ratings = store,
+            PlayerAudio = (started, onHop) =>
+            {
+                header = started;
+                feed = onHop;
+                return handle;
+            },
+        });
+
+        OfficialPlayerSession session = await host.StartAsync("youtube", null);
+        Assert.Equal((SourceKind.OfficialPlayer, Retention.Ephemeral), (header!.SourceKind, header.Retention)); // the hook sees an official, ephemeral session
+        await FeedAsync(host, session, feed!);
+        Assert.True(session.HasAudio);
+        Assert.True(session.AudioSeconds > 35, $"{session.AudioSeconds} s of audio");
+        Assert.True((double)JsonNode.Parse(host.State())!["audioSeconds"]! > 35);
+
+        CheckCandidate first = session.Check.Recent(50)[^1];
+        string reply = await host.CommandAsync(JsonNode.Parse($$"""{"type":"judge","candidateId":"{{first.Id}}","stars":4}""")!);
+        Assert.Contains("\"stored\":true", reply, StringComparison.Ordinal);
+
+        // The clipper heard the player: the saved rating carries its loudness and silence numbers.
+        RatingRecord row = Assert.Single(store.ReadChecks("generic").Records);
+        Assert.NotNull(row.Features[ClipFeatureSchema.IndexOf(ClipFeatureSchema.LoudnessZ)]);
+        Assert.NotNull(row.Features[ClipFeatureSchema.IndexOf(ClipFeatureSchema.SilentFraction)]);
+
+        // Stopping the player stops hearing it.
+        await host.StopAsync();
+        Assert.True(handle.Disposed);
+    }
+
+    [Fact]
+    public async Task Without_an_audio_source_the_panel_says_video_only()
+    {
+        using var bus = new InProcessEventBus();
+        await using var host = new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = _dir, PlayerAudio = (_, _) => null });
+        OfficialPlayerSession session = await host.StartAsync("twitch", null);
+        JsonNode state = JsonNode.Parse(host.State())!;
+        Assert.False(session.HasAudio);
+        Assert.Equal(0.0, (double)state["audioSeconds"]!);
+        Assert.StartsWith("video only", (string)state["audioNote"]!, StringComparison.Ordinal);
     }
 }
