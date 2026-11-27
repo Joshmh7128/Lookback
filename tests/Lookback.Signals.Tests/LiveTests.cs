@@ -93,9 +93,14 @@ public class LiveTests
             if (analyzer.SubmitVideo(frame, f.Width * 4, qpc))
             {
                 accepted++;
-            }
 
-            await Task.Delay(1, TestContext.Current.CancellationToken);
+                // Let the below-normal worker catch up, so the test measures thinning, not CPU contention.
+                var wait = System.Diagnostics.Stopwatch.StartNew();
+                while (analyzer.ProcessedVideo < accepted && wait.Elapsed < TimeSpan.FromSeconds(5))
+                {
+                    await Task.Delay(1, TestContext.Current.CancellationToken);
+                }
+            }
         }
 
         var block = new AudioBlock(48_000, 480) { Count = 480, Qpc = 1000 };
@@ -103,7 +108,8 @@ public class LiveTests
         await analyzer.DisposeAsync();
 
         Assert.InRange(accepted, 58, 62);
-        Assert.Equal(accepted, analyzer.ProcessedVideo + analyzer.DroppedVideo);
+        Assert.Equal(accepted, analyzer.ProcessedVideo);
+        Assert.Equal(0, analyzer.DroppedVideo);
         var frames = new List<Envelope>();
         while (sub.TryRead(out Envelope? e))
         {
