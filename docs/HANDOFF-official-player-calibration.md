@@ -26,14 +26,20 @@ panel at `calibrate` + `#token=T`).
 
 - `RetentionRules.ValidateDerived` + `DerivedWriteKind.ConfirmedProfileParameters`, with tests.
 - `WebSocketBridgeOptions.Sockets` (extra token/origin-checked sockets) and `SocketUrl`.
+- `src/Lookback.Calibration`: `OfficialPlayerSession` (ephemeral, no session log),
+  `CalibrationHost` (`/ingest`, `/calibrate`, `/calibrate/ws`), `CalibrationProbe`
+  (marks, static HUD), `ThresholdTuner`, `ProfileTextPatcher` + `CalibrationWriter`
+  (edits number tokens in place, validates the tree before writing), `calibrate.html`.
+- Recorder serves them by default; `Recorder:ProfilesDirectory` enables Save;
+  `LOOKBACK_READY` gains `ingest` and `calibrate`.
+- Docs: wiki `Official-Player-Calibration.md`, Data-Retention, CLAUDE.md rule.
+- Flagged items: Siege exe names match Ubisoft Support; League map ids 11/12/22/30
+  match Riot's map list. Marvel Rivals exe still unverified (needs an install).
+- README merge-conflict block fixed.
+- 300 tests pass on Linux.
 
 ## Next
 
-- `src/Lookback.Calibration`: ingest handler, ephemeral official-player session
-  (signal bank + profile runner, no session log), calibration probe (marks,
-  per-cell response, static mask, threshold search), profile text patcher
-  (edits numbers in place, keeps comments), `/calibrate` panel.
-- Recorder: `Recorder:ProfilesDirectory`, serve ingest + panel, extra ready fields.
-- Docs: Data-Retention wiki, CLAUDE.md exception for confirmed profile parameters.
-- Flagged: Siege and Marvel Rivals exe names, League map ids.
-- README has a leftover merge-conflict block on main (Build and test section).
+- Windows run on AETHER (build + tests).
+- End-to-end with the Electron viewer once the shell thread's sender lands.
+- Audio in calibration once the shell can provide player-only audio.
