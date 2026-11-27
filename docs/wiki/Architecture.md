@@ -68,7 +68,7 @@ flowchart LR
 | `Lookback.Clipper` | C# | Normalisation, excitement curve, candidates, scoring, QA ([Clipper](Clipper); runs beside the profile runner today, in the testbench and later in the recorder) |
 | `Lookback.Testbench` | C# CLI | Runs footage files through Signals and Clipper |
 | `native/hook` | C++ | Present hook for D3D11/D3D12; the only native code, because it lives inside the game |
-| `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer |
+| `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer ([Desktop Shell](Desktop-Shell)) |
 | `ml/` | Python | Offline training and ONNX export |
 
 ## One clock

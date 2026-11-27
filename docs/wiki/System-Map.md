@@ -22,8 +22,11 @@ endpoints. The bus is the only path out of the recorder: the pipe server is
 for the planned Signals and Clipper hosts, and the WebSocket bridge serves the
 shell. Capture and encode exist as libraries (driven today by
 `lookback-capture`), but the recorder does not create a capture session yet.
-The `rate · save → ack` messages are agreed with the shell and not built yet;
-see the recorder-wiring step in `docs/capture-handoff.md`.
+The `rate · analyze · save → ack` messages are agreed with the shell; the
+shell already sends `rate` and `analyze` and falls back (ratings in memory,
+footage through `lookback-testbench live --pipe`) until the recorder answers.
+See [Desktop Shell](Desktop-Shell#control-commands-on-events-agreed-recorder-side-pending)
+and the recorder-wiring step in `docs/capture-handoff.md`.
 
 ## Live capture: what runs inside one session
 
@@ -63,7 +66,7 @@ the shell's memory.
 | Governor policy and runtime controller | Governor | Done |
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
-| Electron shell: library, timeline, 1–5 star rating, official-player viewer and ingest sender | `app/` | In progress |
+| Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17); ratings in memory until the recorder stores them |
 | WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
 | Governor Windows probe | Governor.Windows | In progress |
 | [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (M2); hosted in the testbench, recorder hosting with the wiring |

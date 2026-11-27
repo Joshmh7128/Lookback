@@ -34,7 +34,12 @@ just "YouTube embedded player" or "Twitch embedded player".
 
 ## Running it
 
-The recorder serves the endpoints by default. `LOOKBACK_READY` carries
+The usual way is the desktop app: `cd app; npm start`, then **Open viewer**
+(see [Desktop Shell](Desktop-Shell#the-official-player-viewer)). The shell
+starts the recorder with your checkout's `profiles` folder, streams the
+player's frames to `/ingest` and docks the panel beside the player.
+
+Underneath, the recorder serves the endpoints by default. `LOOKBACK_READY` carries
 `ingest` (`ws://127.0.0.1:PORT/ingest`) and `calibrate`
 (`http://127.0.0.1:PORT/calibrate`); open the panel at
 `calibrate#token=<token>`. To enable Save, point the recorder at your
@@ -83,6 +88,18 @@ Then commit the profile change like any other edit.
   (counted with the rule's cooldown). The panel shows both the current and
   proposed thresholds' results on this video.
 
+## The sender (desktop shell)
+
+The viewer window's main process captures the page with
+`webContents.beginFrameSubscription`, crops to the player element, has
+Chromium scale it to 384x216 BGRA, keeps 30 fps, and sends kind-1 messages
+with microseconds since the start message. It sends `start` when the player
+starts playing and `stop` when the video ends, the source or profile
+changes, or the window closes. Frames are dropped rather than queued when the
+socket backs up. The viewer's browser partition is in memory, and no audio is
+sent. Checked end to end on Windows with a YouTube video and a live Twitch
+channel: about 150 frames in 5 s, none dropped, all analysed by the panel.
+
 ## Wire format of `/ingest`
 
 All binary values are little-endian. Same token and Origin checks as `/events`.
@@ -96,8 +113,9 @@ All binary values are little-endian. Same token and Origin checks as `/events`.
 
 ## Limits
 
-- Video only for now: the embed's audio cannot be tapped cleanly, so audio
-  boosts do not contribute during calibration.
+- Video only for now: the embed's audio cannot be tapped cleanly (the shell
+  could only capture the whole system mix), so audio boosts do not
+  contribute during calibration.
 - Marks are human-timed; the 2.5 s lead absorbs reaction time, but marks far
   from the moment add noise. More marks help.
 - Proposals are at 8-pixel granularity of the analysis frame (about 2% of the

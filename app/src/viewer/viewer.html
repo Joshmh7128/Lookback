@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lookback viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+  <script type="module" src="viewer.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <form id="open-form" class="open">
+      <input id="link" type="text" placeholder="Paste a YouTube or Twitch link" autocomplete="off" spellcheck="false" aria-label="Video link">
+      <button type="submit">Play</button>
+    </form>
+    <label class="profile">Profile
+      <select id="profile"><option value="">let the recorder decide</option></select>
+    </label>
+    <span id="ingest" class="ingest off" title="Frames sent to the recorder">ingest off</span>
+    <button id="panel" type="button" title="Show or hide the calibration panel">Panel</button>
+  </header>
+  <main id="stage" class="stage">
+    <div id="player-box" class="player-box">
+      <div id="player"></div>
+      <p id="hint" class="hint">Paste a link to a video or channel. It plays in the platform's own embedded player; Lookback analyses the playback live and keeps nothing.</p>
+    </div>
+  </main>
+  <footer id="status" class="status">idle</footer>
+</body>
+</html>
