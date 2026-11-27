@@ -95,7 +95,7 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
         LiveResult result = await run;
 
         Assert.Equal("sessionStarted", kinds[0]);
-        Assert.Equal(3, kinds.Count(k => k == "signalSchema"));   // video, audio, and the profile's rules
+        Assert.Equal(4, kinds.Count(k => k == "signalSchema"));   // video, audio, the profile's rules and the clipper's curve
         Assert.Contains("signals.rules", topics);                 // the profile ran live, in step with the clip
         Assert.InRange(topics.Count(t => t is "signals.video" or "signals.audio") - 2, 380, 420); // 90 video frames and ~300 audio hops
         Assert.Equal(result.Released, kinds.Count);

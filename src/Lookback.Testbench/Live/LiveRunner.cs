@@ -1,3 +1,4 @@
+using Lookback.Clipper;
 using Lookback.Contracts;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
@@ -178,14 +179,18 @@ internal static class LiveRunner
         AnalysisFormat format = AnalysisFormat.Default;
         IVideoSignal[] extra = profile is { Regions.Count: > 0 } ? [new RegionSignal(profile.Regions, format.Width, format.Height)] : [];
 
-        // The profile runs on the private bus, so its game events and rule
-        // margins are released by the relay in step with the footage.
-        ProfileRunner? runner = profile is null ? null : new ProfileRunner(bus, profile, sessionId, TestbenchRunner.Frequency);
+        // The profile and the clipper run on the private bus, so game events, rule
+        // margins, the excitement curve and clip candidates are released by the
+        // relay in step with the footage.
+        ProfileRunner? runner = profile is null ? null : new ProfileRunner(bus, profile, sessionId, TestbenchRunner.Frequency, publishCandidates: false);
+        ClipperRunner? clipper = profile is null
+            ? new ClipperRunner(bus, sessionId, TestbenchRunner.Frequency)
+            : new ClipperRunner(bus, new ProfileCatalog([profile]), profile.Id, sessionId, TestbenchRunner.Frequency);
         try
         {
             bus.Publish(header);
             var analyzer = new FootageAnalyzer(bus, format, TestbenchRunner.Frequency);
-            var pacer = new ReplayPacer(() => Math.Max(relay.Pending, runner?.Queued ?? 0), HighWater);
+            var pacer = new ReplayPacer(() => Math.Max(relay.Pending, Math.Max(runner?.Queued ?? 0, clipper?.Queued ?? 0)), HighWater);
             await analyzer.AnalyzeAsync(
                 file,
                 sessionId,
@@ -198,6 +203,9 @@ internal static class LiveRunner
                 runner = null;
             }
 
+            await clipper.DisposeAsync().ConfigureAwait(false); // then the clipper, which waits on them
+            clipper = null;
+
             Envelope end = factory.Create(Topics.Session, QpcTime.FromTimeSpan(media.Duration, TestbenchRunner.Frequency));
             end.SessionEnded = new SessionEnded { Reason = "end of file" };
             bus.Publish(end);
@@ -207,6 +215,11 @@ internal static class LiveRunner
             if (runner is not null)
             {
                 await runner.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (clipper is not null)
+            {
+                await clipper.DisposeAsync().ConfigureAwait(false);
             }
 
             bus.Dispose(); // completes the subscription, so the relay drains and stops

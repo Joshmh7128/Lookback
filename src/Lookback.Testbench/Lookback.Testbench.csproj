@@ -5,6 +5,7 @@
     <Description>Runs footage files through the signal pipeline and renders a timeline report.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Lookback.Clipper\Lookback.Clipper.csproj" />
     <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
     <ProjectReference Include="..\Lookback.Profiler\Lookback.Profiler.csproj" />

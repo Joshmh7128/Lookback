@@ -201,6 +201,7 @@ public sealed class ProfileCatalog
             Regions = [.. parent.Regions, .. own.Regions],
             Events = [.. parent.Events.Where(e => !disabled.Contains(e.Name) && !ownEvents.Contains(e.Name)), .. own.Events],
             Composites = [.. parent.Composites.Where(c => !disabled.Contains(c.Name) && !ownComposites.Contains(c.Name)), .. own.Composites],
+            Clipper = own.Clipper.Over(parent.Clipper),
         };
 
         // A composite whose source event was disabled goes too.
@@ -225,6 +226,11 @@ public sealed class ProfileCatalog
         foreach (CompositeRule c in r.Composites.Where(c => !names.Contains(c.Of)))
         {
             yield return $"composite '{c.Name}' refers to unknown event '{c.Of}'.";
+        }
+
+        if (r.Clipper is { High: { } high, Low: { } low } && low >= high)
+        {
+            yield return $"clipper: low ({low}) must be below high ({high}) once inherited values are applied.";
         }
     }
 }

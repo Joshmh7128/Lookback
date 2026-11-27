@@ -1,0 +1,35 @@
+{
+  // The clipper's default excitement curve. Game-agnostic: whole-frame video
+  // signals and audio signals only, no regions. Each component's value is
+  // turned into a rolling robust z-score (median and MAD of this session's
+  // own recent past), clamped to 0..6, and the curve is the weighted mean of
+  // those z-scores. A profile's "clipper" block overrides any part of this
+  // (same format), and its children inherit the override.
+  //
+  // minSpread is the smallest spread, in the signal's own units, used to
+  // scale the z-score, so a nearly constant signal does not turn noise into
+  // huge scores.
+  "components": [
+    { "signal": "flash.brighten", "weight": 1.0, "minSpread": 0.02 },
+    { "signal": "audio.rms_db", "weight": 1.0, "minSpread": 3.0 },
+    { "signal": "spectral.flux", "weight": 0.6, "minSpread": 0.05 },
+    { "signal": "motion.energy", "weight": 0.5, "minSpread": 0.01 },
+    { "signal": "hud.activity", "weight": 0.5, "minSpread": 0.01 },
+    { "signal": "flash.red_edge", "weight": 0.4, "minSpread": 0.02 },
+    { "signal": "scene.cut", "weight": 0.3, "minSpread": 0.05 }
+  ],
+  // A peak starts when the smoothed curve reaches high and ends when it falls
+  // below low. The curve is a weighted mean, so one modality on its own (a
+  // hard flash that also moves the whole frame, or a loud burst) reaches
+  // about 1.9; both together about 3.4. Ordinary play sits well under 1.
+  "high": 1.6,
+  "low": 0.8,
+  // Window around the peak: more lead-up than aftermath.
+  "preMs": 6000,
+  "postMs": 3000,
+  // Peaks closer than this to the previous one are the same moment.
+  "refractoryMs": 3000,
+  // A peak exactly at high adds this to a candidate's raw score (up to 3x as
+  // much for a peak three times as high); an event adds weight x confidence.
+  "peakScore": 0.5
+}

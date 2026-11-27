@@ -144,6 +144,80 @@ public static class GameProfileLoader
             }
         }
 
+        problems.AddRange(ValidateClipper(p.Clipper).Select(x => "clipper: " + x));
+        return problems;
+    }
+
+    /// <summary>Parses a standalone clipper spec (the clipper's defaults file uses the same format as a profile's <c>clipper</c> block).</summary>
+    public static ClipperSpec ParseClipper(string json, string source = "clipper spec")
+    {
+        ClipperSpec spec;
+        try
+        {
+            spec = JsonSerializer.Deserialize<ClipperSpec>(json, Json) ?? throw new InvalidDataException($"{source}: empty.");
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidDataException($"{source}: {ex.Message}", ex);
+        }
+
+        IReadOnlyList<string> problems = ValidateClipper(spec);
+        if (problems.Count > 0)
+        {
+            throw new InvalidDataException($"{source} is invalid:\n  " + string.Join("\n  ", problems));
+        }
+
+        return spec;
+    }
+
+    /// <summary>Structural checks on a clipper spec on its own (high above low is also checked after inheritance, by the catalog).</summary>
+    public static IReadOnlyList<string> ValidateClipper(ClipperSpec c)
+    {
+        ArgumentNullException.ThrowIfNull(c);
+        var problems = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (CurveComponent k in c.Components)
+        {
+            if (string.IsNullOrWhiteSpace(k.Signal))
+            {
+                problems.Add("a component needs a signal.");
+            }
+            else if (!seen.Add(k.Signal))
+            {
+                problems.Add($"component '{k.Signal}' is listed twice.");
+            }
+
+            if (k.Weight < 0 || !float.IsFinite(k.Weight))
+            {
+                problems.Add($"component '{k.Signal}': weight must be 0 or more.");
+            }
+
+            if (k.MinSpread is { } m && (m <= 0 || !float.IsFinite(m)))
+            {
+                problems.Add($"component '{k.Signal}': minSpread must be positive.");
+            }
+        }
+
+        if (c.High is <= 0 || c.Low is <= 0)
+        {
+            problems.Add("high and low must be positive.");
+        }
+
+        if (c is { High: { } high, Low: { } low } && low >= high)
+        {
+            problems.Add("low must be below high.");
+        }
+
+        if (c.PreMs is < 0 || c.PostMs is < 0 || c.RefractoryMs is < 0 || c.PeakScore is < 0)
+        {
+            problems.Add("preMs, postMs, refractoryMs and peakScore must not be negative.");
+        }
+
+        if (c is { PreMs: { } pre, PostMs: { } post } && pre + post <= 0)
+        {
+            problems.Add("preMs + postMs must be positive.");
+        }
+
         return problems;
     }
 
@@ -236,6 +310,7 @@ public static class GameProfileLoader
         return p.Events
             .SelectMany(e => e.When.Concat(e.WhenAny).Select(c => c.Signal).Concat(e.Boosts.Select(b => b.Signal)))
             .Concat(p.Detect.Visual.Select(c => c.Signal))
+            .Concat(p.Clipper.Components.Select(c => c.Signal))
             .Where(s => !available.Contains(s))
             .Distinct()
             .ToArray();

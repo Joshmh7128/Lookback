@@ -65,6 +65,86 @@ public sealed record GameProfile
 
     /// <summary>Moments recognised from patterns of other events.</summary>
     public IReadOnlyList<CompositeRule> Composites { get; init; } = [];
+
+    /// <summary>
+    /// Optional overrides of the clipper's excitement curve for this game:
+    /// component weights and thresholds over existing signals. Inherits down
+    /// the tree; anything left out comes from the parent, then from the
+    /// clipper's defaults.
+    /// </summary>
+    public ClipperSpec Clipper { get; init; } = new();
+}
+
+/// <summary>
+/// How the clipper's game-agnostic excitement curve is built and cut, as data.
+/// The clipper ships a default (<c>clipper.defaults.json</c> in
+/// <c>Lookback.Clipper</c>); a profile overrides parts of it and its children
+/// inherit those overrides. Every field is optional: a component replaces the
+/// inherited component of the same signal, and an unset number keeps the
+/// inherited one. The curve only ever weighs signals that already exist.
+/// </summary>
+public sealed record ClipperSpec
+{
+    /// <summary>Signals combined into the curve, each with its weight. Weight 0 switches an inherited component off.</summary>
+    public IReadOnlyList<CurveComponent> Components { get; init; } = [];
+
+    /// <summary>The curve must rise to this (a weighted mean of robust z-scores) to start a peak.</summary>
+    public float? High { get; init; }
+
+    /// <summary>A peak ends when the curve falls below this; lower than <see cref="High"/> (hysteresis).</summary>
+    public float? Low { get; init; }
+
+    /// <summary>Footage kept before a curve peak.</summary>
+    public int? PreMs { get; init; }
+
+    /// <summary>Footage kept after a curve peak.</summary>
+    public int? PostMs { get; init; }
+
+    /// <summary>Peaks closer than this to the previous one are folded into it.</summary>
+    public int? RefractoryMs { get; init; }
+
+    /// <summary>How much a peak at exactly <see cref="High"/> adds to a candidate's raw score (an event adds weight × confidence).</summary>
+    public float? PeakScore { get; init; }
+
+    /// <summary>This spec over <paramref name="parent"/>: own components replace the parent's of the same signal; unset numbers inherit.</summary>
+    public ClipperSpec Over(ClipperSpec parent)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        var own = Components.ToDictionary(c => c.Signal, StringComparer.Ordinal);
+        var merged = new List<CurveComponent>();
+        foreach (CurveComponent p in parent.Components)
+        {
+            merged.Add(own.Remove(p.Signal, out CurveComponent? c) ? c with { MinSpread = c.MinSpread ?? p.MinSpread } : p);
+        }
+
+        merged.AddRange(Components.Where(c => own.ContainsKey(c.Signal)));
+        return new ClipperSpec
+        {
+            Components = merged,
+            High = High ?? parent.High,
+            Low = Low ?? parent.Low,
+            PreMs = PreMs ?? parent.PreMs,
+            PostMs = PostMs ?? parent.PostMs,
+            RefractoryMs = RefractoryMs ?? parent.RefractoryMs,
+            PeakScore = PeakScore ?? parent.PeakScore,
+        };
+    }
+}
+
+/// <summary>One signal in the excitement curve.</summary>
+public sealed record CurveComponent
+{
+    /// <summary>An existing video or audio signal, such as <c>flash.brighten</c> or <c>audio.rms_db</c>.</summary>
+    public required string Signal { get; init; }
+
+    public float Weight { get; init; } = 1;
+
+    /// <summary>
+    /// The smallest spread (in the signal's own units) used to scale its
+    /// z-score, so a signal that is nearly constant (MAD close to 0) does not
+    /// turn noise into huge z-scores. Inherited when unset.
+    /// </summary>
+    public float? MinSpread { get; init; }
 }
 
 /// <summary>Where a profile sits in the tree.</summary>

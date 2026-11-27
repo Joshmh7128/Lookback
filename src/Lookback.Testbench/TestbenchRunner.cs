@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Lookback.Clipper;
 using Lookback.Contracts;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
@@ -54,8 +55,11 @@ internal sealed record AnalyzeResult(
     /// <summary>Every change of active profile (game, sub-game, mode), the first being the starting profile.</summary>
     public IReadOnlyList<ProfileDetected> Detections { get; init; } = [];
 
-    /// <summary>Clip candidates built from the profile's events.</summary>
+    /// <summary>Clip candidates from the clipper: the profile's events fused with the excitement curve.</summary>
     public IReadOnlyList<ClipCandidate> Candidates { get; init; } = [];
+
+    /// <summary>The QA report of each candidate, by candidate id.</summary>
+    public IReadOnlyDictionary<string, QaReport> Qa { get; init; } = new Dictionary<string, QaReport>();
 }
 
 /// <summary>
@@ -128,6 +132,7 @@ internal static class TestbenchRunner
         using IEventSubscription eventTap = bus.Subscribe(Topics.GameEvent, capacity: 1 << 20);
         using IEventSubscription profileTap = bus.Subscribe(Topics.GameProfile, capacity: 1 << 16);
         using IEventSubscription candidateTap = bus.Subscribe(Topics.ClipCandidate, capacity: 1 << 16);
+        using IEventSubscription qaTap = bus.Subscribe(Topics.QaReport, capacity: 1 << 16);
         SessionLogRecorder? recorder = null;
         string? basePath = null;
         if (RetentionRules.CanPersist(started))
@@ -138,25 +143,36 @@ internal static class TestbenchRunner
             recorder = new SessionLogRecorder(bus, writer, sessionId);
         }
 
-        ProfileRunner? runner = startId is null ? null : new ProfileRunner(bus, catalog!, startId, DetectionMethod.Manual, sessionId, Frequency);
+        // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
+        ProfileRunner? runner = startId is null ? null : new ProfileRunner(bus, catalog!, startId, DetectionMethod.Manual, sessionId, Frequency, publishCandidates: false);
+        ClipperRunner? clipper = startId is null ? new ClipperRunner(bus, sessionId, Frequency) : new ClipperRunner(bus, catalog!, startId, sessionId, Frequency);
         FootageAnalysisResult result;
         try
         {
             bus.Publish(header);
             var analyzer = new FootageAnalyzer(bus, format, Frequency);
-            var pacer = new ReplayPacer(() => Math.Max(recorder?.Queued ?? 0, runner?.Queued ?? 0));
+            var pacer = new ReplayPacer(() => Math.Max(recorder?.Queued ?? 0, Math.Max(runner?.Queued ?? 0, clipper?.Queued ?? 0)));
             result = await analyzer.AnalyzeAsync(
                 file,
                 sessionId,
                 new FootageAnalysisOptions { HasAudio = media.HasAudio, Pacer = pacer, Progress = progress, ExtraVideoSignals = extra },
                 ct).ConfigureAwait(false);
 
-            // The profile flushes its last events onto the bus before the log closes.
+            // The profile flushes its last events onto the bus before the log closes, then the
+            // clipper (which waits on those events) flushes its last candidates.
             if (runner is not null)
             {
                 await runner.DisposeAsync().ConfigureAwait(false);
                 runner = null;
             }
+
+            await clipper.DisposeAsync().ConfigureAwait(false);
+            if (clipper.Dropped > 0)
+            {
+                throw new InvalidOperationException($"The clipper dropped {clipper.Dropped} events; its candidates are incomplete.");
+            }
+
+            clipper = null;
 
             Envelope end = new EnvelopeFactory(new ManualClock(Frequency), sessionId, "testbench")
                 .Create(Topics.Session, QpcTime.FromTimeSpan(media.Duration, Frequency));
@@ -168,6 +184,11 @@ internal static class TestbenchRunner
             if (runner is not null)
             {
                 await runner.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (clipper is not null)
+            {
+                await clipper.DisposeAsync().ConfigureAwait(false);
             }
 
             if (recorder is not null)
@@ -199,6 +220,12 @@ internal static class TestbenchRunner
             candidates.Add(e!.ClipCandidate);
         }
 
+        var qa = new Dictionary<string, QaReport>(StringComparer.Ordinal);
+        while (qaTap.TryRead(out Envelope? e))
+        {
+            qa[e!.QaReport.CandidateId] = e.QaReport;
+        }
+
         string? reportPath = null;
         if (basePath is not null)
         {
@@ -208,7 +235,7 @@ internal static class TestbenchRunner
             await ReportWriter.WriteAsync(timeline, reportPath, ct).ConfigureAwait(false);
         }
 
-        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates };
+        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates, Qa = qa };
     }
 
     /// <summary>A profile file, or every <c>*.json</c> under a folder.</summary>

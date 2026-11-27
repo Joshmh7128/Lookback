@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The clipper: per-game normalisation, the excitement curve, peaks, candidate fusion with game-profile events, and QA gates.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The default excitement curve, as data; profiles override parts of it. -->
+    <EmbeddedResource Include="clipper.defaults.json" LogicalName="clipper.defaults.json" />
+    <InternalsVisibleTo Include="Lookback.Clipper.Tests" />
+  </ItemGroup>
+</Project>
