@@ -22,6 +22,22 @@ panel at `calibrate` + `#token=T`).
 - Text `{"type":"stop"}`.
 - First cut from the shell is video only.
 
+### Shell side, still to build (Electron thread paused; its WIP is on
+`claude/project-thread-6gk9aw`, see `docs/electron-shell-handoff.md` there)
+
+1. Read `ingest`, `calibrate` and `token` from the recorder's `LOOKBACK_READY` line.
+2. When the player starts playing, open `ingest + "?token=" + token` and send the
+   start message (omit `profile` when the picker is blank; `videoRef` is not kept).
+3. Main process: `webContents.beginFrameSubscription` on the viewer window, crop
+   to the player element's rect, downscale to 384x216 BGRA in memory, throttle to
+   30 fps, send each as a kind-1 message with microseconds from `performance.now()`
+   relative to start. Nothing to disk; in-memory browser partition.
+4. Send `{"type":"stop"}` when the video ends, the window closes or the source changes.
+5. Dock the panel as a separate view at `calibrate + "#token=" + token`.
+6. Don't send system loopback audio (it is the whole system mix).
+
+`tests/Lookback.Calibration.Tests/IngestTests.cs` is a working reference client.
+
 ## Done
 
 - `RetentionRules.ValidateDerived` + `DerivedWriteKind.ConfirmedProfileParameters`, with tests.
