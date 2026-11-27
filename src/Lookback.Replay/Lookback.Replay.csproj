@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Encoded-packet tiers: the RAM replay ring, the fragmented MP4 muxer, the disk segment store, clip cutting and cache cleanup. Platform-neutral.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Core\Lookback.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lookback.Replay.Tests" />
+  </ItemGroup>
+</Project>
