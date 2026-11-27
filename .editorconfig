@@ -32,3 +32,8 @@ dotnet_diagnostic.CA1861.severity = none
 # Console executables have no synchronization context to escape.
 [src/Lookback.Testbench/**.cs]
 dotnet_diagnostic.CA2007.severity = none
+
+# The capture bench tool is a console executable too.
+[src/Lookback.Capture.Cli/**.cs]
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA1869.severity = none
