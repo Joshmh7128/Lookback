@@ -54,6 +54,37 @@ public class LoaderTests
         Assert.NotEmpty(c.Get("roblox").IdHints);
     }
 
+    [Theory]
+    [InlineData("gta-v")]
+    [InlineData("minecraft")]
+    [InlineData("rocket-league")]
+    [InlineData("league-of-legends")]
+    [InlineData("repo")]
+    [InlineData("lethal-company")]
+    [InlineData("peak")]
+    [InlineData("dead-by-daylight")]
+    public void NonShooterTreesAreExternalOnlyTaggedAndUncalibrated(string game)
+    {
+        ProfileCatalog c = ProfileCatalog.BuiltIn;
+        Assert.NotEmpty(c.Get(game).Executables);
+        Assert.Contains(c.Get(game), c.Tagged(c.Get(game).Tags[0]));
+        Assert.All(c.Subtree(game), p =>
+        {
+            GameProfile r = c.Resolve(p.Id);
+            Assert.False(r.CapturePolicy.AllowPresentHook || r.CapturePolicy.AllowMemoryReading);
+            Assert.False(p.Reference.Calibrated, $"{p.Id} claims calibrated regions"); // estimates until checked against footage
+            Assert.NotEmpty(p.Tags);
+        });
+    }
+
+    [Theory]
+    [InlineData("11", "league-of-legends.summoners-rift")]
+    [InlineData("12", "league-of-legends.aram")]
+    [InlineData("30", "league-of-legends.arena")]
+    [InlineData("22", "league-of-legends.tft")]
+    public void LeagueMapIdsPickTheMode(string map, string expected) =>
+        Assert.Equal(expected, ProfileCatalog.BuiltIn.FindById("league.map", map)?.Id);
+
     [Fact]
     public void OverwatchIsVisionAndAudioOnly()
     {

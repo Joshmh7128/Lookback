@@ -1,0 +1,62 @@
+{
+  // Minecraft. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // minecraft tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/minecraft/manifest.json
+  //   lookback-testbench dataset datasets/minecraft/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "minecraft",
+  "entries": [
+    {
+      "file": "media/survival-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "minecraft.survival",
+      "labels": [ { "event": "advancement", "at": 130.2 }, { "event": "explosion", "at": 301.7 }, { "event": "death", "at": 305.0 } ],
+      "clips": [ { "start": 290, "end": 307 } ]
+    },
+    {
+      "file": "media/hardcore-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "minecraft.hardcore",
+      "labels": [ { "event": "death", "at": 611.4 } ],
+      "clips": [ { "start": 580, "end": 615 } ]
+    },
+    {
+      "file": "media/bedwars-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "minecraft.bedwars",
+      "labels": [ { "event": "bed_destroyed", "at": 88.0 }, { "event": "kill", "at": 95.3 } ],
+      "clips": [ { "start": 75, "end": 98 } ]
+    },
+    {
+      "file": "media/creative-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "minecraft.creative",
+      "labels": [],
+      "clips": []
+    },
+    {
+      "file": "media/other-server-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "minecraft",
+      "labels": [],
+      "clips": []
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "minecraft",
+      "labels": []
+    }
+  ]
+}

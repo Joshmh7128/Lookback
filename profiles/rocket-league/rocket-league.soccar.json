@@ -1,0 +1,12 @@
+{
+  // Soccar: the standard 1v1, 2v2 and 3v3 mode. The game's rules as they are; a mode of its own so footage can be labelled and a fingerprint learned against the other modes.
+  // Stub ready for a learned fingerprint; choose by hand with --profile rocket-league.soccar.
+  "id": "rocket-league.soccar",
+  "displayName": "Rocket League: Soccar",
+  "version": 1,
+  "parent": "rocket-league",
+  "level": "mode",
+  "tags": ["sports"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": []
+}

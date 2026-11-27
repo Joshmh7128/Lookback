@@ -1,0 +1,80 @@
+{
+  // Dead by Daylight: asymmetric horror, four survivors against one killer.
+  // The role changes the HUD completely, so survivor and killer are sub-games.
+  // The game level holds what both see: the survivor status portraits and
+  // generator count on the left, perks at the bottom right, the chase sound.
+  "id": "dead-by-daylight",
+  "displayName": "Dead by Daylight",
+  "version": 1,
+  "level": "game",
+  "tags": ["horror", "asymmetric", "pvp"],
+  // Steam, Epic and Microsoft Store builds. Verify the names on your install
+  // (Task Manager > Details).
+  "executables": ["DeadByDaylight-Win64-Shipping.exe", "DeadByDaylight-EGS-Shipping.exe", "DeadByDaylight-WinGDK-Shipping.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Easy Anti-Cheat: external capture only. No injection, no memory reads, no overlay hooks."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Estimates for the default HUD at 16:9 and 100% UI scale. Calibrate with: analyze <footage> --profile dead-by-daylight."
+  },
+  "regions": [
+    { "name": "status", "x": 0.01, "y": 0.45, "w": 0.15, "h": 0.45, "purpose": "Survivor portraits (healthy, injured, downed, hooked, dead) and the generators-left counter." },
+    { "name": "perks",  "x": 0.80, "y": 0.78, "w": 0.19, "h": 0.20, "purpose": "Perk icons, bottom right; they light up when a perk activates." },
+    { "name": "prompt", "x": 0.30, "y": 0.80, "w": 0.40, "h": 0.10, "purpose": "Action prompts and progress bars, bottom centre." },
+    { "name": "view",   "x": 0.20, "y": 0.20, "w": 0.60, "h": 0.60, "purpose": "Middle of the picture." }
+  ],
+  "events": [
+    {
+      // Someone is downed, hooked, unhooked or killed, or a generator is done: the status area changes.
+      "name": "status_change",
+      "weight": 0.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.status.activity", "rise": 0.04 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 800, "add": 0.15 } ],
+      "clip": { "preMs": 12000, "postMs": 3000 }
+    },
+    {
+      // A chase: the music swells above the level's ambience while the picture moves fast.
+      "name": "chase",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "audio.rms_db", "rise": 8, "baselineAlpha": 0.005 },
+        { "signal": "motion.energy", "above": 0.06 }
+      ],
+      "clip": { "preMs": 10000, "postMs": 15000 }
+    },
+    {
+      // A pallet stun, a hit or a generator blowing up on a missed skill check: a sharp, loud bang.
+      "name": "impact",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [
+        { "signal": "spectral.onset", "above": 0.7 },
+        { "signal": "audio.peak_db", "above": -6 }
+      ],
+      "boosts": [ { "signal": "motion.coverage", "above": 0.5, "withinMs": 500, "add": 0.15 } ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // A perk activates: its icon lights up.
+      "name": "perk_activation",
+      "weight": 0.2,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "region.perks.activity", "rise": 0.05 } ],
+      "clip": { "preMs": 5000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "long_chase", "of": "chase",  "atLeast": 3, "withinMs": 90000, "weight": 2.0, "clip": { "preMs": 30000, "postMs": 5000 } },
+    { "name": "scramble",   "of": "impact", "atLeast": 3, "withinMs": 15000, "weight": 1.5, "clip": { "preMs": 15000, "postMs": 3000 } }
+  ]
+}

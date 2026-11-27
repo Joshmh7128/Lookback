@@ -1,0 +1,30 @@
+{
+  // PEAK. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // peak tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/peak/manifest.json
+  //   lookback-testbench dataset datasets/peak/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "peak",
+  "entries": [
+    {
+      "file": "media/climb-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "peak",
+      "labels": [ { "event": "fall", "at": 144.0 }, { "event": "injury", "at": 145.1 }, { "event": "milestone", "at": 900.0 } ],
+      "clips": [ { "start": 136, "end": 150 } ]
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "peak",
+      "labels": []
+    }
+  ]
+}

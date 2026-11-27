@@ -1,0 +1,54 @@
+{
+  // Teamfight Tactics: an auto-battler in the same executable. Nothing of the
+  // MOBA HUD applies, so its events are switched off and TFT's own are added.
+  // Picked by the game's id hint from the map in the game client's log: Map22 (verify against
+  // your own log).
+  "id": "league-of-legends.tft",
+  "displayName": "Teamfight Tactics",
+  "version": 1,
+  "parent": "league-of-legends",
+  "level": "subgame",
+  "tags": ["auto-battler", "strategy"],
+  "ids": { "league.map": ["22"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "tft_players", "x": 0.86, "y": 0.15, "w": 0.14, "h": 0.60, "purpose": "Player list with health, right side; it reorders as players lose health or are knocked out." },
+    { "name": "tft_stage",   "x": 0.35, "y": 0.00, "w": 0.30, "h": 0.06, "purpose": "Stage and round, top centre." },
+    { "name": "tft_choice",  "x": 0.20, "y": 0.25, "w": 0.60, "h": 0.45, "purpose": "Augment choices and round results in the centre." },
+    { "name": "tft_shop",    "x": 0.25, "y": 0.86, "w": 0.55, "h": 0.14, "purpose": "Champion shop along the bottom." }
+  ],
+  "disable": ["champion_kill", "announcement", "ultimate_used", "death", "low_health"],
+  "events": [
+    {
+      // A combat round ends: the player list reorders and health changes.
+      "name": "combat_result",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 15000,
+      "when": [ { "signal": "region.tft_players.activity", "rise": 0.05 } ],
+      "clip": { "preMs": 25000, "postMs": 3000 }
+    },
+    {
+      // Augment choice or a round banner in the centre.
+      "name": "augment_or_banner",
+      "weight": 0.3,
+      "baseConfidence": 0.4,
+      "cooldownMs": 15000,
+      "when": [ { "signal": "region.tft_choice.activity", "rise": 0.1 } ],
+      "clip": { "preMs": 3000, "postMs": 8000 }
+    },
+    {
+      // A big fight on the board: lots of flashes and sound.
+      "name": "board_fight",
+      "weight": 0.4,
+      "baseConfidence": 0.4,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "flash.brighten", "above": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 200, "add": 0.2 } ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "big_combat", "of": "board_fight", "atLeast": 4, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

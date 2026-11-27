@@ -1,0 +1,94 @@
+{
+  // Rocket League: cars and a ball. Goals change the scoreboard and set off a
+  // goal explosion and a roar from the crowd; saves, shots and demolitions pop
+  // up as stat notices. Modes (Soccar, Hoops, Rumble, Dropshot, Snow Day)
+  // share this HUD and refine it.
+  "id": "rocket-league",
+  "displayName": "Rocket League",
+  "version": 1,
+  "level": "game",
+  "tags": ["sports", "vehicles", "pvp", "competitive"],
+  "executables": ["RocketLeague.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Online competitive title with anti-cheat: external capture only. No injection, no memory reads, no BakkesMod-style plugins."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Estimates for the default HUD at 16:9 and 100% UI scale. Calibrate with: analyze <footage> --profile rocket-league."
+  },
+  "regions": [
+    { "name": "scoreboard", "x": 0.38, "y": 0.00, "w": 0.24, "h": 0.10, "purpose": "Team scores and match clock, top centre." },
+    { "name": "feed",       "x": 0.72, "y": 0.08, "w": 0.27, "h": 0.20, "purpose": "Event feed: goals, saves and demolitions by anyone." },
+    { "name": "stat_popup", "x": 0.70, "y": 0.35, "w": 0.29, "h": 0.25, "purpose": "Your own stat notices: Shot on Goal, Save, Epic Save, Demolition, Assist." },
+    { "name": "boost",      "x": 0.82, "y": 0.70, "w": 0.17, "h": 0.28, "purpose": "Boost meter, bottom right." },
+    { "name": "banner",     "x": 0.20, "y": 0.25, "w": 0.60, "h": 0.30, "purpose": "Large centre text: goal scorer, OVERTIME, WINNER." }
+  ],
+  "events": [
+    {
+      // A goal: the scoreboard changes, the goal explodes, the crowd roars.
+      "name": "goal",
+      "weight": 2.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 8000,
+      "when": [ { "signal": "region.scoreboard.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.06, "withinMs": 1000, "add": 0.2 },
+        { "signal": "region.banner.activity", "above": 0.04, "withinMs": 1500, "add": 0.15 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.1 }
+      ],
+      "clip": { "preMs": 10000, "postMs": 3000 }
+    },
+    {
+      // Your own stat notice: a save, a shot, an assist.
+      "name": "stat_notice",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "region.stat_popup.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.15 } ],
+      "clip": { "preMs": 7000, "postMs": 2000 }
+    },
+    {
+      // A demolition: the car blows up in a flash, and the feed says who.
+      "name": "demolition",
+      "weight": 0.9,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "region.feed.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.06, "withinMs": 500, "add": 0.2 },
+        { "signal": "audio.peak_db", "above": -6, "withinMs": 300, "add": 0.15 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 2000 }
+    },
+    {
+      // A goal replay starts: one cut, then the replay. Low weight: the clip is the goal itself.
+      "name": "replay",
+      "weight": 0.1,
+      "baseConfidence": 0.4,
+      "cooldownMs": 10000,
+      "when": [ { "signal": "scene.cut", "above": 0.5 } ],
+      "clip": { "preMs": 1000, "postMs": 1000 }
+    },
+    {
+      // Overtime or the match result: big bright text in the centre.
+      "name": "match_moment",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 30000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.1 },
+        { "signal": "region.banner.luma", "above": 0.4 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "demo_chain",      "of": "demolition",  "atLeast": 2, "withinMs": 10000, "weight": 2.0, "clip": { "preMs": 10000, "postMs": 2000 } },
+    { "name": "big_defence",     "of": "stat_notice", "atLeast": 3, "withinMs": 15000, "weight": 1.5, "clip": { "preMs": 15000, "postMs": 2000 } },
+    { "name": "quick_goals",     "of": "goal",        "atLeast": 2, "withinMs": 60000, "weight": 2.5, "clip": { "preMs": 12000, "postMs": 3000 } }
+  ]
+}

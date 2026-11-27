@@ -1,0 +1,117 @@
+{
+  // League of Legends: one game client process per match, the same executable
+  // for Summoner's Rift, ARAM, Arena and Teamfight Tactics. The game level is
+  // the shared MOBA HUD; the map decides the mode (or TFT) beneath it.
+  //
+  // The game exposes a local Live Client Data API. It is deliberately NOT used:
+  // the clipping path stays game-agnostic, so everything here is read from the
+  // screen and the sound like any other game.
+  "id": "league-of-legends",
+  "displayName": "League of Legends",
+  "version": 1,
+  "level": "game",
+  "tags": ["moba", "pvp", "competitive", "strategy"],
+  "executables": ["League of Legends.exe"],
+  // Which map is loading, read from the game client's own log
+  // (Riot Games/League of Legends/Logs/GameLogs/<session>/*r3dlog.txt). The map
+  // id picks the mode (or TFT) that lists it under "ids": Map11 Summoner's Rift,
+  // Map12 Howling Abyss (ARAM), Map30 Arena, Map22 TFT. Verify the line format
+  // against a current log; Riot has changed map ids for rotating modes before.
+  "idHints": [
+    { "source": "log", "regex": "\\b[Mm]ap(\\d+)\\b", "kind": "league.map" }
+  ],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Riot Vanguard kernel anti-cheat: external capture only. No injection, no memory reads, no overlay hooks."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Estimates for the default HUD at 16:9, HUD scale 100, minimap on the right. Changing HUD or minimap scale moves them; calibrate with: analyze <footage> --profile league-of-legends."
+  },
+  "regions": [
+    { "name": "announcement",  "x": 0.30,  "y": 0.12, "w": 0.40,  "h": 0.14, "purpose": "Announcer banners: First Blood, Double Kill, dragon and baron slain, towers, Ace." },
+    { "name": "kill_feed",     "x": 0.80,  "y": 0.20, "w": 0.19,  "h": 0.25, "purpose": "Kill feed on the right, under the scoreboard." },
+    { "name": "kda",           "x": 0.80,  "y": 0.00, "w": 0.20,  "h": 0.04, "purpose": "Team kills, your K/D/A, creep score and clock, top right." },
+    { "name": "minimap",       "x": 0.82,  "y": 0.70, "w": 0.18,  "h": 0.30, "purpose": "Minimap, bottom right." },
+    { "name": "abilities",     "x": 0.33,  "y": 0.86, "w": 0.34,  "h": 0.09, "purpose": "Ability and summoner spell icons with cooldowns." },
+    { "name": "ultimate_slot", "x": 0.535, "y": 0.87, "w": 0.045, "h": 0.07, "purpose": "The R (ultimate) icon; it greys out with a cooldown the moment it is cast." },
+    { "name": "view",          "x": 0.15,  "y": 0.15, "w": 0.70,  "h": 0.60, "purpose": "Middle of the picture; it turns grey while you are dead." },
+    { "name": "end_banner",    "x": 0.25,  "y": 0.25, "w": 0.50,  "h": 0.35, "purpose": "VICTORY or DEFEAT at the end of the match." }
+  ],
+  "events": [
+    {
+      // Your kill: your K/D/A changes, usually with an announcer line.
+      "name": "champion_kill",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1000,
+      "when": [
+        { "signal": "region.kda.activity", "rise": 0.04 },
+        { "signal": "region.view.saturation", "above": 0.08 }
+      ],
+      "boosts": [
+        { "signal": "region.announcement.activity", "above": 0.03, "withinMs": 1500, "add": 0.2 },
+        { "signal": "region.kill_feed.activity", "above": 0.03, "withinMs": 1000, "add": 0.1 }
+      ],
+      "clip": { "preMs": 10000, "postMs": 3000 }
+    },
+    {
+      // Any announcer banner: kills by anyone, objectives, towers.
+      "name": "announcement",
+      "weight": 0.4,
+      "baseConfidence": 0.5,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.announcement.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.1 } ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // Ultimate cast: the R icon greys out, often with a flash.
+      "name": "ultimate_used",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 10000,
+      "when": [ { "signal": "region.ultimate_slot.activity", "rise": 0.08 } ],
+      "boosts": [ { "signal": "flash.brighten", "above": 0.05, "withinMs": 600, "add": 0.15 } ],
+      "clip": { "preMs": 3000, "postMs": 7000 }
+    },
+    {
+      // Death: the picture turns grey until you respawn.
+      "name": "death",
+      "weight": 0.4,
+      "baseConfidence": 0.5,
+      "cooldownMs": 10000,
+      "when": [ { "signal": "region.view.saturation", "below": 0.06 } ],
+      "clip": { "preMs": 15000, "postMs": 2000 }
+    },
+    {
+      // Low health: red at the edges of the screen.
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.5,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 4000, "postMs": 3000 }
+    },
+    {
+      // VICTORY or DEFEAT.
+      "name": "match_result",
+      "weight": 1.0,
+      "baseConfidence": 0.4,
+      "cooldownMs": 60000,
+      "when": [
+        { "signal": "region.end_banner.activity", "rise": 0.1 },
+        { "signal": "region.end_banner.luma", "above": 0.35 }
+      ],
+      "clip": { "preMs": 20000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    // League counts a double kill when kills come within 10 s of each other.
+    { "name": "multikill",  "of": "champion_kill", "atLeast": 2, "withinMs": 10000, "weight": 2.5, "clip": { "preMs": 12000, "postMs": 3000 } },
+    { "name": "rampage",    "of": "champion_kill", "atLeast": 4, "withinMs": 30000, "weight": 5.0, "clip": { "preMs": 30000, "postMs": 4000 } },
+    { "name": "team_fight", "of": "announcement",  "atLeast": 3, "withinMs": 15000, "weight": 1.5, "clip": { "preMs": 15000, "postMs": 4000 } }
+  ]
+}

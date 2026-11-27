@@ -1,0 +1,117 @@
+{
+  // Minecraft, Java and Bedrock. The game level covers the HUD every world
+  // shares: hotbar, hearts and hunger, experience bar, boss bar, chat, titles
+  // and advancement toasts. Modes (survival, hardcore, creative) and server
+  // minigames (Bed Wars, SkyWars) refine it.
+  "id": "minecraft",
+  "displayName": "Minecraft",
+  "version": 1,
+  "level": "game",
+  "tags": ["sandbox", "survival", "building"],
+  // javaw.exe is the Java runtime, shared by every Java desktop app. It is
+  // listed because Java Edition has no executable of its own; until game
+  // detection can also check the window title, another Java app in the
+  // foreground is treated as Minecraft (its events simply rarely fire).
+  "executables": ["Minecraft.Windows.exe", "javaw.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "No client anti-cheat, but servers run their own and Lookback stays vision and audio only: external capture, no mods, no injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Estimates for GUI scale Auto at 1920x1080. The HUD scales with GUI scale and window size, so calibrate with: analyze <footage> --profile minecraft."
+  },
+  "regions": [
+    { "name": "hotbar",   "x": 0.33, "y": 0.91,  "w": 0.34, "h": 0.08,  "purpose": "The nine hotbar slots." },
+    { "name": "xp_bar",   "x": 0.33, "y": 0.895, "w": 0.34, "h": 0.015, "purpose": "Experience bar and level number above the hotbar." },
+    { "name": "vitals",   "x": 0.33, "y": 0.82,  "w": 0.34, "h": 0.07,  "purpose": "Hearts (left) and hunger (right); hearts flash and shake on damage." },
+    { "name": "boss_bar", "x": 0.30, "y": 0.01,  "w": 0.40, "h": 0.06,  "purpose": "Boss health bar (Ender Dragon, Wither, raids); also used by servers for messages." },
+    { "name": "toast",    "x": 0.78, "y": 0.00,  "w": 0.22, "h": 0.10,  "purpose": "Advancement and recipe toasts sliding in at the top right." },
+    { "name": "chat",     "x": 0.00, "y": 0.50,  "w": 0.40, "h": 0.38,  "purpose": "Chat and server messages, bottom left." },
+    { "name": "title",    "x": 0.15, "y": 0.28,  "w": 0.70, "h": 0.22,  "purpose": "Large centre titles: 'You Died!' and server titles such as VICTORY." },
+    { "name": "sidebar",  "x": 0.82, "y": 0.30,  "w": 0.18, "h": 0.40,  "purpose": "Scoreboard sidebar used by servers and minigames." },
+    { "name": "view",     "x": 0.20, "y": 0.15,  "w": 0.60, "h": 0.60,  "purpose": "The middle of the picture, to see the red tint of the death screen." }
+  ],
+  "events": [
+    {
+      // Death: the screen tints red and 'You Died!' appears.
+      "name": "death",
+      "weight": 0.6,
+      "baseConfidence": 0.5,
+      "cooldownMs": 10000,
+      "when": [
+        { "signal": "region.view.red", "above": 0.15 },
+        { "signal": "region.title.activity", "rise": 0.05 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 2000 }
+    },
+    {
+      // Advancement made: a toast slides in with a chime.
+      "name": "advancement",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 4000,
+      "when": [ { "signal": "region.toast.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.2 } ],
+      "clip": { "preMs": 10000, "postMs": 4000 }
+    },
+    {
+      // Took damage: the hearts flash and shake, with the hurt sound.
+      "name": "damage_taken",
+      "weight": 0.2,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1000,
+      "when": [ { "signal": "region.vitals.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 200, "add": 0.15 } ],
+      "clip": { "preMs": 5000, "postMs": 2000 }
+    },
+    {
+      // Level up: the experience number changes with the level-up chime.
+      "name": "level_up",
+      "weight": 0.3,
+      "baseConfidence": 0.4,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.xp_bar.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.2 } ],
+      "clip": { "preMs": 6000, "postMs": 2000 }
+    },
+    {
+      // A boss bar appears: a boss fight or a raid is starting.
+      "name": "boss_fight",
+      "weight": 0.9,
+      "baseConfidence": 0.4,
+      "cooldownMs": 30000,
+      "when": [ { "signal": "region.boss_bar.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 1000, "add": 0.1 } ],
+      "clip": { "preMs": 5000, "postMs": 15000 }
+    },
+    {
+      // Explosion: creeper, TNT or bed in the Nether. A flash with a loud bang.
+      "name": "explosion",
+      "weight": 0.7,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1000,
+      "when": [ { "signal": "flash.brighten", "above": 0.08 } ],
+      "boosts": [ { "signal": "audio.peak_db", "above": -6, "withinMs": 300, "add": 0.25 } ],
+      "clip": { "preMs": 8000, "postMs": 4000 }
+    },
+    {
+      // A centre title other than the death screen: servers announce rounds and wins here.
+      "name": "title_shown",
+      "weight": 0.4,
+      "baseConfidence": 0.4,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "region.title.activity", "rise": 0.06 },
+        { "signal": "region.view.red", "below": 0.15 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "chain_explosion", "of": "explosion", "atLeast": 3, "withinMs": 5000, "weight": 2.0, "clip": { "preMs": 8000, "postMs": 4000 } },
+    { "name": "close_call",      "of": "damage_taken", "atLeast": 4, "withinMs": 5000, "weight": 1.0, "clip": { "preMs": 8000, "postMs": 3000 } }
+  ]
+}

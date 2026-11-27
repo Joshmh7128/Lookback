@@ -1,0 +1,12 @@
+{
+  // Dropshot: the floor tiles crack and break as the charged ball lands. Goals are holes in the floor and score the same way.
+  // Stub ready for a learned fingerprint; choose by hand with --profile rocket-league.dropshot.
+  "id": "rocket-league.dropshot",
+  "displayName": "Rocket League: Dropshot",
+  "version": 1,
+  "parent": "rocket-league",
+  "level": "mode",
+  "tags": ["sports"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": []
+}

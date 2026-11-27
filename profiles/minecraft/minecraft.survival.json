@@ -1,0 +1,13 @@
+{
+  // Survival: the game level's rules as they are. A mode of its own so that
+  // footage can be labelled with it and a fingerprint learned against hardcore
+  // and creative. Choose by hand with --profile minecraft.survival until then.
+  "id": "minecraft.survival",
+  "displayName": "Minecraft: Survival",
+  "version": 1,
+  "parent": "minecraft",
+  "level": "mode",
+  "tags": ["survival"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": []
+}

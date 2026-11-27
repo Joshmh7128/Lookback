@@ -1,0 +1,28 @@
+{
+  // Arena: teams of two fight round after round on small maps, choosing
+  // augments between rounds. Picked by the game's id hint from the map in the game client's log:
+  // Map30 (verify against your own log; Riot has changed the Arena map before).
+  "id": "league-of-legends.arena",
+  "displayName": "League of Legends: Arena",
+  "version": 1,
+  "parent": "league-of-legends",
+  "level": "mode",
+  "tags": ["moba", "duos"],
+  "ids": { "league.map": ["30"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Round banner position is an estimate; calibrate against your own footage." },
+  "regions": [
+    { "name": "arena_round", "x": 0.35, "y": 0.30, "w": 0.30, "h": 0.15, "purpose": "Round won or lost banner in the centre." }
+  ],
+  "events": [
+    {
+      // A round is won or lost.
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 15000,
+      "when": [ { "signal": "region.arena_round.activity", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.1 } ],
+      "clip": { "preMs": 20000, "postMs": 3000 }
+    }
+  ]
+}

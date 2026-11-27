@@ -1,0 +1,39 @@
+{
+  // Heists and heist preps: objective text, team status and the payout screen.
+  // Stub ready for a learned fingerprint; choose by hand with --profile gta-v.online.heist.
+  "id": "gta-v.online.heist",
+  "displayName": "GTA Online: Heist",
+  "version": 1,
+  "parent": "gta-v.online",
+  "level": "mode",
+  "tags": ["co-op", "heist"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits Online's regions; no fingerprint yet." },
+  "regions": [
+    { "name": "heist_team", "x": 0.80, "y": 0.60, "w": 0.19, "h": 0.30, "purpose": "Team member status and take in the bottom right." }
+  ],
+  "events": [
+    {
+      // The take changes or a teammate goes down: the team panel changes.
+      "name": "heist_team_change",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 4000,
+      "when": [ { "signal": "region.heist_team.activity", "rise": 0.05 } ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // The finale result: MISSION PASSED with the payout. Worth more in a heist.
+      "name": "mission_result",
+      "weight": 2.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.08 },
+        { "signal": "region.banner.luma", "above": 0.35 },
+        { "signal": "region.view.saturation", "above": 0.08 }
+      ],
+      "boosts": [ { "signal": "audio.rms_db", "above": -25, "withinMs": 1000, "add": 0.15 } ],
+      "clip": { "preMs": 30000, "postMs": 5000 }
+    }
+  ]
+}

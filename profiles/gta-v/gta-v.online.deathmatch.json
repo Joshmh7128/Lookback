@@ -1,0 +1,16 @@
+{
+  // Deathmatches: score and kill notices, no police.
+  // Stub ready for a learned fingerprint; choose by hand with --profile gta-v.online.deathmatch.
+  "id": "gta-v.online.deathmatch",
+  "displayName": "GTA Online: Deathmatch",
+  "version": 1,
+  "parent": "gta-v.online",
+  "level": "mode",
+  "tags": ["pvp", "shooter"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits Online's regions; no fingerprint yet." },
+  "disable": ["wanted_level_change", "police_chase", "cash_change"],
+  "events": [],
+  "composites": [
+    { "name": "killstreak", "of": "player_kill", "atLeast": 4, "withinMs": 20000, "weight": 3.5, "clip": { "preMs": 20000, "postMs": 4000 } }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  // Story mode: missions with Michael, Franklin and Trevor. Character switches
+  // swoop the camera up into the sky and back down, a long run of scene cuts.
+  // Detected from a learned visual fingerprint (lookback-testbench fingerprint
+  // <manifest>); until then choose it by hand with --profile gta-v.story.
+  "id": "gta-v.story",
+  "displayName": "GTA V: Story mode",
+  "version": 1,
+  "parent": "gta-v",
+  "level": "subgame",
+  "tags": ["story", "single-player"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "regions": [
+    { "name": "special_ability", "x": 0.01, "y": 0.965, "w": 0.17, "h": 0.03, "purpose": "Special ability bar under the radar (slow motion driving, bullet time, rage)." }
+  ],
+  "events": [
+    {
+      // Special ability used: the meter starts draining and the picture changes tint.
+      "name": "special_ability",
+      "weight": 0.7,
+      "baseConfidence": 0.4,
+      "cooldownMs": 8000,
+      "when": [ { "signal": "region.special_ability.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.15 } ],
+      "clip": { "preMs": 4000, "postMs": 8000 }
+    },
+    {
+      // Character switch: the camera cuts up to the sky and back down.
+      "name": "character_switch",
+      "weight": 0.2,
+      "baseConfidence": 0.4,
+      "cooldownMs": 15000,
+      "when": [ { "signal": "scene.cut", "above": 0.5 } ],
+      "boosts": [ { "signal": "motion.coverage", "above": 0.7, "withinMs": 1500, "add": 0.2 } ],
+      "clip": { "preMs": 3000, "postMs": 6000 }
+    }
+  ]
+}

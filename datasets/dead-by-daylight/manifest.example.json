@@ -1,0 +1,38 @@
+{
+  // Dead by Daylight. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // dead-by-daylight tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/dead-by-daylight/manifest.json
+  //   lookback-testbench dataset datasets/dead-by-daylight/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "dead-by-daylight",
+  "entries": [
+    {
+      "file": "media/survivor-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "dead-by-daylight.survivor",
+      "labels": [ { "event": "hit_by_killer", "at": 233.0 }, { "event": "status_change", "at": 240.5 } ],
+      "clips": [ { "start": 220, "end": 245 } ]
+    },
+    {
+      "file": "media/killer-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "dead-by-daylight.killer",
+      "labels": [ { "event": "status_change", "at": 180.0 }, { "event": "stunned", "at": 95.2 } ],
+      "clips": [ { "start": 170, "end": 184 } ]
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "dead-by-daylight",
+      "labels": []
+    }
+  ]
+}

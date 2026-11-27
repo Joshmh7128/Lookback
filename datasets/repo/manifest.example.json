@@ -1,0 +1,30 @@
+{
+  // R.E.P.O.. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // repo tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/repo/manifest.json
+  //   lookback-testbench dataset datasets/repo/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "repo",
+  "entries": [
+    {
+      "file": "media/run-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "repo",
+      "labels": [ { "event": "monster_scare", "at": 201.3 }, { "event": "valuable_damaged", "at": 95.0 }, { "event": "extraction", "at": 540.0 } ],
+      "clips": [ { "start": 190, "end": 206 } ]
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "repo",
+      "labels": []
+    }
+  ]
+}
