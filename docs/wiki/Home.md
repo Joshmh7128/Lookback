@@ -14,6 +14,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | Page | What it covers |
 |---|---|
 | [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live, run the desktop app |
+| [Showcase](Showcase) | Demo every component on generated footage, one command each (`scripts/showcase.ps1`), with what you should see |
 | [Desktop Shell](Desktop-Shell) | The Electron app: recorder management, clip library, timeline, ratings, and the official-player viewer that feeds calibration |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
 | [System Map](System-Map) | Where the code is today: what is built, in progress and planned, drawn as processes, the capture path and the rating loop |
