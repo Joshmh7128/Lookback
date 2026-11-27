@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lookback calibration</title>
+<style>
+  :root { --bg:#fafaf8; --fg:#1d1d1b; --muted:#6b6b66; --line:#d9d8d2; --accent:#2f6fdb; --ok:#1f8a4c; --warn:#b4541a; --panel:#ffffff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#ecebe6; --muted:#9a9993; --line:#33332f; --accent:#7aa7ff; --ok:#5cc98b; --warn:#f0a066; --panel:#1f1f1d; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; }
+  main { max-width:980px; margin:0 auto; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; } h2 { font-size:15px; margin:20px 0 8px; }
+  .muted { color:var(--muted); } .ok { color:var(--ok); } .warn { color:var(--warn); }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  button, select { font:inherit; padding:6px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  svg { width:100%; height:auto; background:var(--panel); border:1px solid var(--line); border-radius:6px; }
+  table { width:100%; border-collapse:collapse; } td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--muted); font-size:12px; } code { font-size:12px; }
+  .banner { padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); margin:8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Calibrate a profile from the player</h1>
+  <div class="banner" id="retention">Connecting…</div>
+  <div class="row">
+    <label>Profile <select id="profile"></select></label>
+    <span id="status" class="muted"></span>
+  </div>
+
+  <h2>1. Mark moments as you watch</h2>
+  <p class="muted">Press a button (or its number key) right after you see the moment on screen. Three or more marks per event are needed for a proposal.</p>
+  <div class="row" id="marks"></div>
+
+  <h2>2. Regions</h2>
+  <p class="muted">Dashed: the profile now. Solid: proposed. Grey cells: static HUD pixels seen so far.</p>
+  <svg id="map" viewBox="0 0 1600 900" role="img" aria-label="Region map"></svg>
+  <table><thead><tr><th></th><th>Region</th><th>Now</th><th>Proposed</th><th>Why</th></tr></thead><tbody id="regions"></tbody></table>
+
+  <h2>3. Thresholds</h2>
+  <table><thead><tr><th></th><th>Event condition</th><th>Now</th><th>Proposed</th><th>On this video</th></tr></thead><tbody id="thresholds"></tbody></table>
+
+  <div class="row" style="margin-top:16px">
+    <button id="apply">Try selected live</button>
+    <button id="save" class="primary">Save selected to profile…</button>
+    <span id="result" class="muted"></span>
+  </div>
+</main>
+<script>
+const token = new URLSearchParams(location.hash.slice(1)).get('token');
+const ws = new WebSocket(`ws://${location.host}/calibrate/ws?token=${encodeURIComponent(token || '')}`);
+const $ = id => document.getElementById(id);
+const checked = new Set();
+let state = null;
+const f = v => (Math.round(v * 1000) / 1000).toFixed(3);
+const rectText = r => r ? `${f(r.x)}, ${f(r.y)}, ${f(r.w)} × ${f(r.h)}` : '—';
+const key = t => `${t.owner}/${t.event}/${t.index}`;
+function send(o) { ws.send(JSON.stringify(o)); }
+function el(tag, attrs = {}, text) { const e = document.createElementNS(tag === 'svgrect' || tag === 'svgtext' ? 'http://www.w3.org/2000/svg' : 'http://www.w3.org/1999/xhtml', tag.replace('svg', '') || tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); if (text !== undefined) e.textContent = text; return e; }
+
+ws.onopen = () => $('retention').textContent = 'Connected.';
+ws.onclose = () => $('retention').textContent = 'Disconnected from the recorder.';
+ws.onmessage = ev => {
+  const m = JSON.parse(ev.data);
+  if (m.type === 'state') { state = m; render(); }
+  else if (m.type === 'saved') { $('result').textContent = m.files.length ? `Saved: ${m.files.join(', ')}` : 'Nothing to save.'; $('result').className = 'ok'; checked.clear(); }
+  else if (m.type === 'error') { $('result').textContent = m.message; $('result').className = 'warn'; }
+};
+
+$('profile').onchange = () => send({ type: 'profile', id: $('profile').value });
+document.addEventListener('keydown', e => {
+  if (!state || !state.events || e.target.tagName === 'SELECT') return;
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= state.events.length) send({ type: 'mark', event: state.events[n - 1] });
+});
+
+function selection() {
+  const regions = {}, thresholds = [];
+  for (const r of state.regions || []) if (r.proposed && checked.has('r:' + r.name)) regions[r.name] = r.proposed;
+  for (const t of state.thresholds || []) if (checked.has('t:' + key(t))) thresholds.push({ owner: t.owner, event: t.event, index: t.index, value: t.proposed });
+  return { regions, thresholds };
+}
+$('apply').onclick = () => send({ type: 'apply', ...selection() });
+$('save').onclick = () => {
+  const s = selection();
+  const lines = [...Object.entries(s.regions).map(([n, r]) => `region ${n}: ${rectText(r)}`), ...s.thresholds.map(t => `${t.event} condition ${t.index}: ${t.value}`)];
+  if (!lines.length) { $('result').textContent = 'Select at least one proposal.'; return; }
+  if (confirm('Write only these numbers into the profile files?\n\n' + lines.join('\n'))) send({ type: 'save', confirmed: true, ...s });
+};
+
+function box(svg, r, cls) {
+  svg.appendChild(el('svgrect', { x: r.x * 1600, y: r.y * 900, width: r.w * 1600, height: r.h * 900, fill: 'none', stroke: cls === 'now' ? '#888' : 'var(--accent)', 'stroke-width': 4, 'stroke-dasharray': cls === 'now' ? '12 8' : '' }));
+}
+
+function render() {
+  $('retention').textContent = state.playing ? `Playing in the ${state.platform} embedded player. Retention ${state.retention}.` : 'Waiting for the viewer to start a video.';
+  const sel = $('profile');
+  if (sel.options.length !== state.profiles.length + 1) {
+    sel.replaceChildren(el('option', { value: '' }, 'choose a profile'), ...state.profiles.map(p => el('option', { value: p }, p)));
+  }
+  if (document.activeElement !== sel) sel.value = state.profile || '';
+  $('status').textContent = state.playing ? `${state.frames || 0} frames analysed${state.canSave ? '' : ' · saving off (no profiles folder)'}${state.lastSaved ? ' · ' + state.lastSaved : ''}` : '';
+  $('save').disabled = !state.canSave;
+
+  const marks = $('marks'); marks.replaceChildren();
+  (state.events || []).forEach((e, i) => { const b = el('button', {}, `${i + 1}. ${e} (${(state.marks || {})[e] || 0})`); b.onclick = () => send({ type: 'mark', event: e }); marks.appendChild(b); });
+
+  const svg = $('map'); svg.replaceChildren();
+  if (state.grid) {
+    const cw = 1600 / state.grid.cols, ch = 900 / state.grid.rows;
+    state.grid.static.forEach((v, i) => { if (v > 0.3) svg.appendChild(el('svgrect', { x: (i % state.grid.cols) * cw, y: Math.floor(i / state.grid.cols) * ch, width: cw, height: ch, fill: '#888', opacity: v * 0.5 })); });
+  }
+  const rows = $('regions'); rows.replaceChildren();
+  for (const r of state.regions || []) {
+    box(svg, r.current, 'now');
+    if (r.proposed) box(svg, r.proposed, 'new');
+    svg.appendChild(el('svgtext', { x: r.current.x * 1600 + 6, y: r.current.y * 900 + 28, fill: 'currentColor', 'font-size': 26 }, r.name));
+    const tr = el('tr');
+    const cb = el('input', { type: 'checkbox' }); cb.disabled = !r.proposed; cb.checked = checked.has('r:' + r.name);
+    cb.onchange = () => cb.checked ? checked.add('r:' + r.name) : checked.delete('r:' + r.name);
+    const c0 = el('td'); c0.appendChild(cb);
+    tr.append(c0, el('td', {}, r.name), el('td', {}, rectText(r.current)), el('td', {}, rectText(r.proposed)), el('td', { class: 'muted' }, r.evidence || (r.purpose || '')));
+    rows.appendChild(tr);
+  }
+  const th = $('thresholds'); th.replaceChildren();
+  for (const t of state.thresholds || []) {
+    const tr = el('tr'); const k = 't:' + key(t);
+    const cb = el('input', { type: 'checkbox' }); cb.checked = checked.has(k);
+    cb.onchange = () => cb.checked ? checked.add(k) : checked.delete(k);
+    const c0 = el('td'); c0.appendChild(cb);
+    tr.append(c0, el('td', {}, `${t.event} · ${t.signal} ${t.kind}`), el('td', {}, `${t.current} (caught ${t.currentCaught}/${t.marks}, ${t.currentFalsePerMinute}/min elsewhere)`),
+      el('td', {}, String(t.proposed)), el('td', {}, `caught ${t.caught}/${t.marks}, ${t.falsePerMinute}/min elsewhere`));
+    th.appendChild(tr);
+  }
+  if (!(state.thresholds || []).length) th.appendChild(el('tr', {}, '')).appendChild(el('td', { colspan: 5, class: 'muted' }, 'Mark an event three times to get threshold proposals.'));
+}
+</script>
+</body>
+</html>
