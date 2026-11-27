@@ -1,0 +1,13 @@
+{
+  // Main process, preloads and tests: Node, CommonJS. Sandboxed preloads
+  // must be CommonJS and may not require local modules, so each preload is
+  // one self-contained file that imports only types.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "node16",
+    "moduleResolution": "node16",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts", "src/test/**/*.ts"]
+}

@@ -92,6 +92,7 @@ flowchart TB
 | `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*`, `Candidates/*` | Game profiles as data: the profile tree, HUD regions, event rules, sub-game and mode detection, the detector and its bus runner, clip candidates |
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
+| `app/` (Electron) | `src/main/*`, `src/preload/*`, `src/renderer/*`, `src/viewer/*`, `src/test/*` | The [desktop shell](Desktop-Shell): recorder process, `/events` library, timeline, ratings, official-player viewer and its `/ingest` sender |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
 | `Lookback.Scoring` | `Ratings/*`, `Features/ClipFeatureSchema.cs`, `Model/*`, `LearnedClipScorer.cs` | [Clip scoring](Clip-Scoring): ratings on disk behind `RetentionRules`, the bus sink, the feature schema, ONNX inference and per-game calibration |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |

@@ -13,8 +13,10 @@ automatically when `main` changes, so the wiki always matches the code.
 
 | Page | What it covers |
 |---|---|
-| [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live |
+| [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live, run the desktop app |
+| [Desktop Shell](Desktop-Shell) | The Electron app: recorder management, clip library, timeline, ratings, and the official-player viewer that feeds calibration |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
+| [System Map](System-Map) | Where the code is today: what is built, in progress and planned, drawn as processes, the capture path and the rating loop |
 | [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
 | [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |
 | [Project Structure](Project-Structure) | Every folder and project, and how they depend on each other |
@@ -43,7 +45,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M1 | FileSource, video and audio signals, testbench and timeline viewer | Done (GPU downscale moves to M3 with live capture) |
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
-| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
+| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Desktop shell, library, timeline, 1–5 star rating with previews (in memory until the recorder stores them) and the official-player viewer done; Clipper v1 under way |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |
