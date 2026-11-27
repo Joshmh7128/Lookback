@@ -190,12 +190,16 @@ token and Origin checks:
 |---|---|
 | `{"type":"rate","id","sessionId","candidateId","stars":0..5}` | Rate a candidate; 0 clears |
 | `{"type":"analyze","id","path","profile"?,"retention":"owned\|permissioned\|open-license","permissionRef"?}` | Analyse a footage file; `permissionRef` required unless owned |
-| `{"type":"save","id","sessionId","candidateId"}` | Cut the clip: refused as `unsupported` until the recorder hosts live capture |
+| `{"type":"save","id","sessionId","candidateId"}` | Cut a live recording's candidate into a clip under the recorder's clips budget |
 
 The recorder answers the sending client only with
 `{"type":"ack","id","ok":true}` or
-`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported","message"}`.
-A stored rating's ack carries `"stored":true`; an `analyze` ack carries the new `sessionId`.
+`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported|clips-full","message"}`.
+A stored rating's ack carries `"stored":true`; an `analyze` ack carries the new
+`sessionId`; a `save` ack carries the clip's `path`, and a `clip.saved`
+envelope follows. `save` is refused as `clips-full` at the clips budget,
+`ephemeral` for official-player sessions, and `unsupported` for footage files
+or a moment that is no longer recorded.
 On success it publishes `ClipRating` (Envelope field 20, topic `clip.rating`:
 `candidate_id` 1, `session_id` 2, `stars` 3; `source_id` "shell") to every
 client, stored through the M4 `RatingStore` and gated by
@@ -204,12 +208,16 @@ get `ok:false "ephemeral"` and nothing is written. For `analyze` it runs the
 analysis and publishes an ordinary FILE session (path in the title; events,
 candidates, QA and the end, but no signal frames).
 
-Shell behaviour today: every `rate` is sent; no ack in 2 s or `ok:false`
-keeps the rating in memory. `analyze` with no ack (or `bad-request`) falls
-back to the testbench; any other refusal is shown and not worked around.
-Incoming `clip.rating` envelopes set the stars as stored. A recorder that
-predates the commands ignores inbound messages, so all of this degrades to
-the in-memory path.
+What the shell does with them:
+
+| Command | Ack `ok` | Ack refused | No ack (a recorder before the commands) |
+|---|---|---|---|
+| `rate` (2 s) | "stored" when `stored:true` | stars kept in memory, "not stored" with the `message` | kept in memory |
+| `analyze` (2 s) | session linked by the ack's `sessionId` (and by title, the exact path) | the job fails with the `message`; never worked around | `lookback-testbench live --pipe` instead |
+| `save` (30 s) | the clip's `path` fills in the row and the preview | the `message` under Save | "the recorder did not answer" |
+
+Incoming `clip.rating` envelopes set the stars as stored, and `clip.saved`
+envelopes fill in saved clips, whichever client asked.
 
 ## The official-player viewer
 
