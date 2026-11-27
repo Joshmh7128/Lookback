@@ -111,6 +111,17 @@ public sealed class ClipperRunner : IAsyncDisposable
 
     public long Dropped => _video.Dropped + _audio.Dropped + (_rules?.Dropped ?? 0) + (_events?.Dropped ?? 0) + (_profiles?.Dropped ?? 0);
 
+    /// <summary>
+    /// Raised for every finished candidate, right after its <c>clip.candidate</c>
+    /// and <c>qa.report</c> are published, with the candidate's in-memory
+    /// <see cref="CandidateFeatures"/> (for the learned scorer, M4). Raised on
+    /// the runner's pump thread under its lock: hand the work off, do not block.
+    /// </summary>
+    public event EventHandler<CandidateFinishedEventArgs>? CandidateFinished;
+
+    /// <summary>Names of every candidate's features, in order.</summary>
+    public IReadOnlyList<string> FeatureNames => _engine.FeatureNames;
+
     /// <summary>Candidates published so far (each followed by its QA report).</summary>
     public long CandidatesPublished => Interlocked.Read(ref _published);
 
@@ -244,8 +255,9 @@ public sealed class ClipperRunner : IAsyncDisposable
 
     private void Publish()
     {
-        foreach ((ClipCandidate candidate, QaReport qa) in _outputs)
+        foreach (ClipperOutput output in _outputs)
         {
+            (ClipCandidate candidate, QaReport qa, _) = output;
             Envelope c = _out.Create(Topics.ClipCandidate, (long)candidate.PeakQpc);
             c.ClipCandidate = candidate;
             _bus.Publish(c);
@@ -253,6 +265,7 @@ public sealed class ClipperRunner : IAsyncDisposable
             q.QaReport = qa;
             _bus.Publish(q);
             Interlocked.Increment(ref _published);
+            CandidateFinished?.Invoke(this, new CandidateFinishedEventArgs(output));
         }
 
         _outputs.Clear();

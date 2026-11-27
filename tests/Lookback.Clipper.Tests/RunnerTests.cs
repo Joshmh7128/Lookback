@@ -75,6 +75,8 @@ public class RunnerTests
         using IEventSubscription candidates = bus.Subscribe(Topics.ClipCandidate, capacity: 1024);
         using IEventSubscription qa = bus.Subscribe(Topics.QaReport, capacity: 1024);
         var clipper = new ClipperRunner(bus, "s", F, new ClipperOptions { CurvePublishIntervalMs = 0 });
+        var finished = new List<ClipperOutput>();
+        clipper.CandidateFinished += (_, e) => finished.Add(e.Output);
         var signals = new EnvelopeFactory(new ManualClock(F), "s", "test");
         Publish(bus, signals, Topics.SignalsVideo, 0, e => e.SignalSchema = Video);
         Publish(bus, signals, Topics.SignalsAudio, 0, e => e.SignalSchema = Audio);
@@ -90,6 +92,12 @@ public class RunnerTests
         Assert.True(qa.TryRead(out Envelope? q));
         Assert.Equal(c.ClipCandidate.CandidateId, q!.QaReport.CandidateId);
         Assert.Equal(1, clipper.CandidatesPublished);
+
+        // The same candidate, with its features, in memory.
+        ClipperOutput o = Assert.Single(finished);
+        Assert.Equal(c.ClipCandidate, o.Candidate);
+        Assert.Equal(clipper.FeatureNames, o.Features.Names);
+        Assert.Equal(0f, o.Features["source.events"]);
     }
 
     private static void Publish(InProcessEventBus bus, EnvelopeFactory factory, string topic, long qpc, Action<Envelope> fill)

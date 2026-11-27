@@ -185,6 +185,30 @@ can attach the report to the candidate it already shows.
 
 Source: `Qa/QaGates.cs`, `Qa/FlagHistory.cs`.
 
+## Features for the learned scorer
+
+Every finished candidate also carries `CandidateFeatures`: game-agnostic
+numbers by name, **in memory only**. They are not on the wire; the M4
+scorer (`src/Lookback.Scoring`) owns the schema for features on
+`ClipCandidate` and maps these names onto it. Version `clipper-features/1`:
+
+| Names | What they are |
+|---|---|
+| `score.heuristic`, `score.raw` | The heuristic score (0..1) and the raw sum behind it |
+| `window.seconds`, `window.peak_position` | Length, and where the peak sits (0 at the start, 1 at the end) |
+| `source.events`, `source.curve` | 1 when profile events, or curve peaks, contributed |
+| `events.count`, `events.kinds`, `events.score_sum`, `events.score_max`, `events.confidence_mean`, `events.confidence_max`, `events.weight_max` | The profile events inside |
+| `curve.peaks`, `curve.peak_max`, `curve.score_sum` | The curve peaks inside (folded peaks counted) |
+| `curve.mean`, `curve.max`, `curve.above_high` | The excitement curve over the whole window, and the share of frames at or above the active threshold |
+| `qa.black`, `qa.frozen`, `qa.silent`, `qa.passed` | The QA fractions (1 when nothing was measured) and the verdict |
+| `z_mean.<signal>`, `z_max.<signal>` | Each curve component's clamped robust z-score over the window |
+
+The curve and its z-scores come from a preallocated history of the last
+5 minutes (`Curve/CurveHistory.cs`), so recording them adds nothing per frame.
+`ClipperEngine` returns them in each `ClipperOutput`; `ClipperRunner` raises
+`CandidateFinished` with them right after publishing the candidate and its
+QA report; the testbench keeps them in `AnalyzeResult.Features`.
+
 ## Determinism and latency
 
 The clipper must give the same candidates for the same footage at any replay
@@ -248,6 +272,9 @@ var clipper = new ClipperRunner(bus, catalog, "overwatch", sessionId, clock.Freq
 // An unknown game: the curve alone, default weights.
 var clipper = new ClipperRunner(bus, sessionId, clock.Frequency);
 
+// Features for the learned scorer, in memory (raised on the runner's thread: hand off, don't block).
+clipper.CandidateFinished += (_, e) => scorer.Enqueue(e.Output.Candidate, e.Output.Features);
+
 // End of the session: the profile runner first (it flushes its last events), then the clipper.
 await profile.DisposeAsync();
 await clipper.DisposeAsync();
@@ -276,6 +303,6 @@ the candidate windows with their QA and the curve under them.
 | QA checks only what signals already measure | Encode faults, desync or HUD-only stretches pass | M5 quality reports (VMAF, audio checks) |
 | Curve peaks of a menu or loading screen with loud music | A candidate that QA may not catch | Mode detection (profile tree) and the learned scorer |
 
-The M4 design adds a per-candidate feature vector (`ClipCandidate.features`
-and `feature_schema`, new field numbers) and the ONNX scorer; v1 leaves the
-schema of `ClipCandidate` unchanged.
+M4 (`src/Lookback.Scoring`) owns the wire schema for candidate features,
+`QaReport.highlight_probability` and ratings, and the ONNX scorer; v1 leaves
+the schema of `ClipCandidate` unchanged and hands M4 its features in memory.

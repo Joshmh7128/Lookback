@@ -60,6 +60,9 @@ internal sealed record AnalyzeResult(
 
     /// <summary>The QA report of each candidate, by candidate id.</summary>
     public IReadOnlyDictionary<string, QaReport> Qa { get; init; } = new Dictionary<string, QaReport>();
+
+    /// <summary>Each candidate's in-memory features (for the learned scorer), by candidate id.</summary>
+    public IReadOnlyDictionary<string, CandidateFeatures> Features { get; init; } = new Dictionary<string, CandidateFeatures>();
 }
 
 /// <summary>
@@ -146,6 +149,8 @@ internal static class TestbenchRunner
         // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
         ProfileRunner? runner = startId is null ? null : new ProfileRunner(bus, catalog!, startId, DetectionMethod.Manual, sessionId, Frequency, publishCandidates: false);
         ClipperRunner? clipper = startId is null ? new ClipperRunner(bus, sessionId, Frequency) : new ClipperRunner(bus, catalog!, startId, sessionId, Frequency);
+        var features = new System.Collections.Concurrent.ConcurrentDictionary<string, CandidateFeatures>(StringComparer.Ordinal);
+        clipper.CandidateFinished += (_, e) => features[e.Output.Candidate.CandidateId] = e.Output.Features;
         FootageAnalysisResult result;
         try
         {
@@ -235,7 +240,7 @@ internal static class TestbenchRunner
             await ReportWriter.WriteAsync(timeline, reportPath, ct).ConfigureAwait(false);
         }
 
-        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates, Qa = qa };
+        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates, Qa = qa, Features = features };
     }
 
     /// <summary>A profile file, or every <c>*.json</c> under a folder.</summary>

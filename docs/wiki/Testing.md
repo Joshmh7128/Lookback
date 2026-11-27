@@ -126,6 +126,7 @@ loud bursts where a test puts them. No ffmpeg needed.
 | | `FollowingAProfileWaitsForItsEventsSoArrivalTimeDoesNotMatter` | An event delivered up front and the same event delivered half a second of footage late give identical candidates |
 | | `WeightsAndThresholdsFollowTheActiveProfile` | A mode that raises `high` out of reach silences the curve from the moment it becomes active; a weight of 0 removes a component |
 | | `ProfilesCanAddComponentsFromExistingSignals` | A profile can weigh a region signal; it becomes a component and a curve lane |
+| | `EachCandidateCarriesItsFeaturesByName` | Every candidate's features follow the engine's name list and add up: sources, event counts and confidences, curve summary over the window, the clamped z of a flash, the QA black fraction |
 | | `SteadyFramesAllocateNothing` | Thousands of frames after warm-up allocate zero bytes |
 | `PartsTests.cs` | `SelectMatchesSortingOnRandomInput` | Quickselect and the median agree with sorting on 200 random arrays |
 | | `NormaliserUsesMedianAndMadAfterWarmUp` | Warm-up, sampling interval, median and MAD with an outlier, the spread floor, and the window rolling |
@@ -135,7 +136,7 @@ loud bursts where a test puts them. No ffmpeg needed.
 | | `ProfileClipperBlocksInheritAndAreValidated` | A child's components replace the parent's by signal and inherit unset values; bad blocks and typos are rejected; `low ≥ high` is caught after inheritance; unknown signals are reported |
 | | `DefaultsAreCompleteAndGameAgnostic` | The defaults set everything, use no region signals, and keep more pre-roll than post-roll |
 | `RunnerTests.cs` | `FollowsTheProfileRunnerAndPublishesOneCandidateSetWithQa` | On a real bus beside a `ProfileRunner` with `publishCandidates: false`: one candidate from the clipper with both the event and the curve as reasons, stamped with its peak, followed by its QA report; the curve at 10 Hz on `signals.clipper`; another session's events ignored |
-| | `WithoutAProfileTheCurveAloneMakesCandidates` | The curve-only runner publishes a candidate and its QA report |
+| | `WithoutAProfileTheCurveAloneMakesCandidates` | The curve-only runner publishes a candidate and its QA report, and raises `CandidateFinished` with the same candidate and its features |
 
 ## `Lookback.Testbench.Tests`
 

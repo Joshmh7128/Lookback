@@ -184,6 +184,35 @@ public class EngineTests
     }
 
     [Fact]
+    public void EachCandidateCarriesItsFeaturesByName()
+    {
+        var engine = new ClipperEngine("s", F);
+        engine.OnEvent(Event("elimination", 15.1, 0.9f, 1.0f, pre: 8, post: 3));
+        engine.OnEvent(Event("assist", 15.4, 0.5f, 0.5f, pre: 8, post: 3));
+        ClipperOutput o = Assert.Single(Run(engine, Session(30, t => Between(t, 15, 15.3), black: t => t >= 16.5)));
+        CandidateFeatures f = o.Features;
+
+        Assert.Equal(engine.FeatureNames, f.Names);
+        Assert.Equal(f.Names.Count, f.Count);
+        Assert.Equal(23 + (2 * engine.Components.Count), f.Count);
+        Assert.Equal(o.Candidate.HeuristicScore, f["score.heuristic"]);
+        Assert.Equal(Seconds(o.Candidate.EndQpc) - Seconds(o.Candidate.StartQpc), f["window.seconds"], 3);
+        Assert.Equal((1f, 1f), (f["source.events"], f["source.curve"]));
+        Assert.Equal((2f, 2f), (f["events.count"], f["events.kinds"]));
+        Assert.Equal(0.9f + 0.25f, f["events.score_sum"], 4);
+        Assert.Equal(0.7f, f["events.confidence_mean"], 4);
+        Assert.Equal(1f, f["curve.peaks"]);
+        Assert.True(f["curve.max"] > 1.6f && f["curve.mean"] < f["curve.max"] && f["curve.above_high"] is > 0 and < 0.5f);
+        Assert.Equal(6f, f["z_max.flash.brighten"]); // clamped at the cap during the flash
+        Assert.True(f["z_mean.flash.brighten"] is > 0 and < 1);
+        Assert.InRange(f["qa.black"], 0.1f, 0.4f);   // black from 16.5 s; the window runs from 7.1 s to about 18.3 s
+        Assert.Equal(1f, f["qa.passed"]);
+        Assert.InRange(f["window.peak_position"], 0, 1);
+        Assert.True(f.TryGetValue("audio.rms_db", out _) == false && f.ContainsKey("z_mean.audio.rms_db"));
+        Assert.Equal(f.Names, f.Select(kv => kv.Key));
+    }
+
+    [Fact]
     public void SteadyFramesAllocateNothing()
     {
         var engine = new ClipperEngine("s", F);

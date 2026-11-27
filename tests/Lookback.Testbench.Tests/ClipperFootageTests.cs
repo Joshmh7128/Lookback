@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Lookback.Clipper;
 using Lookback.Contracts.V1;
 using Lookback.Media.Ffmpeg;
 using Lookback.Testbench.Report;
@@ -101,6 +102,9 @@ public sealed class ClipperFootageTests : IDisposable
         Assert.Contains(c.Reasons, x => x.StartsWith("impact ×1", StringComparison.Ordinal));
         Assert.Contains(c.Reasons, x => x.StartsWith("excitement ×1", StringComparison.Ordinal));
         Assert.Equal("generic", c.GameProfile);
+        CandidateFeatures f = r.Features[c.CandidateId]; // in memory, for the learned scorer
+        Assert.Equal((1f, 1f), (f["source.events"], f["source.curve"]));
+        Assert.True(f["events.count"] >= 1);
         Assert.InRange(Sec(c.StartQpc), 3.9, 6.5); // the impact's 8 s pre-roll reaches further back than the curve's 6 s
         Assert.True(r.Qa[c.CandidateId].Passed, Describe(r.Qa[c.CandidateId]));
     }

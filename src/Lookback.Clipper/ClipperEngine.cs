@@ -8,8 +8,8 @@ using Lookback.Profiles.Model;
 
 namespace Lookback.Clipper;
 
-/// <summary>A finished candidate and its QA report.</summary>
-public readonly record struct ClipperOutput(ClipCandidate Candidate, QaReport Qa);
+/// <summary>A finished candidate, its QA report, and its features for the learned scorer (in memory only).</summary>
+public readonly record struct ClipperOutput(ClipCandidate Candidate, QaReport Qa, CandidateFeatures Features);
 
 /// <summary>
 /// The clipper's deterministic core, with no threads and no bus: feed it
@@ -65,6 +65,10 @@ public sealed class ClipperEngine
     private readonly CandidateFuser _fuser;
     private readonly FlagHistory _videoFlags;
     private readonly FlagHistory _audioFlags;
+    private readonly CurveHistory _history;
+    private readonly FeatureNames _featureNames;
+    private readonly float[] _zMean;
+    private readonly float[] _zMax;
     private readonly List<GameEvent> _events = [];
     private readonly List<ProfileDetected> _profileChanges = [];
     private readonly List<CandidateGroup> _closed = [];
@@ -142,12 +146,19 @@ public sealed class ClipperEngine
         _fuser = new CandidateFuser(Ms(_o.MergeGapMs), Ms(_o.MaxLengthMs));
         _videoFlags = new FlagHistory((int)Math.Min(int.MaxValue, _o.HistorySeconds * VideoSamplesPerSecond));
         _audioFlags = new FlagHistory((int)Math.Min(int.MaxValue, _o.HistorySeconds * AudioSamplesPerSecond));
+        _history = new CurveHistory((int)Math.Min(int.MaxValue / (n + 2), _o.HistorySeconds * VideoSamplesPerSecond), n);
+        _featureNames = new FeatureNames(_components);
+        _zMean = new float[n];
+        _zMax = new float[n];
         _eventLag = Ms(eventLag);
         _eventReach = Ms(eventReach);
         _curveReach = profiles.Max(p => p.Pre);
         _attack = Ms(_o.AttackMs);
         _release = Ms(_o.ReleaseMs);
     }
+
+    /// <summary>Names of every candidate's <see cref="CandidateFeatures"/>, in order.</summary>
+    public IReadOnlyList<string> FeatureNames => _featureNames.Names;
 
     /// <summary>The signals the curve combines, in component order.</summary>
     public IReadOnlyList<string> Components => _components;
@@ -358,6 +369,7 @@ public sealed class ClipperEngine
         _curve[1] = p.High;
         _curve[2] = p.Low;
         _z.CopyTo(_curve.AsSpan(3));
+        _history.Add(t, _smooth, p.High, _z);
 
         TakeEvents(EventSafe(t));
         if (_peaks.Step(t, _smooth, p, _z) is { } peak)
@@ -469,7 +481,51 @@ public sealed class ClipperEngine
         };
         candidate.Reasons.AddRange(Reasons(g));
         QaReport qa = QaGates.Evaluate(id, g.Start, g.End, _videoFlags, _audioFlags, _o.Qa, _frequency);
-        return new ClipperOutput(candidate, qa);
+        return new ClipperOutput(candidate, qa, Features(g, candidate, qa, raw, best));
+    }
+
+    /// <summary>The numbers behind a candidate, for the learned scorer (M4). See <see cref="CandidateFeatures"/>.</summary>
+    private CandidateFeatures Features(CandidateGroup g, ClipCandidate c, QaReport qa, double raw, Contribution best)
+    {
+        float[] v = new float[_featureNames.Names.Length];
+        int i = 0;
+        double seconds = QpcTime.ToTimeSpan(g.End - g.Start, _frequency).TotalSeconds;
+        GameEvent[] events = [.. g.Items.Where(x => x.Event is not null).Select(x => x.Event!)];
+        Contribution[] peaks = [.. g.Items.Where(x => x.Peak is not null)];
+
+        v[i++] = c.HeuristicScore;
+        v[i++] = (float)raw;
+        v[i++] = (float)seconds;
+        v[i++] = g.End > g.Start ? (float)((best.At - g.Start) / (double)(g.End - g.Start)) : 0;
+        v[i++] = events.Length > 0 ? 1 : 0;
+        v[i++] = peaks.Length > 0 ? 1 : 0;
+
+        v[i++] = events.Length;
+        v[i++] = events.Select(e => e.Name).Distinct(StringComparer.Ordinal).Count();
+        v[i++] = events.Sum(e => e.Weight * e.Confidence);
+        v[i++] = events.Select(e => e.Weight * e.Confidence).DefaultIfEmpty(0).Max();
+        v[i++] = events.Length > 0 ? events.Average(e => e.Confidence) : 0;
+        v[i++] = events.Select(e => e.Confidence).DefaultIfEmpty(0).Max();
+        v[i++] = events.Select(e => e.Weight).DefaultIfEmpty(0).Max();
+
+        v[i++] = peaks.Sum(p => p.Peak!.Count);
+        v[i++] = peaks.Select(p => p.Peak!.Value).DefaultIfEmpty(0).Max();
+        v[i++] = (float)peaks.Sum(p => p.Score);
+
+        _history.Summarise(g.Start, g.End, out float mean, out float max, out float above, _zMean, _zMax);
+        v[i++] = mean;
+        v[i++] = max;
+        v[i++] = above;
+
+        v[i++] = qa.Checks.FirstOrDefault(k => k.Name == QaGates.Black)?.Value ?? 1;
+        v[i++] = qa.Checks.FirstOrDefault(k => k.Name == QaGates.Frozen)?.Value ?? 1;
+        v[i++] = qa.Checks.FirstOrDefault(k => k.Name == QaGates.Silence)?.Value ?? 1;
+        v[i++] = qa.Passed ? 1 : 0;
+
+        _zMean.CopyTo(v.AsSpan(i));
+        i += _zMean.Length;
+        _zMax.CopyTo(v.AsSpan(i));
+        return new CandidateFeatures(_featureNames, v);
     }
 
     private IEnumerable<string> Reasons(CandidateGroup g)
