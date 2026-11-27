@@ -22,9 +22,17 @@ public sealed class GpuDevice : IDisposable
         Name = name;
         Luid = luid;
         IsWarp = isWarp;
+        Identity = isWarp ? "warp" : DescribeAdapter(adapter!);
         using ID3D11Multithread mt = Context.QueryInterface<ID3D11Multithread>();
         mt.SetMultithreadProtected(true); // the MF encoder uses the device from its own threads
     }
+
+    /// <summary>
+    /// "VEN_10DE&amp;DEV_2702 31.0.15.6094": vendor, device and user-mode driver
+    /// version. Encoders that stalled are remembered per identity, so a driver
+    /// update gets a fresh chance.
+    /// </summary>
+    public string Identity { get; }
 
     public ID3D11Device Device { get; }
 
@@ -85,6 +93,21 @@ public sealed class GpuDevice : IDisposable
     }
 
     public static long ToLong(Vortice.Luid luid) => ((long)luid.HighPart << 32) | luid.LowPart;
+
+    /// <summary>Another device on the same adapter (WARP for WARP), with its own immediate context and lock.</summary>
+    public GpuDevice CreateSibling() => IsWarp ? CreateWarp() : Create(Luid);
+
+    private static string DescribeAdapter(IDXGIAdapter1 adapter)
+    {
+        AdapterDescription1 d = adapter.Description1;
+        string driver = "unknown";
+        if (adapter.CheckInterfaceSupport(typeof(IDXGIDevice).GUID, out long umd).Success)
+        {
+            driver = $"{(umd >> 48) & 0xFFFF}.{(umd >> 32) & 0xFFFF}.{(umd >> 16) & 0xFFFF}.{umd & 0xFFFF}";
+        }
+
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"VEN_{d.VendorId:X4}&DEV_{d.DeviceId:X4} {driver}");
+    }
 
     public void Dispose()
     {

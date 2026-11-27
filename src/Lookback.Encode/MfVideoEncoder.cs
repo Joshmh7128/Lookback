@@ -5,6 +5,7 @@ using Lookback.Replay.Mp4;
 using Lookback.Replay.Packets;
 using SharpGen.Runtime;
 using Vortice.Direct3D11;
+using Vortice.DXGI;
 using Vortice.MediaFoundation;
 using DxgiFormat = Vortice.DXGI.Format;
 
@@ -18,26 +19,41 @@ public sealed record VideoEncoderSettings(CodecKind Codec, int Width, int Height
 
     /// <summary>Try hardware MFTs on the capture adapter first. False forces the software encoder.</summary>
     public bool PreferHardware { get; init; } = true;
+
+    /// <summary>
+    /// Run the encoder on its own D3D11 device on the same adapter and hand
+    /// frames over through a shared keyed-mutex texture, so an MFT that holds
+    /// its device lock can never block capture. Falls back to the capture
+    /// device when the adapter cannot share NV12.
+    /// </summary>
+    public bool IsolateDevice { get; init; } = true;
+
+    /// <summary>When the requested codec has no working encoder, try hardware H.264, then software H.264.</summary>
+    public bool AllowCodecFallback { get; init; } = true;
 }
 
 /// <summary>
-/// Media Foundation video encoder on the capture device. Picks the hardware
-/// MFT (NVENC, AMF, QSV) that belongs to the capture adapter's LUID and runs
-/// it asynchronously with the D3D11 device manager, so NV12 textures go in
-/// without leaving the GPU. Falls back to the synchronous software H.264 MFT,
-/// which reads the same DXGI surface buffers through a staging copy.
+/// Media Foundation video encoder for frames from the capture device. Picks
+/// the hardware MFT (NVENC, AMF, QSV) that belongs to the capture adapter's
+/// LUID and runs it asynchronously with a DXGI device manager, so NV12
+/// textures go in without leaving the GPU. Falls back to the synchronous
+/// software H.264 MFT. By default the encoder gets its own device
+/// (<see cref="VideoEncoderSettings.IsolateDevice"/>); frames cross through a
+/// shared texture whose keyed-mutex waits time out instead of blocking.
 /// No B-frames, so output order is input order and DTS = PTS.
 /// Output is length-prefixed and goes to an <see cref="IPacketSink"/>;
 /// the track (with <c>avcC</c>/<c>hvcC</c> built from the in-band
 /// parameter sets) is announced on the first keyframe.
 /// </summary>
-public sealed class MfVideoEncoder : IDisposable
+public sealed class MfVideoEncoder : IVideoEncoder
 {
     private const int PoolSize = 8;
     private const int MaxInFlight = PoolSize - 2;
     private static readonly long HnsPerSecond = 10_000_000;
 
     private readonly GpuDevice _gpu;
+    private readonly bool _ownsDevice;
+    private readonly Handoff? _handoff;
     private readonly IPacketSink _sink;
     private readonly int _trackId;
     private readonly long _qpcFrequency;
@@ -59,26 +75,31 @@ public sealed class MfVideoEncoder : IDisposable
     private int _next;
     private long _submitted;
     private long _emitted;
+    private long _dropped;
+    private long _handoffTimeouts;
+    private int _inCall;
+    private int _closed;
     private volatile bool _disposed;
     private volatile EncodePhase _phase;
     private volatile EncodePhase _outputPhase;
 
-    private MfVideoEncoder(GpuDevice gpu, VideoEncoderSettings settings, IPacketSink sink, int trackId, long qpcFrequency, IMFTransform mft, string name, bool hardware)
+    private MfVideoEncoder(GpuDevice gpu, bool ownsDevice, Handoff? handoff, VideoEncoderSettings settings, EncoderCandidate candidate, IPacketSink sink, int trackId, long qpcFrequency, IMFTransform mft)
     {
         _gpu = gpu;
+        _ownsDevice = ownsDevice;
+        _handoff = handoff;
         _sink = sink;
         _trackId = trackId;
         _qpcFrequency = qpcFrequency;
         _mft = mft;
         Settings = settings;
-        Name = name;
-        IsHardware = hardware;
+        Candidate = candidate;
         _frameHns = HnsPerSecond / settings.Fps;
 
         _manager = MediaFactory.MFCreateDXGIDeviceManager();
         _manager.ResetDevice(gpu.Device).CheckError();
 
-        if (hardware)
+        if (candidate.Hardware)
         {
             using IMFAttributes attrs = mft.Attributes;
             attrs.Set(MfGuids.TransformAsyncUnlock, 1u);
@@ -100,7 +121,7 @@ public sealed class MfVideoEncoder : IDisposable
         mft.ProcessMessage(TMessageType.MessageNotifyBeginStreaming, 0);
         mft.ProcessMessage(TMessageType.MessageNotifyStartOfStream, 0);
 
-        if (hardware)
+        if (candidate.Hardware)
         {
             _events = mft.QueryInterface<IMFMediaEventGenerator>();
             _eventThread = new Thread(EventLoop) { IsBackground = true, Name = "lookback-encode-events", Priority = ThreadPriority.AboveNormal };
@@ -110,16 +131,24 @@ public sealed class MfVideoEncoder : IDisposable
 
     public VideoEncoderSettings Settings { get; }
 
+    public EncoderCandidate Candidate { get; }
+
     /// <summary>The MFT's friendly name, e.g. "NVIDIA H.264 Encoder MFT".</summary>
-    public string Name { get; }
+    public string Name => Candidate.Name;
 
-    public bool IsHardware { get; }
+    public bool IsHardware => Candidate.Hardware;
 
-    /// <summary>Where the encoding thread and the encoder's event thread are, for stall diagnosis.</summary>
-    public (EncodePhase Input, EncodePhase Output) Phase => (_phase, _outputPhase);
+    /// <summary>True when the encoder runs on its own device (see <see cref="VideoEncoderSettings.IsolateDevice"/>).</summary>
+    public bool IsIsolated => _handoff is not null;
 
-    /// <summary>Frames the encoder had no room for (it was behind).</summary>
-    public long Dropped { get; private set; }
+    /// <summary>Where the encoding thread and the encoder's event thread are, for stall reports.</summary>
+    public string Phase => $"encode {_phase}, events {_outputPhase}";
+
+    /// <summary>Frames the encoder had no room for (it was behind, or the handoff timed out).</summary>
+    public long Dropped => Interlocked.Read(ref _dropped);
+
+    /// <summary>Handoff waits that timed out (the encoder side was not done with the shared texture).</summary>
+    public long HandoffTimeouts => Interlocked.Read(ref _handoffTimeouts);
 
     public long FramesIn => Interlocked.Read(ref _submitted);
 
@@ -129,55 +158,129 @@ public sealed class MfVideoEncoder : IDisposable
     public double Load => (double)(FramesIn - PacketsOut) / MaxInFlight;
 
     /// <summary>
-    /// Creates an encoder for <paramref name="settings"/> on <paramref name="gpu"/>.
+    /// The fallback chain for <paramref name="settings"/> on <paramref name="gpu"/>'s
+    /// adapter, best first: hardware MFTs for the codec, then (if allowed and
+    /// the codec is not H.264) hardware H.264, then software H.264. Entries in
+    /// <paramref name="blocklist"/> for this adapter are left out.
     /// MFStartup must have been called (see <see cref="MediaFoundation.Startup"/>).
     /// </summary>
+    public static IReadOnlyList<EncoderCandidate> Candidates(GpuDevice gpu, VideoEncoderSettings settings, EncoderBlocklist? blocklist = null)
+    {
+        ArgumentNullException.ThrowIfNull(gpu);
+        ArgumentNullException.ThrowIfNull(settings);
+        List<EncoderCandidate> list = [];
+        void AddAll(CodecKind codec, long? luid, bool hardware)
+        {
+            foreach (string name in List(codec, luid, hardware))
+            {
+                var c = new EncoderCandidate(codec, name, hardware);
+                if (!list.Contains(c) && blocklist?.IsBlocked(gpu.Identity, c) != true)
+                {
+                    list.Add(c);
+                }
+            }
+        }
+
+        if (settings.PreferHardware && !gpu.IsWarp)
+        {
+            AddAll(settings.Codec, gpu.Luid, hardware: true);
+            if (settings.AllowCodecFallback && settings.Codec != CodecKind.H264)
+            {
+                AddAll(CodecKind.H264, gpu.Luid, hardware: true);
+            }
+        }
+
+        if (settings.Codec == CodecKind.H264 || settings.AllowCodecFallback)
+        {
+            AddAll(CodecKind.H264, luid: null, hardware: false);
+        }
+
+        return list;
+    }
+
+    /// <summary>Creates the first candidate in <see cref="Candidates"/> that accepts the settings.</summary>
     public static MfVideoEncoder Create(GpuDevice gpu, VideoEncoderSettings settings, IPacketSink sink, int trackId, long qpcFrequency)
     {
         ArgumentNullException.ThrowIfNull(gpu);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(sink);
-
         List<Exception> failures = [];
-        if (settings.PreferHardware && !gpu.IsWarp)
+        foreach (EncoderCandidate c in Candidates(gpu, settings))
         {
-            foreach ((IMFActivate activate, string name) in Enumerate(settings.Codec, gpu.Luid, hardware: true))
+            try
             {
-                try
-                {
-                    return new MfVideoEncoder(gpu, settings, sink, trackId, qpcFrequency, Activate(activate), name, hardware: true);
-                }
-                catch (SharpGenException ex)
-                {
-                    failures.Add(new InvalidOperationException($"{name}: {ex.Message}", ex));
-                }
-                finally
-                {
-                    activate.Dispose();
-                }
+                return Create(gpu, settings, c, sink, trackId, qpcFrequency);
+            }
+            catch (Exception ex) when (ex is SharpGenException or InvalidOperationException)
+            {
+                failures.Add(new InvalidOperationException($"{c}: {ex.Message}", ex));
             }
         }
 
-        if (settings.Codec == CodecKind.H264)
+        throw new AggregateException($"No encoder accepted {settings.Codec} {settings.Width}x{settings.Height}@{settings.Fps}.", failures);
+    }
+
+    /// <summary>
+    /// Creates <paramref name="candidate"/> for frames from <paramref name="capture"/>.
+    /// The codec is the candidate's (a fallback candidate may differ from <paramref name="settings"/>).
+    /// </summary>
+    public static MfVideoEncoder Create(GpuDevice capture, VideoEncoderSettings settings, EncoderCandidate candidate, IPacketSink sink, int trackId, long qpcFrequency)
+    {
+        ArgumentNullException.ThrowIfNull(capture);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(sink);
+        VideoEncoderSettings s = settings with { Codec = candidate.Codec };
+
+        GpuDevice gpu = capture;
+        bool owns = false;
+        Handoff? handoff = null;
+        if (s.IsolateDevice)
         {
-            foreach ((IMFActivate activate, string name) in Enumerate(settings.Codec, luid: null, hardware: false))
+            try
             {
-                try
+                gpu = capture.CreateSibling();
+                owns = true;
+                handoff = new Handoff(capture, gpu, s.Width, s.Height);
+            }
+            catch (Exception ex) when (ex is SharpGenException or InvalidOperationException)
+            {
+                // The adapter cannot share NV12 between devices: encode on the capture device.
+                handoff?.Dispose();
+                handoff = null;
+                if (owns)
                 {
-                    return new MfVideoEncoder(gpu, settings, sink, trackId, qpcFrequency, Activate(activate), name, hardware: false);
+                    gpu.Dispose();
                 }
-                catch (SharpGenException ex)
-                {
-                    failures.Add(new InvalidOperationException($"{name}: {ex.Message}", ex));
-                }
-                finally
-                {
-                    activate.Dispose();
-                }
+
+                gpu = capture;
+                owns = false;
             }
         }
 
-        throw new AggregateException($"No {settings.Codec} encoder accepted {settings.Width}x{settings.Height}@{settings.Fps}.", failures);
+        try
+        {
+            IMFTransform mft = ActivateByName(candidate, candidate.Hardware ? capture.Luid : null);
+            try
+            {
+                return new MfVideoEncoder(gpu, owns, handoff, s, candidate, sink, trackId, qpcFrequency, mft);
+            }
+            catch
+            {
+                mft.Dispose();
+                throw;
+            }
+        }
+        catch
+        {
+            handoff?.Dispose();
+            if (owns)
+            {
+                gpu.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Lists the encoder MFTs for <paramref name="codec"/> (for the governor probe and the bench).</summary>
@@ -197,79 +300,160 @@ public sealed class MfVideoEncoder : IDisposable
     public void ForceKeyframe() => _codecApi?.SetUInt32(MfGuids.ForceKeyFrame, 1);
 
     /// <summary>
-    /// Encodes one NV12 frame at <paramref name="qpc"/>. Copies it into the
-    /// encoder's own pool on the GPU, so <paramref name="nv12"/> can be reused
-    /// right away. Returns false and counts a drop when the encoder is behind.
-    /// Call from one thread (the constant-rate ticker).
+    /// Encodes one NV12 frame from the capture device at <paramref name="qpc"/>.
+    /// Copies it into the encoder's own pool on the GPU (through the handoff
+    /// when isolated), so <paramref name="nv12"/> can be reused right away.
+    /// Returns false and counts a drop when the encoder is behind or the
+    /// handoff timed out. Call from one thread (the constant-rate ticker).
     /// </summary>
     public bool Encode(ID3D11Texture2D nv12, long qpc)
     {
         ArgumentNullException.ThrowIfNull(nv12);
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (FramesIn - PacketsOut >= MaxInFlight || (IsHardware && !_needInput.Wait(0)))
+        if (_disposed)
         {
-            Dropped++;
             return false;
         }
 
-        Slot slot = _pool[_next];
-        _next = (_next + 1) % PoolSize;
-        _phase = EncodePhase.WaitingForGpuLock;
-        lock (_gpu.Lock)
-        {
-            _phase = EncodePhase.Copying;
-            _gpu.Context.CopyResource(slot.Texture, nv12);
-        }
-
-        slot.Sample.SampleTime = QpcTime.Rescale(qpc, _qpcFrequency, HnsPerSecond);
-        slot.Sample.SampleDuration = _frameHns;
-        Interlocked.Increment(ref _submitted);
-
+        Interlocked.Increment(ref _inCall);
         try
         {
-            _phase = EncodePhase.ProcessInput;
-            _mft.ProcessInput(0, slot.Sample, 0);
-        }
-        catch (SharpGenException)
-        {
-            Interlocked.Decrement(ref _submitted);
-            Dropped++;
-            return false;
+            if (FramesIn - PacketsOut >= MaxInFlight || (IsHardware && !_needInput.Wait(0)))
+            {
+                Interlocked.Increment(ref _dropped);
+                return false;
+            }
+
+            Slot slot = _pool[_next];
+            _next = (_next + 1) % PoolSize;
+            if (_handoff is not null)
+            {
+                _phase = EncodePhase.Handoff;
+                if (!_handoff.Transfer(nv12, slot.Texture))
+                {
+                    Interlocked.Increment(ref _handoffTimeouts);
+                    Interlocked.Increment(ref _dropped);
+                    if (IsHardware)
+                    {
+                        _needInput.Release(); // the input request is still open
+                    }
+
+                    return false;
+                }
+            }
+            else
+            {
+                _phase = EncodePhase.WaitingForGpuLock;
+                lock (_gpu.Lock)
+                {
+                    _phase = EncodePhase.Copying;
+                    _gpu.Context.CopyResource(slot.Texture, nv12);
+                }
+            }
+
+            slot.Sample.SampleTime = QpcTime.Rescale(qpc, _qpcFrequency, HnsPerSecond);
+            slot.Sample.SampleDuration = _frameHns;
+            Interlocked.Increment(ref _submitted);
+
+            try
+            {
+                _phase = EncodePhase.ProcessInput;
+                _mft.ProcessInput(0, slot.Sample, 0);
+            }
+            catch (SharpGenException)
+            {
+                Interlocked.Decrement(ref _submitted);
+                Interlocked.Increment(ref _dropped);
+                return false;
+            }
+
+            if (!IsHardware)
+            {
+                DrainOutput();
+            }
+
+            return true;
         }
         finally
         {
             _phase = EncodePhase.Idle;
+            Interlocked.Decrement(ref _inCall);
         }
-
-        if (!IsHardware)
-        {
-            DrainOutput();
-        }
-
-        return true;
     }
 
+    /// <summary>Drains and releases the encoder. Waits at most a few seconds for the MFT; use <see cref="Abandon"/> when it may be stuck.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
         {
             return;
         }
 
         _disposed = true;
-        _mft.ProcessMessage(TMessageType.MessageNotifyEndOfStream, 0);
-        _mft.ProcessMessage(TMessageType.MessageCommandDrain, 0);
-        if (IsHardware)
+        Release(drain: true);
+    }
+
+    public void Abandon()
+    {
+        if (Interlocked.Exchange(ref _closed, 1) != 0)
         {
-            _drained.Wait(TimeSpan.FromSeconds(2));
-        }
-        else
-        {
-            DrainOutput();
+            return;
         }
 
-        _mft.ProcessMessage(TMessageType.MessageNotifyEndStreaming, 0);
+        _disposed = true;
+        var reaper = new Thread(() =>
+        {
+            // Release only once no call is inside the encoder; if one stays stuck, leak rather than free objects it is using.
+            var wait = System.Diagnostics.Stopwatch.StartNew();
+            while (Volatile.Read(ref _inCall) != 0)
+            {
+                if (wait.Elapsed > TimeSpan.FromSeconds(30))
+                {
+                    return;
+                }
+
+                Thread.Sleep(50);
+            }
+
+            try
+            {
+                Release(drain: false);
+            }
+            catch (SharpGenException)
+            {
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        })
+        { IsBackground = true, Name = "lookback-encoder-reaper" };
+        reaper.Start();
+    }
+
+    private void Release(bool drain)
+    {
+        try
+        {
+            if (drain)
+            {
+                _mft.ProcessMessage(TMessageType.MessageNotifyEndOfStream, 0);
+                _mft.ProcessMessage(TMessageType.MessageCommandDrain, 0);
+                if (IsHardware)
+                {
+                    _drained.Wait(TimeSpan.FromSeconds(2));
+                }
+                else
+                {
+                    DrainOutput();
+                }
+            }
+
+            _mft.ProcessMessage(TMessageType.MessageNotifyEndStreaming, 0);
+        }
+        catch (SharpGenException)
+        {
+            // Tearing down anyway.
+        }
+
         if (_events is not null)
         {
             // Unblocks GetEvent on the event thread.
@@ -281,12 +465,18 @@ public sealed class MfVideoEncoder : IDisposable
 
         foreach (Slot slot in _pool)
         {
-            slot.Dispose();
+            slot?.Dispose();
         }
 
         _codecApi?.Dispose();
         _mft.Dispose();
         _manager.Dispose();
+        _handoff?.Dispose();
+        if (_ownsDevice)
+        {
+            _gpu.Dispose();
+        }
+
         _needInput.Dispose();
         _drained.Dispose();
     }
@@ -483,9 +673,25 @@ public sealed class MfVideoEncoder : IDisposable
         return src.Length;
     }
 
-    private static IMFTransform Activate(IMFActivate activate)
+    private static IMFTransform ActivateByName(EncoderCandidate candidate, long? luid)
     {
-        return activate.ActivateObject<IMFTransform>(typeof(IMFTransform).GUID);
+        IMFTransform? found = null;
+        foreach ((IMFActivate activate, string name) in Enumerate(candidate.Codec, luid, candidate.Hardware))
+        {
+            try
+            {
+                if (found is null && name == candidate.Name)
+                {
+                    found = activate.ActivateObject<IMFTransform>(typeof(IMFTransform).GUID);
+                }
+            }
+            finally
+            {
+                activate.Dispose();
+            }
+        }
+
+        return found ?? throw new InvalidOperationException($"{candidate} is no longer registered.");
     }
 
     private static List<(IMFActivate Activate, string Name)> Enumerate(CodecKind codec, long? luid, bool hardware)
@@ -570,6 +776,100 @@ public sealed class MfVideoEncoder : IDisposable
             Texture.Dispose();
         }
     }
+
+    /// <summary>
+    /// The frame handoff between the capture device and the encoder's own
+    /// device: one NV12 texture created shared with a keyed mutex on the
+    /// capture device and opened on the encoder device. Key 0 = capture side
+    /// may write, key 1 = encoder side may read. Every wait times out, so a
+    /// stuck encoder device costs dropped frames, never a blocked capture thread.
+    /// </summary>
+    private sealed class Handoff : IDisposable
+    {
+        private const uint WaitMs = 50;
+        private readonly GpuDevice _capture;
+        private readonly GpuDevice _encoder;
+        private readonly ID3D11Texture2D _onCapture;
+        private readonly ID3D11Texture2D _onEncoder;
+        private readonly IDXGIKeyedMutex _captureKey;
+        private readonly IDXGIKeyedMutex _encoderKey;
+        private volatile bool _broken;
+
+        public Handoff(GpuDevice capture, GpuDevice encoder, int width, int height)
+        {
+            _capture = capture;
+            _encoder = encoder;
+            _onCapture = capture.Device.CreateTexture2D(new Texture2DDescription(DxgiFormat.NV12, (uint)width, (uint)height, 1, 1, BindFlags.RenderTarget | BindFlags.ShaderResource, ResourceUsage.Default, CpuAccessFlags.None, 1, 0, ResourceOptionFlags.SharedKeyedMutex));
+            try
+            {
+                using IDXGIResource resource = _onCapture.QueryInterface<IDXGIResource>();
+                _onEncoder = encoder.Device.OpenSharedResource<ID3D11Texture2D>(resource.SharedHandle);
+                _captureKey = _onCapture.QueryInterface<IDXGIKeyedMutex>();
+                _encoderKey = _onEncoder.QueryInterface<IDXGIKeyedMutex>();
+            }
+            catch
+            {
+                _onEncoder?.Dispose();
+                _onCapture.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Copies <paramref name="src"/> (capture device) into <paramref name="dst"/> (encoder device). False on a timeout.</summary>
+        public bool Transfer(ID3D11Texture2D src, ID3D11Texture2D dst)
+        {
+            if (_broken)
+            {
+                return false;
+            }
+
+            lock (_capture.Lock)
+            {
+                if (Acquire(_captureKey, 0, WaitMs) != 0)
+                {
+                    return false;
+                }
+
+                _capture.Context.CopyResource(_onCapture, src);
+                _captureKey.ReleaseSync(1);
+            }
+
+            lock (_encoder.Lock)
+            {
+                if (Acquire(_encoderKey, 1, WaitMs) != 0)
+                {
+                    // The key is stuck at 1: the capture side can never write again. Report every later frame as dropped.
+                    _broken = true;
+                    return false;
+                }
+
+                _encoder.Context.CopyResource(dst, _onEncoder);
+                _encoderKey.ReleaseSync(0);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// IDXGIKeyedMutex::AcquireSync with its raw HRESULT: WAIT_TIMEOUT (0x102)
+        /// and WAIT_ABANDONED (0x80) are success codes, which Vortice's wrapper
+        /// cannot tell apart from S_OK. Slot 8: IUnknown (3), IDXGIObject (4),
+        /// IDXGIDeviceSubObject (1), then AcquireSync.
+        /// </summary>
+        private static unsafe int Acquire(IDXGIKeyedMutex mutex, ulong key, uint milliseconds)
+        {
+            var acquire = (delegate* unmanaged[Stdcall]<nint, ulong, uint, int>)(*(nint**)mutex.NativePointer)[8];
+            return acquire(mutex.NativePointer, key, milliseconds);
+        }
+
+        public void Dispose()
+        {
+            _encoderKey.Dispose();
+            _captureKey.Dispose();
+            _onEncoder.Dispose();
+            _onCapture.Dispose();
+        }
+    }
 }
 
 /// <summary>What an encoder thread is doing right now; a phase that never changes while frames are due is a stall.</summary>
@@ -579,6 +879,7 @@ public enum EncodePhase
     WaitingForGpuLock,
     Converting,
     Copying,
+    Handoff,
     ProcessInput,
     WaitingForEvent,
     ProcessOutput,
