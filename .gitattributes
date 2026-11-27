@@ -4,3 +4,6 @@
 *.jsonl text eol=lf
 *.py text eol=lf
 *.onnx binary
+# Batch files need CRLF, or cmd misreads labels and blocks.
+*.bat text eol=crlf
+*.cmd text eol=crlf
