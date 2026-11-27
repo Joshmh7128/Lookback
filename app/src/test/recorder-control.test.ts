@@ -4,7 +4,8 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { after, test } from "node:test";
-import { analyzeMessage, newRequestId, rateMessage } from "../main/control";
+import type { StorageState } from "../shared/api";
+import { analyzeMessage, newRequestId, parseStorage, rateMessage, saveMessage } from "../main/control";
 import { eventsUrl } from "../main/handshake";
 import { IngestSession } from "../main/ingest";
 import { Library } from "../main/library";
@@ -80,7 +81,11 @@ test("ratings on an ephemeral session are refused with a message, and unknown co
     const nope = await r.stream.request(bad, JSON.stringify({ type: "dance", id: bad }));
     assert.equal(nope?.error, "bad-request");
     const save = newRequestId();
-    assert.equal((await r.stream.request(save, JSON.stringify({ type: "save", id: save, sessionId: session.id, candidateId: "x" })))?.error, "unsupported");
+    // Before live capture every save is "unsupported"; with it, this one names a candidate that does not exist.
+    const saved = await r.stream.request(save, JSON.stringify({ type: "save", id: save, sessionId: session.id, candidateId: "x" }), 30_000);
+    assert.equal(saved?.ok, false);
+    assert.ok(["unsupported", "unknown-candidate", "ephemeral"].includes(saved?.error ?? ""), saved?.error ?? "no ack");
+    assert.ok(saved?.message);
   } finally {
     await r.down();
   }
@@ -146,6 +151,38 @@ test("the recorder exits when the process named by ParentProcessId does", { time
     assert.notEqual(r.host.state.status, "ready");
   } finally {
     parent.kill();
+    await r.down();
+  }
+});
+
+test("the recorder reports storage with both budgets, and refuses to save a footage file's candidate", { timeout: 180_000 }, async (t) => {
+  const r = await up();
+  if (!r) return t.skip("Lookback.Recorder is not built");
+  try {
+    if (!r.control) return t.skip("this recorder predates control commands");
+    const states: StorageState[] = [];
+    r.stream.on("envelope", (e) => {
+      const s = parseStorage(e);
+      if (s) states.push(s);
+    });
+    await until(() => states.length > 0, 15_000, "a recorder.storage envelope").catch(() => undefined);
+    if (states.length === 0) return t.skip("this recorder does not report storage (before live capture)");
+    const s = states[0]!;
+    assert.ok(s.clipsBudgetBytes > 0 && s.footageBudgetBytes > 0, JSON.stringify(s));
+    assert.equal(r.library.snapshot().sessions.some((x) => x.id === "recorder"), false, "storage is not a session");
+
+    if (!footage || !isAbsolute(footage) || !existsSync(footage)) return;
+    const id = newRequestId();
+    const ack = await r.stream.request(id, analyzeMessage(id, footage, { profile: "overwatch", retention: "owned", permissionRef: "" }));
+    const sid = ack!.sessionId!;
+    await until(() => (r.library.snapshot().sessions.find((x) => x.id === sid)?.candidates.length ?? 0) > 0, 120_000, "a candidate");
+    const c = r.library.snapshot().sessions.find((x) => x.id === sid)!.candidates[0]!;
+    const save = newRequestId();
+    const saved = await r.stream.request(save, saveMessage(save, sid, c.id), 30_000);
+    assert.equal(saved?.ok, false);
+    assert.equal(saved?.error, "unsupported");
+    assert.ok(saved?.message);
+  } finally {
     await r.down();
   }
 });

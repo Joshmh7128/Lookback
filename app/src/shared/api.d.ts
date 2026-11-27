@@ -38,6 +38,21 @@ export interface SupervisionState {
   lastCrash: { at: number; detail: string; fatal: string | null; stderr: string[] } | null;
 }
 
+/** The recorder's storage use, from `recorder.storage` (StorageStatus, Envelope field 21). Sizes in bytes. */
+export interface StorageState {
+  clipsBytes: number;
+  clipsBudgetBytes: number;
+  footageBytes: number;
+  footageBudgetBytes: number;
+  /** Saved clips reached the warning threshold (90% of the budget by default). */
+  clipsNearLimit: boolean;
+  /** Saved clips are at the budget: the recorder refuses new saves. */
+  clipsFull: boolean;
+  volumeFreeBytes: number;
+  /** When the shell received it (ms since the epoch). */
+  at: number;
+}
+
 /** Where things live, for the Settings page. */
 export interface ShellPaths {
   /** Where the recorder stores ratings (`<dir>/<game>/ratings.jsonl`). */
@@ -126,6 +141,10 @@ export interface CandidateView {
   ratingStored: boolean;
   /** Why the recorder did not store the rating (its ack's message), when it refused. */
   ratingNote: string | null;
+  /** A save the shell asked for and is waiting on. */
+  saving: boolean;
+  /** Why the recorder did not save the clip (its ack's message), when it refused. */
+  saveNote: string | null;
 }
 
 /** A moment drawn on the timeline: a game event, a profile detection or a lifecycle change. */
@@ -220,6 +239,13 @@ export interface LookbackApi {
   getLibrary(): Promise<LibrarySnapshot>;
   onLibrary(listener: (snapshot: LibrarySnapshot) => void): () => void;
   rate(sessionId: string, candidateId: string, rating: Rating): Promise<boolean>;
+  /** Asks the recorder to cut and save a candidate's clip (live sessions). */
+  saveClip(sessionId: string, candidateId: string): Promise<boolean>;
+  /** The recorder's storage use, or null until it has reported. */
+  getStorage(): Promise<StorageState | null>;
+  onStorage(listener: (state: StorageState) => void): () => void;
+  /** Opens the folder holding a saved clip. */
+  openClipsFolder(): Promise<boolean>;
   /** Asks for a footage file in a dialog and analyses it; null when cancelled. */
   openFootage(request: FootageRequest): Promise<FootageJob | null>;
   getFootage(): Promise<FootageJob[]>;

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FootageRequest, Rating } from "../shared/api";
+import type { FootageRequest, Rating, StorageState } from "../shared/api";
 
 // Client commands on the recorder's /events socket, as agreed with the
 // live-capture thread (recorder side pending). Text JSON, same token and
@@ -11,12 +11,13 @@ import type { FootageRequest, Rating } from "../shared/api";
 //
 // The recorder answers the sending client only:
 //
-//   {"type":"ack","id","ok":true,"stored"?:true,"sessionId"?}
-//   {"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported","message"}
+//   {"type":"ack","id","ok":true,"stored"?:true,"sessionId"?,"path"?}
+//   {"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported|clips-full","message"}
 //
 // A stored rating's ack carries stored:true, and the recorder publishes
 // ClipRating (Envelope field 20, topic clip.rating) to every client; an
-// analyze ack carries the new session's id. `message` is meant for the user.
+// analyze ack carries the new session's id; a save ack the clip's path (and a
+// clip.saved envelope follows). `message` is meant for the user.
 // No ack within the timeout means a recorder that predates the commands (it
 // ignores inbound messages): ratings stay in memory and footage goes
 // through the testbench.
@@ -33,7 +34,12 @@ export interface Ack {
   stored: boolean;
   /** The session an analyze started. */
   sessionId: string | null;
+  /** Where a save wrote the clip. */
+  path: string | null;
 }
+
+/** Saving remuxes from the recording, so it may take longer than a rating. */
+export const SAVE_TIMEOUT_MS = 30_000;
 
 /** What to tell the user about a refused command. */
 export function refusal(ack: Ack): string {
@@ -56,11 +62,44 @@ export function parseAck(value: unknown): Ack | null {
   }
 
   const text = (k: string): string | null => (typeof o[k] === "string" ? (o[k] as string).slice(0, 1000) : null);
-  return { id: o["id"], ok: o["ok"], error: text("error"), message: text("message"), stored: o["stored"] === true, sessionId: text("sessionId") };
+  return { id: o["id"], ok: o["ok"], error: text("error"), message: text("message"), stored: o["stored"] === true, sessionId: text("sessionId"), path: text("path") };
 }
 
 export function rateMessage(id: string, sessionId: string, candidateId: string, stars: Rating): string {
   return JSON.stringify({ type: "rate", id, sessionId, candidateId, stars });
+}
+
+export function saveMessage(id: string, sessionId: string, candidateId: string): string {
+  return JSON.stringify({ type: "save", id, sessionId, candidateId });
+}
+
+/** A `recorder.storage` envelope's StorageStatus, or null when `envelope` is not one. */
+export function parseStorage(envelope: unknown, now = Date.now()): StorageState | null {
+  if (typeof envelope !== "object" || envelope === null) {
+    return null;
+  }
+
+  const s = (envelope as Record<string, unknown>)["storageStatus"];
+  if (typeof s !== "object" || s === null) {
+    return null;
+  }
+
+  const o = s as Record<string, unknown>;
+  // Protobuf JSON: uint64 as strings, defaults left out.
+  const n = (k: string): number => {
+    const v = typeof o[k] === "string" ? Number(o[k]) : typeof o[k] === "number" ? (o[k] as number) : 0;
+    return Number.isFinite(v) && v >= 0 ? v : 0;
+  };
+  return {
+    clipsBytes: n("clipsBytes"),
+    clipsBudgetBytes: n("clipsBudgetBytes"),
+    footageBytes: n("footageBytes"),
+    footageBudgetBytes: n("footageBudgetBytes"),
+    clipsNearLimit: o["clipsNearLimit"] === true,
+    clipsFull: o["clipsFull"] === true,
+    volumeFreeBytes: n("volumeFreeBytes"),
+    at: now,
+  };
 }
 
 export function analyzeMessage(id: string, path: string, request: FootageRequest): string {

@@ -28,6 +28,18 @@
     <pre id="banner-log" class="banner-log" hidden></pre>
   </div>
 
+  <div id="storage-banner" class="banner" role="status" hidden>
+    <span id="storage-text"></span>
+    <button id="storage-open" type="button">Open clips folder</button>
+  </div>
+
+  <dialog id="clips-full" class="notice">
+    <h2>Saved clips are full</h2>
+    <p id="clips-full-text"></p>
+    <p class="muted">The recorder keeps recording, but it cannot save new clips until there is room. Delete clips you no longer want, then save again.</p>
+    <form method="dialog" class="row"><button id="clips-full-open" type="button">Open clips folder</button><span class="spacer"></span><button value="ok" class="primary">OK</button></form>
+  </dialog>
+
   <section id="tab-overview" class="tab active">
     <div class="grid">
       <div class="card">
@@ -85,7 +97,7 @@
             <p class="rate-question"><strong>Is this moment a highlight worth keeping?</strong><br><span class="muted">Rate the content, not the video quality (that is checked automatically).</span></p>
             <div id="preview-stars" class="stars big"></div>
             <p id="preview-info" class="muted">Select a candidate to preview it.</p>
-            <p class="muted keys">Keys: <kbd>1</kbd>–<kbd>5</kbd> rate · <kbd>0</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> move · <kbd>Space</kbd> play or pause</p>
+            <p class="muted keys">Keys: <kbd>1</kbd>–<kbd>5</kbd> rate · <kbd>0</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> move · <kbd>S</kbd> save the clip (live recordings) · <kbd>Space</kbd> play or pause</p>
           </div>
         </div>
         <div class="row toolbar">
@@ -160,6 +172,7 @@
       <div class="row"><button type="submit" class="primary">Save</button><span id="settings-status" class="muted"></span></div>
       <p class="muted">Changes to the recorder's options apply on its next start.</p>
       <p id="ratings-path" class="muted"></p>
+      <p id="storage-settings" class="muted">Storage: the recorder has not reported yet.</p>
     </form>
   </section>
 </body>

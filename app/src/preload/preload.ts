@@ -2,7 +2,7 @@
 // CommonJS file that imports only types. It exposes `window.lookback` and
 // nothing else: no ipcRenderer, no Node.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, Rating, RecorderState, Settings, ShellPaths, StreamState, SupervisionState, ViewBounds } from "../shared/api";
+import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, Rating, RecorderState, Settings, ShellPaths, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const wrapped = (_e: IpcRendererEvent, value: T): void => listener(value);
@@ -29,6 +29,10 @@ const api: LookbackApi = {
   getLibrary: () => ipcRenderer.invoke("lookback:get-library") as Promise<LibrarySnapshot>,
   onLibrary: (listener) => subscribe<LibrarySnapshot>("lookback:library", listener),
   rate: (sessionId: string, candidateId: string, rating: Rating) => ipcRenderer.invoke("lookback:rate", sessionId, candidateId, rating) as Promise<boolean>,
+  saveClip: (sessionId: string, candidateId: string) => ipcRenderer.invoke("lookback:save", sessionId, candidateId) as Promise<boolean>,
+  getStorage: () => ipcRenderer.invoke("lookback:get-storage") as Promise<StorageState | null>,
+  onStorage: (listener) => subscribe<StorageState>("lookback:storage", listener),
+  openClipsFolder: () => ipcRenderer.invoke("lookback:open-clips") as Promise<boolean>,
   openFootage: (request: FootageRequest) => ipcRenderer.invoke("lookback:open-footage", request) as Promise<FootageJob | null>,
   getFootage: () => ipcRenderer.invoke("lookback:get-footage") as Promise<FootageJob[]>,
   onFootage: (listener) => subscribe<FootageJob[]>("lookback:footage", listener),

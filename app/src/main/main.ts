@@ -1,10 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import { dirname, join } from "node:path";
+import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { newRequestId, rateMessage, refusal, validFootageRequest } from "./control";
+import { newRequestId, parseStorage, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
@@ -42,6 +42,8 @@ const SMOKE_FOOTAGE = argValue("smoke-footage");
 const SMOKE_PROFILE = argValue("smoke-profile") ?? "generic";
 /** With --smoke, kill the recorder once it is up and pass when the supervisor has it ready again on a new handshake. */
 const SMOKE_SUPERVISE = process.argv.includes("--smoke-supervise");
+/** With --smoke, feed synthetic storage reports (near the clips budget, then full) and check the window's warnings. */
+const SMOKE_STORAGE = process.argv.includes("--smoke-storage");
 /** With --smoke, also wait for this many clip candidates before rating one through the window. */
 const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
@@ -129,6 +131,7 @@ supervisor.on("state", (state) => send("lookback:supervision", state));
 
 recorder.on("state", (state) => {
   send("lookback:state", state);
+  if (state.status !== "ready") storage = null;
   const info = recorder.connection;
   if (info) {
     stream.connect(eventsUrl(info));
@@ -147,7 +150,16 @@ recorder.on("log", (line) => send("lookback:log", line));
 
 let libraryTimer: NodeJS.Timeout | null = null;
 let sentRevision = -1;
+// The recorder's storage use (recorder.storage), every 10 s and after each save.
+let storage: StorageState | null = null;
 stream.on("envelope", (envelope) => {
+  const s = parseStorage(envelope);
+  if (s) {
+    storage = s;
+    send("lookback:storage", s);
+    return;
+  }
+
   if (library.apply(envelope)) {
     scheduleLibrary();
     const topic = (envelope as { topic?: unknown }).topic;
@@ -364,6 +376,37 @@ function registerIpc(): void {
     });
     return true;
   });
+  handle("lookback:save", fromMain, (sessionId, candidateId) => {
+    if (typeof sessionId !== "string" || typeof candidateId !== "string" || !library.candidateOf(sessionId, candidateId)) return false;
+    if (storage?.clipsFull) {
+      library.setSaving(sessionId, candidateId, false, { note: "Saved clips are at their storage limit; delete some clips first." });
+      scheduleLibrary();
+      return false;
+    }
+
+    library.setSaving(sessionId, candidateId, true);
+    scheduleLibrary();
+    const id = newRequestId();
+    void stream.request(id, saveMessage(id, sessionId, candidateId), SAVE_TIMEOUT_MS).then((ack) => {
+      if (!ack) {
+        library.setSaving(sessionId, candidateId, false, { note: "The recorder did not answer; it may not be able to save clips yet." });
+      } else if (ack.ok) {
+        library.setSaving(sessionId, candidateId, false, { path: ack.path, note: null });
+      } else {
+        library.setSaving(sessionId, candidateId, false, { note: refusal(ack) });
+      }
+
+      scheduleLibrary();
+    });
+    return true;
+  });
+  handle("lookback:get-storage", fromMain, () => storage);
+  handle("lookback:open-clips", fromMain, async () => {
+    // The folder of a clip the recorder reported saving; the shell knows no other.
+    const clip = library.snapshot().sessions.flatMap((s) => s.candidates).find((c) => c.savedPath && existsSync(c.savedPath));
+    if (!clip?.savedPath) return false;
+    return (await shell.openPath(dirname(clip.savedPath))) === "";
+  });
   handle("lookback:open-footage", fromMain, async (raw) => {
     const request = validFootageRequest(raw);
     if (!request || !mainWindow) return null;
@@ -520,6 +563,7 @@ function runSmoke(): void {
   let rating = false;
   let footageOpened = false;
   let killed: { pid: number | null; endpoint: string | null } | null = null;
+  let storageStep = 0;
   const timer = setInterval(() => {
     const state = recorder.state;
     // In the supervise run the exit is the point; the supervisor brings it back.
@@ -532,6 +576,37 @@ function runSmoke(): void {
     const base = { recorder: state.status, stream: stream.state.status, received: stream.state.received, renderer: rendererReady };
     const up = state.status === "ready" && stream.state.status === "open" && rendererReady;
     const candidates = library.snapshot().sessions.reduce((n, x) => n + x.candidates.length, 0);
+    if (SMOKE_STORAGE) {
+      if (!up || storageStep > 0) return;
+      storageStep = 1;
+      clearInterval(timer);
+      const gib = 1024 ** 3;
+      const report = (clips: number, near: boolean, full: boolean): void => {
+        stream.emit("envelope", {
+          sessionId: "recorder",
+          topic: "recorder.storage",
+          storageStatus: { clipsBytes: String(clips), clipsBudgetBytes: String(10 * gib), footageBytes: String(3 * gib), footageBudgetBytes: String(20 * gib), clipsNearLimit: near, clipsFull: full, volumeFreeBytes: String(400 * gib) },
+        });
+      };
+      const read = async (): Promise<unknown> =>
+        mainWindow?.webContents.executeJavaScript(
+          `(() => ({ banner: document.getElementById("storage-banner").hidden ? null : document.getElementById("storage-text").textContent, dialog: document.getElementById("clips-full").open, settings: document.getElementById("storage-settings").textContent }))()`,
+          false,
+        );
+      const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+      void (async () => {
+        report(9.2 * gib, true, false);
+        await pause(300);
+        const near = (await read()) as Record<string, unknown>;
+        report(10 * gib, true, true);
+        await pause(300);
+        const full = (await read()) as Record<string, unknown>;
+        const ok = typeof near["banner"] === "string" && /9\.2 of 10 GB/.test(near["banner"] as string) && near["dialog"] === false && full["dialog"] === true && /full/.test(String(full["banner"])) && /20 GB/.test(String(full["settings"]));
+        finish(ok, { ...base, near, full });
+      })();
+      return;
+    }
+
     if (SMOKE_SUPERVISE) {
       if (up && !killed) {
         killed = { pid: state.pid, endpoint: state.endpoint };

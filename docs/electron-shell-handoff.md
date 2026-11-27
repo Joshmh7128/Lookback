@@ -57,6 +57,20 @@ real YouTube video and a live Twitch channel. Full description:
   the file through the fallback, listed its candidate, rated it 5 with the key,
   and the preview loaded the file (1280 wide, playing inside the window).
 
+## Recorder follow-up (#26)
+
+- Parent exit and the datasets folder passed to the recorder; supervision with
+  restart backoff and a crash banner.
+- Acks: stored ratings, refusal messages, analyze linking by `sessionId`;
+  the testbench fallback only for recorders that never ack.
+- Live recordings (#28): Save per candidate (button and <kbd>S</kbd>), the
+  saved clip previewed, `recorder.storage` warnings (banner near the clips
+  budget, blocking notice when full) and both budgets in Settings.
+- Tested against recorders built from main, #25 and #28 (90/90 with #28).
+- Not done: live save end to end needs a running game; the recorder's newer
+  options (`StoreDirectory`, budgets, `Microphone`, `DetectionSettings`) are
+  not in Settings yet.
+
 ## Verified on AETHER
 
 - `npm run smoke`: recorder ready, stream open, window rendered.

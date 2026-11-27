@@ -152,6 +152,29 @@ shell itself opened, or that the recorder reported as saved clips, are
 registered, under random ids; nothing is copied or transcoded, and the
 renderer's CSP allows media from that scheme only.
 
+### Live recordings, saving clips and storage
+
+When the recorder records a game it detects, its LIVE_GAME session (titled
+with the game) lists candidates from the clipper like footage does. A live
+recording has no file the shell may read, so its candidates are previewed
+from their **saved clip**: press **Save** on a candidate (or <kbd>S</kbd>).
+The shell sends `save` and waits up to 30 s (the recorder cuts the clip from
+its recording); the ack's `path` and the `clip.saved` envelope fill in the
+clip, the row shows its file name and **Show file**, and the preview plays it.
+A refusal (`clips-full`, `ephemeral`, or `unsupported` when the moment is no
+longer recorded) shows the recorder's message under the button. Footage and
+official-player sessions have no Save button.
+
+The recorder reports its storage in `recorder.storage` (StorageStatus,
+Envelope field 21) every 10 s and after each save: saved clips and recordings
+against their budgets (10 GB and 20 GB by default) and the drive's free
+space. These envelopes are not sessions. When clips reach the warning
+threshold (90%), a banner says "Saved clips are at X of 10 GB"; when they are
+full, a red banner and a blocking notice say so, and Save is disabled until
+there is room. **Open clips folder** opens the folder of a clip the recorder
+saved. Settings shows both budgets; they are the recorder's `ClipsBudgetGB` and
+`FootageBudgetGB` options.
+
 **Retention.** The shell writes no session data. The library and ratings are
 in memory; each rating is offered to the recorder (`rate`, below) and marked
 **stored** only when the recorder acknowledges it. Without an ack within 2 s
@@ -266,6 +289,7 @@ npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=over
 | `footage` | `analyze` first, testbench fallback with the right arguments, permission references, refusals not worked around, linking sessions by title |
 | `media` | Byte ranges, only registered files served under opaque ids, 206/416/404/405 |
 | `stream` | Envelope parsing, reconnect with backoff, stale sockets ignored |
+| `control` (save, storage) | `save` messages and acks with `path`, `clips-full` refusals, StorageStatus parsing (uint64 strings, defaults left out) |
 | `supervisor` | Restart after 1/2/5 s, give up after 5 in a minute, older restarts expire, user stops and unfixable failures left alone, a user action cancels a pending restart |
 | `recorder-control` | Against a recorder with control commands (skipped otherwise): an ephemeral rating refused with a message, `bad-request` and `unsupported`, `analyze` refusing a missing file, parent-exit; with `LOOKBACK_TEST_FOOTAGE`, analyze → candidate → a stored, broadcast rating in the datasets folder the shell passed |
 | `files` | Settings sanitizing and atomic save, static path escapes, recorder lookup and args, profile ids, the viewer server's Host check and CSP |
@@ -280,7 +304,9 @@ whole rating flow: opens the file as "Open footage" would, waits for a
 candidate, rates it and checks that the preview player loaded the file (and
 reports whether the recorder stored the rating). `--smoke-supervise` kills
 the recorder once it is up and passes when the supervisor has it ready again
-on a new handshake. Set
+on a new handshake. `--smoke-storage` feeds synthetic storage reports (near
+the clips budget, then full) and checks the banner, the blocking notice and
+the Settings line. Set
 `LOOKBACK_USER_DATA` to keep a run's userData in a scratch folder. CI runs the
 unit tests on Linux and Windows, and on Windows also builds the recorder,
 runs the integration tests and both smoke runs.
