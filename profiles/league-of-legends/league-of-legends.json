@@ -15,8 +15,10 @@
   // Which map is loading, read from the game client's own log
   // (Riot Games/League of Legends/Logs/GameLogs/<session>/*r3dlog.txt). The map
   // id picks the mode (or TFT) that lists it under "ids": Map11 Summoner's Rift,
-  // Map12 Howling Abyss (ARAM), Map30 Arena, Map22 TFT. Verify the line format
-  // against a current log; Riot has changed map ids for rotating modes before.
+  // Map12 Howling Abyss (ARAM), Map30 Arena, Map22 TFT (Convergence). These ids
+  // match Riot's current map list; the log line format itself is still to be
+  // checked against a live log. Rotating modes have their own maps (21 Nexus
+  // Blitz, 33 Swarm, 35 Brawl) and fall back to the game level here.
   "idHints": [
     { "source": "log", "regex": "\\b[Mm]ap(\\d+)\\b", "kind": "league.map" }
   ],

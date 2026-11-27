@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Official-player calibration: live, ephemeral analysis of an embedded player's frames that proposes profile regions and thresholds, and writes only the numbers the user confirms.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
+    <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="calibrate.html" LogicalName="calibrate.html" />
+    <InternalsVisibleTo Include="Lookback.Calibration.Tests" />
+  </ItemGroup>
+</Project>
