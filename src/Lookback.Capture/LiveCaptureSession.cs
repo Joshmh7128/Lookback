@@ -1,0 +1,201 @@
+using Lookback.Capture.Dxgi;
+using Lookback.Capture.Gpu;
+using Lookback.Capture.Targets;
+using Lookback.Capture.Wgc;
+using Lookback.Contracts;
+using Lookback.Contracts.V1;
+using Lookback.Core.Bus;
+using Lookback.Core.Time;
+using Lookback.Signals;
+using Lookback.Signals.Video;
+using Windows.Graphics.Capture;
+
+namespace Lookback.Capture;
+
+/// <summary>Which capture backend to use.</summary>
+public enum CaptureBackend
+{
+    /// <summary>WGC when the OS supports it, otherwise DXGI duplication of the target's monitor.</summary>
+    Auto,
+    Wgc,
+    Dxgi,
+}
+
+/// <summary>What a live session captures and what may be kept of it.</summary>
+public sealed record LiveSessionOptions
+{
+    public required CaptureTarget Target { get; init; }
+
+    public CaptureBackend Backend { get; init; } = CaptureBackend.Auto;
+
+    public SourceKind SourceKind { get; init; } = SourceKind.LiveGame;
+
+    public Retention Retention { get; init; } = Retention.Owned;
+
+    public string PermissionRef { get; init; } = "";
+
+    public string Title { get; init; } = "";
+
+    public string GameProfile { get; init; } = "";
+
+    public bool CaptureCursor { get; init; }
+
+    public string? SessionId { get; init; }
+
+    /// <summary>Extra per-frame signals, such as a game profile's regions.</summary>
+    public IReadOnlyList<IVideoSignal> ExtraVideoSignals { get; init; } = [];
+}
+
+/// <summary>
+/// One live capture session: picks the adapter and backend for the target,
+/// runs the analysis tap (GPU downscale → readback → <see cref="LiveAnalyzer"/>),
+/// and brackets it with <c>SessionStarted</c>/<c>SessionEnded</c> on the bus.
+/// Every timestamp is raw QPC from the capture source. The encode path
+/// attaches through <see cref="FrameTap"/> (M3 part 4); an ephemeral session
+/// never gets one.
+/// </summary>
+public sealed class LiveCaptureSession : IAsyncDisposable
+{
+    private readonly IEventBus _bus;
+    private readonly EnvelopeFactory _envelopes;
+    private readonly GpuDevice _gpu;
+    private readonly ICaptureSource _source;
+    private readonly GpuDownscaler _downscaler;
+    private readonly LiveAnalyzer _analyzer;
+    private readonly FrameReady _deliver;
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private int _disposed;
+
+    private LiveCaptureSession(IEventBus bus, LiveSessionOptions options, SessionStarted started)
+    {
+        _bus = bus;
+        Options = options;
+        SessionId = options.SessionId ?? $"live-{DateTime.UtcNow:yyyyMMdd-HHmmss}-{Environment.ProcessId}";
+        Started = started;
+        _envelopes = new EnvelopeFactory(SystemClock.Instance, SessionId, "recorder.capture");
+
+        _gpu = GpuDevice.Create(options.Target.AdapterLuid);
+        try
+        {
+            _source = CreateSource(_gpu, options);
+            _downscaler = new GpuDownscaler(_gpu);
+            _analyzer = new LiveAnalyzer(bus, SessionId, SystemClock.Instance, extraVideoSignals: options.ExtraVideoSignals);
+        }
+        catch
+        {
+            _gpu.Dispose();
+            throw;
+        }
+
+        _deliver = (span, pitch, qpc) => _analyzer.SubmitVideo(span, pitch, qpc);
+        _source.Stopped += (_, why) => StoppedReason = why;
+    }
+
+    public string SessionId { get; }
+
+    public LiveSessionOptions Options { get; }
+
+    public SessionStarted Started { get; }
+
+    /// <summary>True when the retention rules let this session's video reach the encoder and disk.</summary>
+    public bool CanPersist => RetentionRules.CanPersist(Started);
+
+    public string Backend => _source.Backend;
+
+    public string AdapterName => _gpu.Name;
+
+    public GpuDevice Gpu => _gpu;
+
+    public LiveAnalyzer Analyzer => _analyzer;
+
+    public string? StoppedReason { get; private set; }
+
+    /// <summary>Called for every captured frame after the analysis tap, on the capture thread. The encode path hooks in here.</summary>
+    public CapturedFrameHandler? FrameTap { get; set; }
+
+    public SessionStats Stats => new(
+        _source.FramesCaptured,
+        _analyzer.ProcessedVideo,
+        _analyzer.DroppedVideo,
+        _analyzer.ProcessedAudio,
+        _clock.Elapsed);
+
+    /// <summary>Validates retention, starts capture and announces the session.</summary>
+    public static LiveCaptureSession Start(IEventBus bus, LiveSessionOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(bus);
+        ArgumentNullException.ThrowIfNull(options);
+        var started = new SessionStarted
+        {
+            SourceKind = options.SourceKind,
+            Retention = options.Retention,
+            PermissionRef = options.PermissionRef,
+            Title = options.Title.Length > 0 ? options.Title : options.Target.Description,
+            QpcFrequency = (ulong)SystemClock.Instance.Frequency,
+            GameProfile = options.GameProfile,
+        };
+        string? problem = RetentionRules.Validate(started);
+        if (problem is not null)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
+        var session = new LiveCaptureSession(bus, options, started);
+        Envelope e = session._envelopes.Create(Topics.Session);
+        e.SessionStarted = started;
+        bus.Publish(e);
+        session._source.Start(session.OnFrame);
+        return session;
+    }
+
+    private void OnFrame(Vortice.Direct3D11.ID3D11Texture2D texture, long qpc, TransferFunction transfer)
+    {
+        if (_analyzer.WantsVideo(qpc))
+        {
+            _downscaler.Process(texture, qpc, transfer, _deliver);
+        }
+
+        FrameTap?.Invoke(texture, qpc, transfer);
+    }
+
+    private static ICaptureSource CreateSource(GpuDevice gpu, LiveSessionOptions o)
+    {
+        CaptureBackend backend = o.Backend;
+        if (backend == CaptureBackend.Auto)
+        {
+            backend = GraphicsCaptureSession.IsSupported() ? CaptureBackend.Wgc : CaptureBackend.Dxgi;
+        }
+
+        return backend switch
+        {
+            CaptureBackend.Wgc => new WgcCaptureSource(gpu, o.Target, o.CaptureCursor),
+            CaptureBackend.Dxgi => new DxgiDuplicationSource(gpu, o.Target),
+            _ => throw new ArgumentOutOfRangeException(nameof(o)),
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _source.Dispose();
+        _downscaler.Flush(_deliver);
+        await _analyzer.DisposeAsync().ConfigureAwait(false);
+        Envelope e = _envelopes.Create(Topics.Session);
+        e.SessionEnded = new SessionEnded { Reason = StoppedReason ?? "stopped" };
+        _bus.Publish(e);
+        _downscaler.Dispose();
+        _gpu.Dispose();
+    }
+}
+
+/// <summary>Counters for a live session.</summary>
+public readonly record struct SessionStats(long Captured, long Analysed, long AnalysisDropped, long AudioHops, TimeSpan Elapsed)
+{
+    public double CaptureFps => Elapsed.TotalSeconds > 0 ? Captured / Elapsed.TotalSeconds : 0;
+
+    public double AnalysisFps => Elapsed.TotalSeconds > 0 ? Analysed / Elapsed.TotalSeconds : 0;
+}

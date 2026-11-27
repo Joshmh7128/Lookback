@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- Windows 10 2004+ (19041): WGC with cursor control; process loopback and the borderless flag are checked at runtime. -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Description>Live capture on Windows: Windows.Graphics.Capture, DXGI desktop duplication, the hook receiver, and the GPU downscale that feeds the signal pipeline.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.D3DCompiler" />
+    <PackageReference Include="Vortice.Direct3D11" />
+    <PackageReference Include="Vortice.DXGI" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Signals\Lookback.Signals.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Gpu\Downscale.hlsl" LogicalName="Lookback.Capture.Gpu.Downscale.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lookback.Capture.Tests" />
+  </ItemGroup>
+</Project>
