@@ -4,8 +4,8 @@
   // one self-contained file that imports only types.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node10",
+    "module": "node16",
+    "moduleResolution": "node16",
     "lib": ["ES2023", "DOM"],
     "types": ["node"]
   },

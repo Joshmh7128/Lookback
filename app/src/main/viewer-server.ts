@@ -10,7 +10,7 @@ import { contentType, resolveStatic } from "./static-files";
  */
 export const VIEWER_CSP = [
   "default-src 'none'",
-  "script-src 'self' https://www.youtube.com https://s.ytimg.com https://embed.twitch.tv",
+  "script-src 'self' https://www.youtube.com https://s.ytimg.com https://player.twitch.tv",
   "frame-src https://www.youtube.com https://www.youtube-nocookie.com https://player.twitch.tv https://embed.twitch.tv",
   "style-src 'self'",
   "img-src 'self' data:",

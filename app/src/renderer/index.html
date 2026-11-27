@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lookback</title>
+  <link rel="stylesheet" href="app.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <nav class="tabs" id="tabs">
+    <span class="brand">Lookback</span>
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="library">Library</button>
+    <button data-tab="timeline">Timeline</button>
+    <button data-tab="profiler">Profiler</button>
+    <button data-tab="datasets">Datasets</button>
+    <button data-tab="settings">Settings</button>
+    <span class="spacer"></span>
+    <span id="pill-recorder" class="pill">recorder</span>
+    <span id="pill-stream" class="pill">stream</span>
+    <button id="open-viewer" class="primary">Open viewer</button>
+  </nav>
+
+  <section id="tab-overview" class="tab active">
+    <div class="grid">
+      <div class="card">
+        <h2>Recorder</h2>
+        <dl id="recorder-facts" class="facts"></dl>
+        <div class="row">
+          <button id="rec-start">Start</button>
+          <button id="rec-stop">Stop</button>
+          <button id="rec-restart">Restart</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Official-player viewer</h2>
+        <p class="muted">Watch a YouTube or Twitch video in the platform's embedded player. The recorder analyses it live for calibration and keeps nothing.</p>
+        <form id="viewer-form" class="row">
+          <input id="viewer-link" type="text" placeholder="YouTube or Twitch link (optional)" spellcheck="false" autocomplete="off">
+          <button type="submit">Open</button>
+        </form>
+        <p id="viewer-ingest" class="muted">ingest off</p>
+      </div>
+      <div class="card">
+        <h2>Sessions</h2>
+        <div id="session-summary" class="muted">No sessions yet.</div>
+      </div>
+    </div>
+    <div class="card log-card">
+      <h2>Recorder log</h2>
+      <pre id="log" class="log"></pre>
+    </div>
+  </section>
+
+  <section id="tab-library" class="tab">
+    <div class="split">
+      <aside class="sessions" id="lib-sessions"></aside>
+      <div class="lib-main">
+        <div class="row toolbar">
+          <label>Show
+            <select id="lib-filter">
+              <option value="all">all candidates</option>
+              <option value="unrated">unrated</option>
+              <option value="up">rated up</option>
+              <option value="down">rated down</option>
+              <option value="qa">passed QA</option>
+              <option value="saved">saved clips</option>
+            </select>
+          </label>
+          <label>Sort
+            <select id="lib-sort">
+              <option value="time">by time</option>
+              <option value="score">by score</option>
+            </select>
+          </label>
+          <span id="lib-count" class="muted"></span>
+          <span class="spacer"></span>
+          <button id="lib-forget" title="Remove this session from the list (memory only)">Forget session</button>
+        </div>
+        <table class="clips">
+          <thead><tr><th>At</th><th>Length</th><th>Score</th><th>Why</th><th>QA</th><th>Clip</th><th>Rating</th></tr></thead>
+          <tbody id="lib-rows"></tbody>
+        </table>
+        <p class="muted note">Ratings are kept in memory for now; the recorder will store them (behind its retention rules) once it accepts them.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-timeline" class="tab">
+    <div class="row toolbar">
+      <label>Session <select id="tl-session"></select></label>
+      <label>Window
+        <select id="tl-window">
+          <option value="120">last 2 minutes (live)</option>
+          <option value="600">last 10 minutes</option>
+          <option value="0">whole session</option>
+        </select>
+      </label>
+      <span id="tl-info" class="muted"></span>
+    </div>
+    <canvas id="tl-canvas" class="timeline"></canvas>
+    <div id="tl-detail" class="card detail muted">Hover a mark or candidate; click a candidate to open it in the library.</div>
+  </section>
+
+  <section id="tab-profiler" class="tab embed">
+    <div id="profiler-host" class="embed-host"><p class="muted">The live profiler appears here while the recorder serves it (Settings: "Serve the profiler page").</p></div>
+  </section>
+
+  <section id="tab-datasets" class="tab embed">
+    <div class="row toolbar"><button id="browse-build">Build dataset browser</button><span id="browse-status" class="muted"></span></div>
+    <div id="browse-host" class="embed-host"><p class="muted">Build the dataset browser to sift profiles and datasets.</p></div>
+  </section>
+
+  <section id="tab-settings" class="tab">
+    <form id="settings-form" class="card settings">
+      <h2>Settings</h2>
+      <label>Recorder path <input name="recorderPath" placeholder="find automatically"></label>
+      <label>Testbench path <input name="testbenchPath" placeholder="find automatically"></label>
+      <label>Datasets folder <input name="datasetsDir" placeholder="the repository's datasets/"></label>
+      <label>Profiles folder <input name="profilesDir" placeholder="the repository's profiles/ (enables Save in calibration)"></label>
+      <label>Pipe name <input name="pipeName"></label>
+      <label>WebSocket port <input name="webSocketPort" type="number" min="0" max="65535"></label>
+      <label class="check"><input name="profilerPage" type="checkbox"> Serve the profiler page</label>
+      <label class="check"><input name="autoStart" type="checkbox"> Start the recorder when Lookback opens</label>
+      <div class="row"><button type="submit" class="primary">Save</button><span id="settings-status" class="muted"></span></div>
+      <p class="muted">Changes to the recorder's options apply on its next start.</p>
+    </form>
+  </section>
+</body>
+</html>

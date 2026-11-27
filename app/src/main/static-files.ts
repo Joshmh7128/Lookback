@@ -53,7 +53,7 @@ export const SHELL_CSP = [
   "script-src 'self'",
   "style-src 'self'",
   "img-src 'self' data:",
-  "connect-src ws://127.0.0.1:* ws://localhost:*",
+  "connect-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'none'",

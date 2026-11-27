@@ -22,21 +22,19 @@ panel at `calibrate` + `#token=T`).
 - Text `{"type":"stop"}`.
 - First cut from the shell is video only.
 
-### Shell side, still to build (Electron thread paused; its WIP is on
-`claude/project-thread-6gk9aw`, see `docs/electron-shell-handoff.md` there)
+### Shell side: done (branch `shell/electron-viewer`)
 
-1. Read `ingest`, `calibrate` and `token` from the recorder's `LOOKBACK_READY` line.
-2. When the player starts playing, open `ingest + "?token=" + token` and send the
-   start message (omit `profile` when the picker is blank; `videoRef` is not kept).
-3. Main process: `webContents.beginFrameSubscription` on the viewer window, crop
-   to the player element's rect, downscale to 384x216 BGRA in memory, throttle to
-   30 fps, send each as a kind-1 message with microseconds from `performance.now()`
-   relative to start. Nothing to disk; in-memory browser partition.
-4. Send `{"type":"stop"}` when the video ends, the window closes or the source changes.
-5. Dock the panel as a separate view at `calibrate + "#token=" + token`.
-6. Don't send system loopback audio (it is the whole system mix).
+All six steps landed in `app/` (`src/main/viewer.ts`, `ingest.ts`, `frames.ts`):
+handshake fields read, start on play (profile omitted when blank), frame
+subscription cropped to the player and scaled to 384x216 BGRA at 30 fps,
+stop on end/close/source change, panel docked at `calibrate#token=`, no
+loopback audio, in-memory partition. Verified end to end on AETHER with a
+YouTube video and a live Twitch channel (about 150 frames in 5 s, none
+dropped, the panel reporting them analysed). See
+[docs/wiki/Desktop-Shell.md](wiki/Desktop-Shell.md).
 
-`tests/Lookback.Calibration.Tests/IngestTests.cs` is a working reference client.
+`tests/Lookback.Calibration.Tests/IngestTests.cs` and
+`app/src/test/recorder-integration.test.ts` are working reference clients.
 
 ## Done
 
@@ -57,5 +55,5 @@ panel at `calibrate` + `#token=T`).
 ## Next
 
 - Windows run on AETHER (build + tests).
-- End-to-end with the Electron viewer once the shell thread's sender lands.
+- ~~End-to-end with the Electron viewer~~ done (see above).
 - Audio in calibration once the shell can provide player-only audio.

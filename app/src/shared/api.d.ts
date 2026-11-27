@@ -24,6 +24,14 @@ export interface RecorderState {
   startedAt: number | null;
 }
 
+/** The main process's connection to the recorder's /events stream. */
+export interface StreamState {
+  status: "off" | "connecting" | "open" | "retrying";
+  /** Envelopes received since the shell started. */
+  received: number;
+  detail: string | null;
+}
+
 export interface Settings {
   /** Recorder executable or .dll. Empty means find it automatically. */
   recorderPath: string;
@@ -31,6 +39,8 @@ export interface Settings {
   testbenchPath: string;
   /** Datasets folder for the browser. Empty means the repository's datasets/. */
   datasetsDir: string;
+  /** Profiles folder the calibration panel saves into. Empty means the repository's profiles/. */
+  profilesDir: string;
   pipeName: string;
   /** 0 picks a free port. */
   webSocketPort: number;
@@ -61,27 +71,101 @@ export interface BrowseState {
   builtAt: number | null;
 }
 
+/** -1 thumbs down, 0 unrated, 1 thumbs up. */
+export type Rating = -1 | 0 | 1;
+
+export interface QaCheckView {
+  name: string;
+  passed: boolean;
+  value: number;
+  detail: string;
+}
+
+export interface CandidateView {
+  id: string;
+  sessionId: string;
+  startQpc: number;
+  endQpc: number;
+  peakQpc: number;
+  score: number;
+  modelScore: number | null;
+  highlight: number;
+  profile: string;
+  reasons: string[];
+  qa: { passed: boolean; checks: QaCheckView[] } | null;
+  /** Where the recorder saved the clip, once it has. */
+  savedPath: string | null;
+  rating: Rating;
+}
+
+/** A moment drawn on the timeline: a game event, a profile detection or a lifecycle change. */
+export interface TimelineMark {
+  kind: "event" | "profile" | "lifecycle";
+  qpc: number;
+  name: string;
+  detail: string;
+  confidence: number;
+}
+
+export interface SessionView {
+  id: string;
+  /** Arrival order; larger is newer. */
+  order: number;
+  title: string;
+  /** "live_game", "file", "official_player" or "unspecified". */
+  sourceKind: string;
+  /** "ephemeral", "owned", "permissioned", "open_license" or "unspecified". */
+  retention: string;
+  profile: string;
+  qpcFrequency: number;
+  startQpc: number;
+  lastQpc: number;
+  ended: boolean;
+  endReason: string | null;
+  events: number;
+  signalFrames: number;
+}
+
+export interface LibrarySessionSnapshot extends SessionView {
+  marks: TimelineMark[];
+  candidates: CandidateView[];
+}
+
+export interface LibrarySnapshot {
+  revision: number;
+  sessions: LibrarySessionSnapshot[];
+}
+
 /** The API the main window's preload exposes as `window.lookback`. */
 export interface LookbackApi {
   getState(): Promise<RecorderState>;
-  /** The full /events URL including the token, or null while the recorder is not ready. */
-  getConnection(): Promise<string | null>;
   onState(listener: (state: RecorderState) => void): () => void;
   startRecorder(): Promise<RecorderState>;
   stopRecorder(): Promise<RecorderState>;
   restartRecorder(): Promise<RecorderState>;
   getLog(): Promise<string[]>;
   onLog(listener: (line: string) => void): () => void;
+  getStream(): Promise<StreamState>;
+  onStream(listener: (state: StreamState) => void): () => void;
+  /** The viewer's ingest state, for the overview. */
+  onIngest(listener: (state: IngestState) => void): () => void;
+  /** Fired when an embedded page appears or disappears, e.g. after the recorder restarts. */
+  onEmbedded(listener: (available: boolean) => void): () => void;
+  onResized(listener: () => void): () => void;
+  getLibrary(): Promise<LibrarySnapshot>;
+  onLibrary(listener: (snapshot: LibrarySnapshot) => void): () => void;
+  rate(sessionId: string, candidateId: string, rating: Rating): Promise<boolean>;
+  forgetSession(sessionId: string): Promise<boolean>;
   /** Show an embedded page over `bounds` (in CSS pixels of the main window), or hide it with null. */
   showView(view: EmbeddedView | null, bounds: ViewBounds | null): Promise<boolean>;
   getBrowseState(): Promise<BrowseState>;
   buildBrowse(): Promise<BrowseResult>;
   getSettings(): Promise<Settings>;
   saveSettings(settings: Settings): Promise<Settings>;
-  openViewer(source: string | null): Promise<void>;
+  /** Opens the official-player viewer, optionally with a pasted link. */
+  openViewer(link: string | null): Promise<boolean>;
+  /** Shows a clip the recorder saved in the file manager. */
   revealClip(path: string): Promise<boolean>;
-  /** Tells the main process the renderer's stream state (used by the smoke test). */
-  reportStream(connected: boolean): void;
 }
 
 export type ViewerPlatform = "youtube" | "twitch";
@@ -116,8 +200,12 @@ export interface ViewerApi {
   /** The source the shell asked the viewer to open, if any. */
   initialSource(): Promise<EmbedSource | null>;
   onOpen(listener: (source: EmbedSource) => void): () => void;
+  /** Profile ids for the picker; empty when no profiles folder is known. */
   profiles(): Promise<string[]>;
+  /** The chosen source (null when cleared) and profile ("" lets the recorder decide). */
   select(source: EmbedSource | null, profile: string): void;
   report(report: ViewerReport): void;
   onIngest(listener: (state: IngestState) => void): () => void;
+  /** Shows or hides the docked calibration panel. */
+  togglePanel(): void;
 }

@@ -1,13 +1,14 @@
 # Quickstart
 
 Run Lookback on Windows in about ten minutes: build it, analyse a clip, open
-the timeline report, and watch events fire live in the profiler. Every step
+the timeline report, watch events fire live in the profiler, then run the
+desktop app and calibrate a profile from a YouTube or Twitch video. Every step
 here was checked on Windows 10 (19045) in a fresh clone.
 
 ## What you are running
 
-There is no desktop app yet. The Electron shell arrives in M2. Today
-Lookback is two command-line programs plus pages that you open in a browser:
+Lookback is a desktop app (the Electron shell in `app/`), two command-line
+programs, and pages they serve:
 
 | Piece | What it is | You use it to |
 |---|---|---|
@@ -15,6 +16,7 @@ Lookback is two command-line programs plus pages that you open in a browser:
 | `Lookback.Recorder` | Background service | Host the event stream (named pipe and WebSocket); optionally serve the profiler |
 | Timeline report | Self-contained `.html` file | Scrub a clip with every signal, event and rule margin under it |
 | Live profiler | Page served from `127.0.0.1` | Watch game events fire in real time |
+| Desktop app (`app/`) | Electron shell | Run the recorder; browse clip candidates, rate them, follow the live timeline; calibrate from the official player |
 
 ```mermaid
 flowchart LR
@@ -31,6 +33,7 @@ flowchart LR
 | .NET 10 SDK | `dotnet --list-sdks` shows `10.0.x` | `global.json` asks for 10.0.100 or a later feature band |
 | ffmpeg and ffprobe | `ffmpeg -version` | Must be on `PATH`, or set `LOOKBACK_FFMPEG_DIR` to their folder. A gyan.dev "essentials" build works |
 | git | `git --version` | |
+| Node.js 24 (for the desktop app) | `node --version` shows `v24.x` | npm comes with it; `npm ci` installs Electron and TypeScript inside `app/` only |
 
 ## 2. Clone, build, test
 
@@ -144,6 +147,39 @@ You get precision and recall per event type, and `dataset-out/scores.json`.
 Media files are never committed; only manifests are. See
 [Game Profiles](Game-Profiles#datasets-and-scoring).
 
+## 8. Run the desktop app
+
+```powershell
+cd app
+npm ci
+npm start
+```
+
+The main window starts the recorder (it finds the Release build from step 2)
+and shows it as **recorder ready** and **stream open** in the toolbar. To see
+the library fill, send the clip into the app's recorder from a second
+terminal, as in step 6:
+
+```powershell
+dotnet run -c Release --project src/Lookback.Testbench -- live sample.mp4 --profile overwatch --pipe lookback.events
+```
+
+**Library** lists the session's clip candidates with score, reasons and QA;
+rate them with ▲ and ▼. **Timeline** draws the session's events and
+candidates live. Ratings are kept in memory for now. `npm run smoke` checks
+the whole start-up path and prints `LOOKBACK_SMOKE ok …`.
+
+## 9. Calibrate a profile from a YouTube or Twitch video
+
+In the desktop app press **Open viewer**, paste a link to gameplay (for
+example a CS2 or Overwatch match) and press Play. The video plays in the
+platform's own embedded player; the calibration panel is docked on the
+right. Choose the profile in the panel, then follow
+[Official-Player Calibration](Official-Player-Calibration#the-workflow). The
+viewer's bar shows how many frames went to the recorder; the panel shows how
+many it analysed. Nothing about the video is written anywhere; only numbers
+you confirm with **Save** go into `profiles/`.
+
 ## Running the built programs directly
 
 `dotnet run` builds when needed and then starts the program. After a Release
@@ -166,3 +202,6 @@ exits with code 64.
 | `System.Management.Automation.RemoteException` lines in PowerShell | You redirected stderr with `2>&1`. Drop the redirect; the output is fine |
 | Profiler page asks for a token | The link lost its `#token=…` part. Copy the whole printed link |
 | Profile events on a test clip | Expected: synthetic patterns trip HUD rules. Use real footage |
+| Desktop app says "Lookback.Recorder was not found" | Run `dotnet build Lookback.slnx -c Release` first, or set the recorder's path in Settings |
+| Viewer shows "ingest off" | The recorder is not running, or was started with `--Recorder:OfficialPlayer=false` |
+| Twitch player says the channel is offline | Pick a live channel or a `twitch.tv/videos/<id>` link |

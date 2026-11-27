@@ -13,7 +13,8 @@ automatically when `main` changes, so the wiki always matches the code.
 
 | Page | What it covers |
 |---|---|
-| [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live |
+| [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live, run the desktop app |
+| [Desktop Shell](Desktop-Shell) | The Electron app: recorder management, clip library, timeline, ratings, and the official-player viewer that feeds calibration |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
 | [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
 | [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |
@@ -41,7 +42,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M1 | FileSource, video and audio signals, testbench and timeline viewer | Done (GPU downscale moves to M3 with live capture) |
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
-| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
+| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Desktop shell, library, timeline, ratings (in memory) and the official-player viewer done; Clipper v1 planned |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | Planned |
 | M4 | Training, ONNX scoring, calibration | Planned |
 | M5 | Transcode, VMAF report, audio checks | Planned |

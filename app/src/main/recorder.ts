@@ -160,6 +160,19 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
     clearTimeout(timer);
   }
 
+  /** Adds a shell-side line to the log the overview shows. */
+  note(line: string): void {
+    this.append(line);
+  }
+
+  /** Marks the recorder as failed without a process, e.g. when it could not be found. */
+  reportFailure(detail: string): void {
+    if (!this.child) {
+      this.append(detail);
+      this.set({ ...idle("failed", detail), command: null });
+    }
+  }
+
   private onStdout(raw: string): void {
     const line = parseRecorderLine(raw);
     switch (line.kind) {

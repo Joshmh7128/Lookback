@@ -76,12 +76,31 @@ function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-/** Recorder arguments for the chosen settings. The token is never an argument. */
-export function recorderArgs(settings: Settings): string[] {
+/**
+ * Recorder arguments for the chosen settings. `profilesDir` (when known)
+ * turns on the calibration panel's Save. The token is never an argument.
+ */
+export function recorderArgs(settings: Settings, profilesDir: string | null = null): string[] {
   const args = [`--Recorder:PipeName=${settings.pipeName}`, `--Recorder:WebSocketPort=${settings.webSocketPort}`];
   if (settings.profilerPage) {
     args.push("--Recorder:Profiler=true");
   }
 
+  if (profilesDir) {
+    args.push(`--Recorder:ProfilesDirectory=${profilesDir}`);
+  }
+
   return args;
+}
+
+/** The profiles folder: the one in settings, else the repository's, else none. */
+export function profilesFolder(settings: Settings, ctx: Pick<LocateContext, "repoRoot" | "exists">): string | null {
+  const dir = settings.profilesDir || (ctx.repoRoot ? join(ctx.repoRoot, "profiles") : "");
+  return dir && ctx.exists(dir) ? dir : null;
+}
+
+/** The datasets folder: the one in settings, else the repository's, else none. */
+export function datasetsFolder(settings: Settings, ctx: Pick<LocateContext, "repoRoot" | "exists">): string | null {
+  const dir = settings.datasetsDir || (ctx.repoRoot ? join(ctx.repoRoot, "datasets") : "");
+  return dir && ctx.exists(dir) ? dir : null;
 }

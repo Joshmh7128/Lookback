@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Quickstart](Quickstart)
+- [Desktop Shell](Desktop-Shell)
 - [Architecture](Architecture)
 - [Detection Walkthrough](Detection-Walkthrough)
 - [Detection Design Notes](Detection-Design-Notes)
