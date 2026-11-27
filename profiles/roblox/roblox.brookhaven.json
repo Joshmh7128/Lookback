@@ -1,0 +1,62 @@
+{
+  // Open roleplay town. Few scripted moments: clips come from vehicles, chaos and loud reactions.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.brookhaven",
+  "displayName": "Brookhaven RP",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["roleplay", "social"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "disable": [
+    "respawn_or_teleport"
+  ],
+  "events": [
+    {
+      "name": "fast_vehicle",
+      "weight": 0.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 8000,
+      "when": [
+        {
+          "signal": "motion.coverage",
+          "above": 0.6
+        },
+        {
+          "signal": "motion.energy",
+          "above": 0.06
+        }
+      ],
+      "clip": {
+        "preMs": 8000,
+        "postMs": 4000
+      }
+    },
+    {
+      "name": "crash",
+      "weight": 0.9,
+      "baseConfidence": 0.45,
+      "cooldownMs": 3000,
+      "when": [
+        {
+          "signal": "scene.cut",
+          "above": 0.35
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.3
+        }
+      ],
+      "clip": {
+        "preMs": 6000,
+        "postMs": 3000
+      }
+    }
+  ]
+}

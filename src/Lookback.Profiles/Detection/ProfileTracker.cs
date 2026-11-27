@@ -91,6 +91,21 @@ public sealed class ProfileTracker
             }
         }
 
+        // The game's id hints: an id read from outside the process picks the profile that lists it.
+        foreach (IdHint h in _catalog.Get(RootId).IdHints)
+        {
+            foreach (string id in Captures(h.Source, h.Regex, context))
+            {
+                GameProfile? p = _catalog.FindById(h.Kind, id);
+                if (p is not null && p.Id != _floor && _catalog.PathTo(p.Id).Any(x => x.Id == _floor)
+                    && (best is null || Depth(p.Id) > Depth(best.Id)))
+                {
+                    best = p;
+                    evidence = $"{h.Source} {h.Kind} {id}";
+                }
+            }
+        }
+
         if (best is null)
         {
             return null;
@@ -219,6 +234,27 @@ public sealed class ProfileTracker
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> Captures(HintSource source, string regex, DetectionContext context)
+    {
+        IEnumerable<string> texts = source switch
+        {
+            HintSource.LaunchArgs => [context.LaunchArgs],
+            HintSource.WindowTitle => [context.WindowTitle],
+            _ => context.LogLines,
+        };
+
+        foreach (string text in texts)
+        {
+            foreach (Match m in Regex.Matches(text, regex, RegexOptions.None, TimeSpan.FromMilliseconds(100)))
+            {
+                if (m.Groups.Count > 1 && m.Groups[1].Success)
+                {
+                    yield return m.Groups[1].Value;
+                }
+            }
+        }
     }
 
     private int Depth(string id) => _catalog.PathTo(id).Count;

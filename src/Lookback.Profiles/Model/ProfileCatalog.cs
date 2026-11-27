@@ -81,6 +81,13 @@ public sealed class ProfileCatalog
             }
         }
 
+        // An id names one profile.
+        foreach (var clash in _byId.Values.SelectMany(p => p.Ids.SelectMany(kv => kv.Value.Select(v => (Key: (kv.Key, v), p.Id))))
+            .GroupBy(x => x.Key).Where(g => g.Count() > 1))
+        {
+            problems.Add($"{clash.Key.Item1} {clash.Key.Item2} is listed by {string.Join(" and ", clash.Select(x => x.Id))}.");
+        }
+
         if (problems.Count > 0)
         {
             throw new InvalidDataException("Profile catalog is invalid:\n  " + string.Join("\n  ", problems));
@@ -153,6 +160,14 @@ public sealed class ProfileCatalog
         return _byId.Values.FirstOrDefault(p => p.Level == ProfileLevelKind.Game
             && p.Executables.Any(e => string.Equals(e, name, StringComparison.OrdinalIgnoreCase)));
     }
+
+    /// <summary>The profile that lists this platform id, such as a Roblox universe id.</summary>
+    public GameProfile? FindById(string kind, string value) =>
+        _byId.Values.FirstOrDefault(p => p.Ids.TryGetValue(kind, out IReadOnlyList<string>? v) && v.Contains(value, StringComparer.Ordinal));
+
+    /// <summary>Profiles carrying a tag, in id order.</summary>
+    public IEnumerable<GameProfile> Tagged(string tag) =>
+        _byId.Values.Where(p => p.Tags.Contains(tag, StringComparer.OrdinalIgnoreCase)).OrderBy(p => p.Id, StringComparer.Ordinal);
 
     /// <summary>The profile with everything inherited from its ancestors applied.</summary>
     public GameProfile Resolve(string id)

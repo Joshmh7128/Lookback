@@ -29,6 +29,24 @@ public sealed record GameProfile
     /// <summary>How to tell that this profile, rather than its siblings, is being played.</summary>
     public DetectSpec Detect { get; init; } = new();
 
+    /// <summary>
+    /// Platform ids for this profile, by kind: for a Roblox experience,
+    /// <c>"roblox.universe": ["…"]</c> (one per experience, stable across its
+    /// places) and <c>"roblox.place": ["…", "…"]</c> (lobby, worlds, matches).
+    /// Used to look a profile up by id and to match the game's id hints.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> Ids { get; init; } = new Dictionary<string, IReadOnlyList<string>>();
+
+    /// <summary>Free-form categories for search and grouping, such as <c>shooter</c> or <c>roleplay</c>.</summary>
+    public IReadOnlyList<string> Tags { get; init; } = [];
+
+    /// <summary>
+    /// Games only. Hints that read a platform id from outside the game process
+    /// (for example the universe id in the Roblox client's log); the id picks
+    /// whichever profile beneath the game lists it in <see cref="Ids"/>.
+    /// </summary>
+    public IReadOnlyList<IdHint> IdHints { get; init; } = [];
+
     /// <summary>Inherited events and composites this profile switches off.</summary>
     public IReadOnlyList<string> Disable { get; init; } = [];
 
@@ -79,6 +97,17 @@ public sealed record DetectSpec
 
     /// <summary>How long a new fingerprint match must lead before the active profile switches.</summary>
     public double HoldSeconds { get; init; } = 5;
+}
+
+/// <summary>A hint whose first capture group is a platform id of the given kind.</summary>
+public sealed record IdHint
+{
+    public required HintSource Source { get; init; }
+
+    public required string Regex { get; init; }
+
+    /// <summary>The id kind the capture is looked up in, such as <c>roblox.universe</c>.</summary>
+    public required string Kind { get; init; }
 }
 
 /// <summary>Where a hint is read from. All are outside the game process.</summary>

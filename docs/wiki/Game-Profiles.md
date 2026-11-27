@@ -16,7 +16,8 @@ are embedded into `Lookback.Profiles` at build time. Run
 | `overwatch` | game | The first game profile. Vision and audio only. |
 | `overwatch.control`, `.escort`, `.push` | mode | Mode stubs, ready for fingerprints learned from footage. |
 | `roblox` | game | What every Roblox experience shares: the client's interface and generic moments. |
-| `roblox.arsenal`, `.jailbreak`, `.doors`, `.blox-fruits` | sub-game | Starter experience profiles, each with its own regions and rules. |
+| `roblox.<experience>` (16) | sub-game | Steal an Egg, Murder Mystery 2, Brookhaven RP, Adopt Me!, 99 Nights in the Forest, Blox Fruits, RIVALS, Steal a Brainrot, Jujutsu Shenanigans, +1 Speed Keyboard Escape, BedWars, Slap Battles, Fisch, Arsenal, Jailbreak, DOORS. Each has its own regions, rules, tags and Roblox ids. |
+| `roblox.<experience>.lobby`, `.match`, `.round`, `.duel`, `.run`, `.day`, `.night` | mode | Lobbies switch off the experience's combat rules; 99 Nights tells day from night by brightness. |
 
 ## Why Overwatch first
 
@@ -112,10 +113,19 @@ Each experience profile adds its own regions and rules. Arsenal adds a kill
 feed and elimination notice with multikill and killstreak composites;
 Jailbreak adds its notification banner and a chase rule; DOORS adds
 jumpscare and death; Blox Fruits adds big abilities, level-ups and combos.
-Each lists its place id as a hint. **Verify each place id** against the
-experience's URL (`roblox.com/games/<placeId>/…`) and the client log;
-experiences with several places (a lobby and the game, or several worlds)
-need every id listed. All regions are estimates until calibrated.
+Each experience lists its Roblox ids: the **universe id** (one per
+experience, stable across all its places, the key to categorise by) and its
+**place ids** (lobby, worlds, matches). The `roblox` game profile's
+`idHints` read those ids from the client's own log and launch arguments, so
+a running experience is identified exactly, without fingerprints.
+
+`lookback-testbench roblox-ids --write true` fills in and verifies the ids
+with Roblox's public web API. It resolves listed place ids to universes,
+searches by name where none is listed, and confirms each universe's name,
+then edits only the `"ids"` line of each profile where the names match.
+`lookback-testbench profiles --id roblox.universe=<id>` finds the profile for
+an id, and `--tag` lists a category. All regions are estimates until
+calibrated.
 
 The client ships anti-tamper protection, so the Roblox capture policy is
 external capture only, and every experience inherits it.

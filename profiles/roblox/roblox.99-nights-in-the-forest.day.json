@@ -1,0 +1,24 @@
+// Day: everything from the experience applies.
+{
+  "id": "roblox.99-nights-in-the-forest.day",
+  "displayName": "99 Nights in the Forest: day",
+  "version": 1,
+  "parent": "roblox.99-nights-in-the-forest",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint from overall brightness; check on real footage."
+  },
+  "detect": {
+    "visual": [
+      {
+        "signal": "luma.mean",
+        "above": 0.35
+      }
+    ],
+    "windowSeconds": 20,
+    "holdSeconds": 10,
+    "minScore": 0.8
+  },
+  "events": []
+}

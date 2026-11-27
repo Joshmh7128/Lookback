@@ -8,6 +8,17 @@
   "version": 1,
   "level": "game",
   "executables": ["RobloxPlayerBeta.exe"],
+  "tags": ["platform"],
+  // Which experience is running, read from outside the client: its launch
+  // arguments and its own log folder (%LOCALAPPDATA%\Roblox\logs). Each id
+  // picks the experience profile that lists it under "ids". Formats can change
+  // between client versions; verify against a current log.
+  "idHints": [
+    { "source": "log",        "regex": "universeid:(\\d+)",          "kind": "roblox.universe" },
+    { "source": "log",        "regex": "placeid:(\\d+)",             "kind": "roblox.place" },
+    { "source": "log",        "regex": "Joining game '[^']*' place (\\d+)", "kind": "roblox.place" },
+    { "source": "launchArgs", "regex": "placeId(?:%3D|=)(\\d+)",     "kind": "roblox.place" }
+  ],
   "capturePolicy": {
     "allowPresentHook": false,
     "allowMemoryReading": false,

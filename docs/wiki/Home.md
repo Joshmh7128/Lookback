@@ -23,6 +23,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Recorder Host](Recorder-Host) | The service executable and its startup handshake |
 | [Media Library](Media-Library) | Analysis format, frames and audio blocks, the ffmpeg footage decoder |
 | [Signals Library](Signals-Library) | Every video and audio signal, how it is computed and why |
+| [Profiles and Local Datasets](Local-Datasets) | Profile structure, and how the local dataset is built, weighted, stored and compared |
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
 | [Testing](Testing) | What each test proves |
