@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Game profiles: HUD regions, event rules and clip windows layered on the game-agnostic signals.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Signals\Lookback.Signals.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Built-in profiles ship inside the assembly; a path to a JSON file loads others. -->
+    <EmbeddedResource Include="..\..\profiles\*.json" LogicalName="profiles.%(Filename).json" />
+    <InternalsVisibleTo Include="Lookback.Profiles.Tests" />
+  </ItemGroup>
+</Project>

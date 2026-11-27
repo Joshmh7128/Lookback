@@ -23,6 +23,22 @@ internal sealed class TimelineData
 
     public double MelBucketSeconds { get; set; }
 
+    /// <summary>Game events recognised by the profile.</summary>
+    public List<EventMark> Events { get; } = [];
+
+    /// <summary>Profile id, if the session ran with one.</summary>
+    public string? Profile { get; set; }
+
+    /// <summary>The profile's HUD regions, drawn over the video for calibration.</summary>
+    public List<RegionBox> Regions { get; } = [];
+
+    /// <summary>The learned HUD mask as a PNG data URI, drawn over the video for calibration.</summary>
+    public string? HudMaskPng { get; set; }
+
+    internal sealed record EventMark(string Name, double At, double Start, double End, float Confidence, float Weight, IReadOnlyList<string> Evidence);
+
+    internal sealed record RegionBox(string Name, double X, double Y, double W, double H, string Purpose);
+
     internal sealed class Lane
     {
         public required string Name { get; init; }

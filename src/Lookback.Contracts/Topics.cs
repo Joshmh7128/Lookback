@@ -5,9 +5,11 @@ public static class Topics
 {
     public const string Session = "session";
     public const string GameLifecycle = "game.lifecycle";
+    public const string GameEvent = "game.event";
     public const string SignalsVideo = "signals.video";
     public const string SignalsAudio = "signals.audio";
     public const string SignalsInput = "signals.input";
+    public const string SignalsRules = "signals.rules";
     public const string ClipCandidate = "clip.candidate";
     public const string ClipSaved = "clip.saved";
     public const string QaReport = "qa.report";

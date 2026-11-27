@@ -38,8 +38,19 @@ classDiagram
     Envelope --> ClipCandidate
     Envelope --> QaReport
     Envelope --> ClipSaved
+    Envelope --> GameEvent
     QaReport --> QaCheck
     SignalFrame ..> SignalSchema : schema_id
+    class GameEvent {
+        string name
+        string game_profile
+        fixed64 at_qpc
+        fixed64 window_start_qpc
+        fixed64 window_end_qpc
+        float confidence
+        float weight
+        repeated string evidence
+    }
 
     class SessionStarted {
         SourceKind source_kind
@@ -109,6 +120,15 @@ over; this keeps a frame to a few bytes per value. Each frame covers a window
 (`window_start_qpc` to `window_end_qpc`) because features such as audio
 loudness describe a span, not an instant.
 
+**`GameEvent`** (field 18 of the envelope) is a named game moment, such as
+an Overwatch `elimination` or `ultimate_used`, recognised by a
+[game profile](Game-Profiles)'s rules from the game-agnostic signals.
+`at_qpc` is the moment; `window_start_qpc` to `window_end_qpc` is the footage
+worth keeping around it; `confidence` is how sure the rule is (base plus
+boosts); `weight` is how much the moment matters to the clipper; `evidence`
+lists, in words, the conditions and boosts that made it fire, so a person
+can see why.
+
 **`ClipCandidate`** is a proposed clip: its window, the peak inside it,
 the heuristic score, an optional model score (`optional` so "not scored yet"
 differs from 0), the calibrated `highlight_probability`, and human-readable
@@ -126,7 +146,7 @@ a measured value and detail.
 | `SourceKind` | `LIVE_GAME`, `FILE`, `OFFICIAL_PLAYER` |
 | `Retention` | `EPHEMERAL`, `OWNED`, `PERMISSIONED`, `OPEN_LICENSE` |
 | `GraphicsApi` | `D3D11`, `D3D12`, `VULKAN`, `OPENGL` |
-| `SignalFamily` | `VIDEO`, `AUDIO`, `INPUT` |
+| `SignalFamily` | `VIDEO`, `AUDIO`, `INPUT`, `RULES` (a profile's rule margins, for viewers) |
 
 Every enum starts with an `_UNSPECIFIED = 0` value, as proto3 requires, so a
 missing field can be told apart from a real choice. `RetentionRules` rejects
@@ -141,6 +161,8 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `session` | `SessionStarted`, `SessionEnded` |
 | `game.lifecycle` | `GameLifecycle` |
 | `signals.video`, `signals.audio`, `signals.input` | `SignalSchema`, `SignalFrame` |
+| `signals.rules` | `SignalSchema`, `SignalFrame`: one margin per profile condition, published by the profile runner |
+| `game.event` | `GameEvent` |
 | `clip.candidate` | `ClipCandidate` |
 | `qa.report` | `QaReport` |
 | `clip.saved` | `ClipSaved` |

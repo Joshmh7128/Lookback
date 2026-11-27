@@ -9,8 +9,27 @@ using Lookback.Signals.Video;
 
 namespace Lookback.Signals;
 
-/// <summary>Counts from one analysis run.</summary>
-public sealed record FootageAnalysisResult(long VideoFrames, long AudioHops, TimeSpan Elapsed);
+/// <summary>Counts from one analysis run, and the HUD mask learned from the footage (null if warm-up never finished).</summary>
+public sealed record FootageAnalysisResult(long VideoFrames, long AudioHops, TimeSpan Elapsed, HudMask? HudMask = null);
+
+/// <summary>A learned HUD mask at analysis resolution; true marks a HUD pixel.</summary>
+public sealed record HudMask(int Width, int Height, bool[] Pixels);
+
+/// <summary>Optional parts of a footage run.</summary>
+public sealed record FootageAnalysisOptions
+{
+    /// <summary>False skips the audio decoder (files without an audio stream).</summary>
+    public bool HasAudio { get; init; } = true;
+
+    /// <summary>Keeps lossless consumers from falling behind.</summary>
+    public ReplayPacer? Pacer { get; init; }
+
+    /// <summary>Reports the media time reached, about once a second of footage.</summary>
+    public IProgress<TimeSpan>? Progress { get; init; }
+
+    /// <summary>Extra per-frame signals, such as a game profile's region signals.</summary>
+    public IReadOnlyList<IVideoSignal> ExtraVideoSignals { get; init; } = [];
+}
 
 /// <summary>
 /// Runs a footage file through the video and audio signal banks and
@@ -34,35 +53,27 @@ public sealed class FootageAnalyzer
 
     public long Frequency => _frequency;
 
-    /// <param name="path">Footage file.</param>
-    /// <param name="sessionId">Session the events belong to.</param>
-    /// <param name="hasAudio">False skips the audio decoder (files without an audio stream).</param>
-    /// <param name="pacer">Optional; keeps lossless consumers from falling behind.</param>
-    /// <param name="progress">Reports the media time reached, about once a second of footage.</param>
-    /// <param name="cancellationToken">Stops decoding.</param>
-    public async Task<FootageAnalysisResult> AnalyzeAsync(
-        string path,
-        string sessionId,
-        bool hasAudio = true,
-        ReplayPacer? pacer = null,
-        IProgress<TimeSpan>? progress = null,
-        CancellationToken cancellationToken = default)
+    public async Task<FootageAnalysisResult> AnalyzeAsync(string path, string sessionId, FootageAnalysisOptions? options = null, CancellationToken cancellationToken = default)
     {
+        options ??= new FootageAnalysisOptions();
         var started = System.Diagnostics.Stopwatch.StartNew();
         var source = new FfmpegFileSource(path, _format, _frequency);
+        VideoSignalBank bank = VideoSignalBank.CreateDefault(_format, options.ExtraVideoSignals);
 
-        Task<long> video = Task.Run(() => RunVideoAsync(source, sessionId, pacer, progress, cancellationToken), cancellationToken);
-        Task<long> audio = hasAudio
-            ? Task.Run(() => RunAudioAsync(source, sessionId, pacer, cancellationToken), cancellationToken)
+        Task<long> video = Task.Run(() => RunVideoAsync(source, bank, sessionId, options.Pacer, options.Progress, cancellationToken), cancellationToken);
+        Task<long> audio = options.HasAudio
+            ? Task.Run(() => RunAudioAsync(source, sessionId, options.Pacer, cancellationToken), cancellationToken)
             : Task.FromResult(0L);
 
         await Task.WhenAll(video, audio).ConfigureAwait(false);
-        return new FootageAnalysisResult(await video.ConfigureAwait(false), await audio.ConfigureAwait(false), started.Elapsed);
+
+        HudSignal? hud = bank.Signals.OfType<HudSignal>().FirstOrDefault();
+        HudMask? mask = hud is { IsReady: true } ? new HudMask(_format.Width, _format.Height, hud.Mask.ToArray()) : null;
+        return new FootageAnalysisResult(await video.ConfigureAwait(false), await audio.ConfigureAwait(false), started.Elapsed, mask);
     }
 
-    private async Task<long> RunVideoAsync(FfmpegFileSource source, string sessionId, ReplayPacer? pacer, IProgress<TimeSpan>? progress, CancellationToken ct)
+    private async Task<long> RunVideoAsync(FfmpegFileSource source, VideoSignalBank bank, string sessionId, ReplayPacer? pacer, IProgress<TimeSpan>? progress, CancellationToken ct)
     {
-        VideoSignalBank bank = VideoSignalBank.CreateDefault(_format);
         var publisher = new SignalPublisher(_bus, new EnvelopeFactory(new ManualClock(_frequency), sessionId, "signals.video"),
             Topics.SignalsVideo, SignalPublisher.VideoSchemaId, SignalFamily.Video, bank.Names);
         publisher.PublishSchema(0);

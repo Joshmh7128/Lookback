@@ -27,6 +27,7 @@ message Envelope {
     ClipCandidate clip_candidate = 15;
     QaReport qa_report = 16;
     ClipSaved clip_saved = 17;
+    GameEvent game_event = 18;
   }
 }
 
@@ -109,6 +110,10 @@ enum SignalFamily {
   SIGNAL_FAMILY_VIDEO = 1;
   SIGNAL_FAMILY_AUDIO = 2;
   SIGNAL_FAMILY_INPUT = 3;
+  // Rule margins from a game profile: value minus threshold per condition,
+  // so a positive value means the condition holds. Lets a viewer show why an
+  // event fired or did not.
+  SIGNAL_FAMILY_RULES = 4;
 }
 
 // Published once per producer (and again on change). SignalFrame values are
@@ -124,6 +129,28 @@ message SignalFrame {
   fixed64 window_start_qpc = 2;
   fixed64 window_end_qpc = 3;
   repeated float values = 4 [packed = true];
+}
+
+// ---------------------------------------------------------------- game events
+
+// A game moment recognised by a game profile's rules from game-agnostic
+// signals (for example an elimination, an ultimate, a round win). Published
+// on topic "game.event". The clipper turns these into candidates.
+message GameEvent {
+  // Profile-defined name, e.g. "elimination".
+  string name = 1;
+  string game_profile = 2;
+  // When the rule fired.
+  fixed64 at_qpc = 3;
+  // Suggested clip window around the moment, from the profile.
+  fixed64 window_start_qpc = 4;
+  fixed64 window_end_qpc = 5;
+  // 0..1: the rule's base confidence plus any corroborating boosts.
+  float confidence = 6;
+  // Profile weight of this kind of moment, used for ranking.
+  float weight = 7;
+  // Human-readable evidence, e.g. "region.kill_feed.activity rise 0.21".
+  repeated string evidence = 8;
 }
 
 // ---------------------------------------------------------------- clipping

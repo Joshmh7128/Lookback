@@ -1,0 +1,110 @@
+{
+  // Overwatch: a competitive title with anti-cheat and no public game-state API.
+  // Everything here is recognised from the screen and the sound, nothing else.
+  "id": "overwatch",
+  "displayName": "Overwatch",
+  "version": 1,
+  "executables": ["Overwatch.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Competitive title with anti-cheat: external capture (Windows.Graphics.Capture) only. No injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9 and 100% HUD scale. Check them against your own footage with the calibration overlay (testbench --profile overwatch) and adjust. Ultrawide or a changed HUD scale moves them."
+  },
+  "regions": [
+    { "name": "kill_feed",          "x": 0.72,  "y": 0.02, "w": 0.27, "h": 0.20, "purpose": "Every elimination in the match appears here, newest at the top." },
+    { "name": "elimination_notice", "x": 0.38,  "y": 0.58, "w": 0.24, "h": 0.10, "purpose": "Your own eliminations and assists are announced below the crosshair." },
+    { "name": "health",             "x": 0.04,  "y": 0.84, "w": 0.24, "h": 0.10, "purpose": "Your health, armour and shields." },
+    { "name": "ultimate",           "x": 0.455, "y": 0.80, "w": 0.09, "h": 0.14, "purpose": "Ultimate charge meter; it empties the moment the ultimate is used." },
+    { "name": "abilities",          "x": 0.72,  "y": 0.84, "w": 0.24, "h": 0.12, "purpose": "Ability icons and cooldowns." },
+    { "name": "objective",          "x": 0.36,  "y": 0.00, "w": 0.28, "h": 0.12, "purpose": "Objective progress, timer and score." },
+    { "name": "banner",             "x": 0.25,  "y": 0.30, "w": 0.50, "h": 0.25, "purpose": "Large centre text: round and match results." }
+  ],
+  "events": [
+    {
+      // Your elimination: the notice under the crosshair changes, usually with a sharp audio cue.
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.55,
+      "cooldownMs": 300,
+      "whenAny": [
+        { "signal": "region.elimination_notice.activity", "rise": 0.05 }
+      ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.25 },
+        { "signal": "region.kill_feed.activity", "above": 0.02, "withinMs": 600, "add": 0.15 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    },
+    {
+      // Any elimination in the match. Not yours alone, so low weight; it measures how hot the fight is.
+      "name": "kill_feed_activity",
+      "weight": 0.3,
+      "baseConfidence": 0.6,
+      "cooldownMs": 400,
+      "when": [
+        { "signal": "region.kill_feed.activity", "rise": 0.03 }
+      ],
+      "clip": { "preMs": 4000, "postMs": 2000 }
+    },
+    {
+      // Ultimate used: the full meter empties, typically with a screen flash and a voice line.
+      "name": "ultimate_used",
+      "weight": 1.2,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "region.ultimate.activity", "rise": 0.08 }
+      ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.05, "withinMs": 500, "add": 0.2 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.1 }
+      ],
+      "clip": { "preMs": 3000, "postMs": 8000 }
+    },
+    {
+      // Taking heavy damage: red vignette at the screen edge. Context for a clip, rarely a clip on its own.
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.6,
+      "cooldownMs": 3000,
+      "when": [
+        { "signal": "flash.red_edge", "above": 0.06 }
+      ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    },
+    {
+      // Death: the view cuts to a desaturated kill cam.
+      "name": "death",
+      "weight": 0.2,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.banner.saturation", "below": 0.12 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 1000 }
+    },
+    {
+      // Round or match result: large text appears in the centre.
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.15 },
+        { "signal": "region.banner.luma", "above": 0.45 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill",   "of": "elimination",        "atLeast": 2, "withinMs": 4000, "weight": 2.5, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "triple_kill", "of": "elimination",        "atLeast": 3, "withinMs": 6000, "weight": 4.0, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

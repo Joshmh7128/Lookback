@@ -33,19 +33,27 @@ public sealed class VideoSignalBank
         _values = new float[names.Count];
     }
 
-    /// <summary>The standard set: luma, motion, flash, scene cut and HUD (10 s warm-up).</summary>
-    public static VideoSignalBank CreateDefault(AnalysisFormat format)
+    /// <summary>
+    /// The standard set (luma, motion, flash, scene cut, HUD with a 10 s
+    /// warm-up), followed by any <paramref name="extra"/> signals such as a
+    /// game profile's regions.
+    /// </summary>
+    public static VideoSignalBank CreateDefault(AnalysisFormat format, IEnumerable<IVideoSignal>? extra = null)
     {
         ArgumentNullException.ThrowIfNull(format);
-        return new VideoSignalBank(format,
+        IVideoSignal[] standard =
         [
             new LumaStatsSignal(),
             new MotionSignal(format.FramesPerSecond),
             new FlashSignal(),
             new SceneCutSignal(),
             new HudSignal(format.Width * format.Height, warmupFrames: format.FramesPerSecond * 10),
-        ]);
+        ];
+        return new VideoSignalBank(format, extra is null ? standard : [.. standard, .. extra]);
     }
+
+    /// <summary>The signals in this bank, in output order.</summary>
+    public IReadOnlyList<IVideoSignal> Signals => _signals;
 
     /// <summary>Signal names, in output order.</summary>
     public IReadOnlyList<string> Names { get; }
