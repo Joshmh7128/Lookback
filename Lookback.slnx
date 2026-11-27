@@ -2,11 +2,16 @@
   <Folder Name="/src/">
     <Project Path="src/Lookback.Contracts/Lookback.Contracts.csproj" />
     <Project Path="src/Lookback.Core/Lookback.Core.csproj" />
+    <Project Path="src/Lookback.Media/Lookback.Media.csproj" />
     <Project Path="src/Lookback.Recorder/Lookback.Recorder.csproj" />
+    <Project Path="src/Lookback.Signals/Lookback.Signals.csproj" />
     <Project Path="src/Lookback.Stream/Lookback.Stream.csproj" />
+    <Project Path="src/Lookback.Testbench/Lookback.Testbench.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Lookback.Core.Tests/Lookback.Core.Tests.csproj" />
+    <Project Path="tests/Lookback.Signals.Tests/Lookback.Signals.Tests.csproj" />
     <Project Path="tests/Lookback.Stream.Tests/Lookback.Stream.Tests.csproj" />
+    <Project Path="tests/Lookback.Testbench.Tests/Lookback.Testbench.Tests.csproj" />
   </Folder>
 </Solution>

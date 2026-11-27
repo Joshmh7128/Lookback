@@ -100,6 +100,8 @@ public sealed class InProcessEventBus : IEventBus, IDisposable
 
         public long Dropped => Interlocked.Read(ref _dropped);
 
+        public int Count => _channel.Reader.Count;
+
         public void Offer(Envelope envelope) => _channel.Writer.TryWrite(envelope);
 
         public void Complete() => _channel.Writer.TryComplete();

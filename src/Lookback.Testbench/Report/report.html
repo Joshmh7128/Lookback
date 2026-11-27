@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__ · Lookback timeline</title>
+<style>
+  :root { --bg:#111317; --panel:#1a1d23; --ink:#e7e9ee; --dim:#8b92a0; --line:#2a2f38; --video:#5aa9ff; --audio:#f0a35a; --head:#ff5a5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:24px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  header .meta { color:var(--dim); }
+  main { padding:16px 20px; }
+  #player { display:flex; gap:16px; align-items:flex-start; margin-bottom:12px; }
+  video { width:min(640px, 100%); background:#000; border-radius:6px; }
+  #readout { font-variant-numeric:tabular-nums; color:var(--dim); white-space:pre; min-width:260px; }
+  #lanes { position:relative; }
+  .lane { display:grid; grid-template-columns:170px 1fr; align-items:center; border-top:1px solid var(--line); }
+  .lane .name { padding:0 8px; color:var(--dim); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .lane .name b { font-weight:600; }
+  .lane canvas { width:100%; height:38px; display:block; cursor:crosshair; }
+  .lane.mel canvas { height:96px; }
+  .family-video b { color:var(--video); } .family-audio b { color:var(--audio); }
+  #axis { margin-left:170px; height:20px; position:relative; color:var(--dim); font-size:11px; }
+  #axis span { position:absolute; transform:translateX(-50%); }
+  .note { color:var(--dim); margin-top:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <span class="meta" id="meta"></span>
+</header>
+<main>
+  <div id="player">
+    <video id="video" controls preload="metadata"></video>
+    <div id="readout">Hover the timeline to read values. Click to seek.</div>
+  </div>
+  <div id="axis"></div>
+  <div id="lanes"></div>
+  <p class="note">Each lane is scaled to its own range. Audio lanes show the maximum per 100 ms. The mel lane is a log-mel spectrogram, low frequencies at the bottom.</p>
+</main>
+<script type="application/json" id="timeline">__DATA__</script>
+<script>
+(() => {
+  const data = JSON.parse(document.getElementById('timeline').textContent);
+  const video = document.getElementById('video');
+  const readout = document.getElementById('readout');
+  const lanesEl = document.getElementById('lanes');
+  const duration = Math.max(data.durationSeconds, 0.001);
+  document.getElementById('title').textContent = data.title;
+  document.getElementById('meta').textContent =
+    `${data.sessionId} · ${data.sourceKind} · ${data.retention} · ${duration.toFixed(1)} s · ${data.lanes.length} signals`;
+  if (data.video) { video.src = data.video; } else { video.style.display = 'none'; }
+
+  const lanes = [];
+  const css = getComputedStyle(document.documentElement);
+  const colour = f => css.getPropertyValue(f === 'audio' ? '--audio' : '--video').trim();
+
+  function addLane(label, family, draw, valueAt, cls) {
+    const row = document.createElement('div');
+    row.className = `lane family-${family} ${cls || ''}`;
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.innerHTML = '<b></b>';
+    name.firstChild.textContent = label;
+    name.title = label;
+    const canvas = document.createElement('canvas');
+    row.append(name, canvas);
+    lanesEl.append(row);
+    lanes.push({ canvas, draw, valueAt, label });
+  }
+
+  for (const lane of data.lanes) {
+    const v = lane.values;
+    let min = Infinity, max = -Infinity;
+    for (const x of v) { if (x < min) min = x; if (x > max) max = x; }
+    if (!isFinite(min)) { min = 0; max = 1; }
+    if (max - min < 1e-9) { max = min + 1; }
+    addLane(lane.name, lane.family, (ctx, w, h) => {
+      ctx.strokeStyle = colour(lane.family);
+      ctx.fillStyle = colour(lane.family) + '33';
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      for (let px = 0; px < w; px++) {
+        // Max over the samples under this pixel, so spikes survive downsampling.
+        const a = Math.floor(px / w * duration / lane.step), b = Math.max(a + 1, Math.floor((px + 1) / w * duration / lane.step));
+        let m = -Infinity;
+        for (let i = a; i < b && i < v.length; i++) if (v[i] > m) m = v[i];
+        if (m === -Infinity) m = min;
+        ctx.lineTo(px, h - 2 - (m - min) / (max - min) * (h - 4));
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }, t => { const i = Math.floor(t / lane.step); return i >= 0 && i < v.length ? v[i] : null; });
+  }
+
+  if (data.mel.length) {
+    const bands = data.mel[0].length;
+    let min = Infinity, max = -Infinity;
+    for (const r of data.mel) for (const x of r) { if (x > -1e30) { if (x < min) min = x; if (x > max) max = x; } }
+    addLane('mel spectrogram', 'audio', (ctx, w, h) => {
+      const img = ctx.createImageData(w, h);
+      for (let px = 0; px < w; px++) {
+        const row = data.mel[Math.min(data.mel.length - 1, Math.floor(px / w * duration / data.melBucketSeconds))];
+        for (let py = 0; py < h; py++) {
+          const band = Math.min(bands - 1, Math.floor((h - 1 - py) / h * bands));
+          const n = Math.max(0, Math.min(1, (row[band] - min) / (max - min || 1)));
+          const o = (py * w + px) * 4;
+          img.data[o] = 255 * Math.min(1, n * 1.6); img.data[o + 1] = 255 * n * n; img.data[o + 2] = 90 * (1 - n) + 40; img.data[o + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+    }, () => null, 'mel');
+  }
+
+  function render() {
+    const axis = document.getElementById('axis');
+    axis.innerHTML = '';
+    const ticks = 10;
+    for (let i = 0; i <= ticks; i++) {
+      const s = document.createElement('span');
+      s.style.left = `${i / ticks * 100}%`;
+      s.textContent = `${(duration * i / ticks).toFixed(1)}s`;
+      axis.append(s);
+    }
+    for (const l of lanes) {
+      const r = l.canvas.getBoundingClientRect();
+      l.canvas.width = Math.max(1, Math.floor(r.width));
+      l.canvas.height = Math.max(1, Math.floor(r.height));
+      l.base = null;
+      const ctx = l.canvas.getContext('2d');
+      ctx.clearRect(0, 0, l.canvas.width, l.canvas.height);
+      l.draw(ctx, l.canvas.width, l.canvas.height);
+      l.base = ctx.getImageData(0, 0, l.canvas.width, l.canvas.height);
+    }
+    drawHead(video.currentTime || 0);
+  }
+
+  function drawHead(t) {
+    for (const l of lanes) {
+      if (!l.base) continue;
+      const ctx = l.canvas.getContext('2d');
+      ctx.putImageData(l.base, 0, 0);
+      const x = t / duration * l.canvas.width;
+      ctx.fillStyle = css.getPropertyValue('--head');
+      ctx.fillRect(Math.round(x), 0, 1, l.canvas.height);
+    }
+  }
+
+  const timeAt = (e, c) => Math.max(0, Math.min(duration, (e.clientX - c.getBoundingClientRect().left) / c.clientWidth * duration));
+  lanesEl.addEventListener('mousemove', e => {
+    if (e.target.tagName !== 'CANVAS') return;
+    const t = timeAt(e, e.target);
+    readout.textContent = `t = ${t.toFixed(2)} s\n` + lanes
+      .map(l => [l.label, l.valueAt(t)]).filter(([, v]) => v !== null)
+      .map(([n, v]) => `${n.padEnd(22)} ${v.toFixed(4)}`).join('\n');
+  });
+  lanesEl.addEventListener('click', e => {
+    if (e.target.tagName !== 'CANVAS') return;
+    const t = timeAt(e, e.target);
+    if (data.video) video.currentTime = t;
+    drawHead(t);
+  });
+  video.addEventListener('timeupdate', () => drawHead(video.currentTime));
+  addEventListener('resize', render);
+  render();
+})();
+</script>
+</body>
+</html>

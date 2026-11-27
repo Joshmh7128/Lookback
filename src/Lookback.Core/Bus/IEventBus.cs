@@ -26,6 +26,9 @@ public interface IEventSubscription : IDisposable
     /// <summary>Events dropped because this subscriber fell behind.</summary>
     long Dropped { get; }
 
+    /// <summary>Events queued and not yet read.</summary>
+    int Count { get; }
+
     IAsyncEnumerable<Envelope> ReadAllAsync(CancellationToken cancellationToken = default);
 
     bool TryRead(out Envelope? envelope);

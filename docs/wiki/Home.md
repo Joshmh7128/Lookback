@@ -21,14 +21,17 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Core Library](Core-Library) | Clock, lock-free ring, event bus, envelope factory |
 | [Stream Library](Stream-Library) | Framing, named pipes, WebSocket bridge, session log |
 | [Recorder Host](Recorder-Host) | The service executable and its startup handshake |
+| [Media Library](Media-Library) | Analysis format, frames and audio blocks, the ffmpeg footage decoder |
+| [Signals Library](Signals-Library) | Every video and audio signal, how it is computed and why |
+| [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
 | [Testing](Testing) | What each test proves |
 
 ## Status
 
 | Milestone | Scope | State |
 |---|---|---|
-| M0 | Schema, bus, pipes, WebSocket bridge, session log, recorder host, CI | In review |
-| M1 | FileSource, GPU downscale, video and audio signals, testbench | Next |
+| M0 | Schema, bus, pipes, WebSocket bridge, session log, recorder host, CI | Done |
+| M1 | FileSource, video and audio signals, testbench and timeline viewer | In review (GPU downscale moves to M3 with live capture) |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | Planned |
 | M4 | Training, ONNX scoring, calibration | Planned |

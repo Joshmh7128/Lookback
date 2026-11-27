@@ -9,19 +9,22 @@ an Electron shell. See [docs/architecture.md](docs/architecture.md).
 
 ## Status
 
-**M0: foundation.** The event schema, in-process bus, named-pipe transport,
-WebSocket bridge for the shell, append-only session log with retention
-enforcement, and the recorder host. Capture, signals and clipping land in
-later milestones.
+- **M0 (done):** event schema, in-process bus, named pipes, WebSocket
+  bridge, session log with retention enforcement, recorder host.
+- **M1:** footage decoding, game-agnostic video and audio signals, and the
+  testbench with an interactive timeline viewer.
+
+Live capture, the clipper and the Electron shell come in later milestones.
 
 ## Build and test
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK, and ffmpeg on PATH for footage.
 
 ```
 dotnet build Lookback.slnx
 dotnet test --solution Lookback.slnx
 dotnet run --project src/Lookback.Recorder
+dotnet run --project src/Lookback.Testbench -- analyze my-clip.mp4 --out out
 ```
 
 The recorder prints one `LOOKBACK_READY {"pipe":…,"ws":…,"token":…}` line on
@@ -34,7 +37,10 @@ proto/                    event schema (protobuf)
 src/Lookback.Contracts/   generated schema, topics, retention rules
 src/Lookback.Core/        clock, lock-free ring, event bus
 src/Lookback.Stream/      pipes, WebSocket bridge, session log
+src/Lookback.Media/       analysis format, ffmpeg FileSource
+src/Lookback.Signals/     video and audio signals
 src/Lookback.Recorder/    service host
+src/Lookback.Testbench/   footage CLI and timeline viewer
 tests/                    xUnit v3 tests
 docs/                     architecture
 ```
