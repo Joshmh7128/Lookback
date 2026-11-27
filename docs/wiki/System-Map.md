@@ -49,8 +49,9 @@ region and threshold numbers you confirm, through
 `RetentionRules.ValidateDerived`. The planned `RatingStore` will write ratings
 only for sessions that may persist, so official-player footage never becomes
 training data. Ratings are 1–5 stars on content (is this moment a highlight);
-video quality is measured automatically, not rated. Today ratings live only in
-the shell's memory.
+video quality is measured automatically, not rated. The shell sends each
+rating to the recorder and shows it as stored once the recorder acks it; a
+refused or unanswered rating stays in the shell's memory.
 
 ## Status by component
 
@@ -67,6 +68,7 @@ the shell's memory.
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
 | Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17) |
+| Shell on the recorder's commands: supervision and parent-exit, stored ratings, Save clips, storage warnings | `app/` | Done (#26) |
 | WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback untested (needs build 20348+) |
 | Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
 | [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |

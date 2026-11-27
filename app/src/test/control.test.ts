@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeMessage, parseAck, rateMessage, validFootageRequest } from "../main/control";
+import { analyzeMessage, parseAck, parseStorage, rateMessage, refusal, saveMessage, validFootageRequest } from "../main/control";
 import { StreamClient } from "../main/stream";
 import { socketFactory } from "./fakes";
 
@@ -17,9 +17,29 @@ test("rate and analyze messages match the agreed /events contract", () => {
   });
 });
 
+test("save messages and save acks", () => {
+  assert.deepEqual(JSON.parse(saveMessage("s1", "sess", "c9")), { type: "save", id: "s1", sessionId: "sess", candidateId: "c9" });
+  const ok = parseAck({ type: "ack", id: "s1", ok: true, path: "D:\\Lookback\\clips\\sess-001.mp4" });
+  assert.equal(ok?.path, "D:\\Lookback\\clips\\sess-001.mp4");
+  const full = parseAck({ type: "ack", id: "s2", ok: false, error: "clips-full", message: "Saved clips are at the 10 GB budget." });
+  assert.equal(refusal(full!), "Saved clips are at the 10 GB budget.");
+});
+
+test("storage status: protobuf JSON with uint64 strings and defaults left out", () => {
+  const s = parseStorage({ sessionId: "recorder", topic: "recorder.storage", storageStatus: { clipsBytes: "9663676416", clipsBudgetBytes: "10737418240", footageBudgetBytes: "21474836480", clipsNearLimit: true, volumeFreeBytes: "500000000000" } }, 123);
+  assert.deepEqual(s, { clipsBytes: 9663676416, clipsBudgetBytes: 10737418240, footageBytes: 0, footageBudgetBytes: 21474836480, clipsNearLimit: true, clipsFull: false, volumeFreeBytes: 500000000000, at: 123 });
+  assert.equal(parseStorage({ sessionId: "s", topic: "session", sessionStarted: {} }), null);
+  assert.equal(parseStorage(null), null);
+  assert.equal(parseStorage({ storageStatus: { clipsBytes: "-5", clipsFull: "yes" } })?.clipsBytes, 0);
+});
+
 test("acks are recognised; envelopes are not", () => {
-  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true }), { id: "r1", ok: true, error: null });
-  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: false, error: "ephemeral" }), { id: "r1", ok: false, error: "ephemeral" });
+  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true }), { id: "r1", ok: true, error: null, message: null, stored: false, sessionId: null, path: null });
+  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true, stored: true }), { id: "r1", ok: true, error: null, message: null, stored: true, sessionId: null, path: null });
+  assert.deepEqual(parseAck({ type: "ack", id: "a1", ok: true, sessionId: "20261127-x" }), { id: "a1", ok: true, error: null, message: null, stored: false, sessionId: "20261127-x", path: null });
+  const refused = parseAck({ type: "ack", id: "r1", ok: false, error: "ephemeral", message: "This session is ephemeral." });
+  assert.deepEqual(refused, { id: "r1", ok: false, error: "ephemeral", message: "This session is ephemeral.", stored: false, sessionId: null, path: null });
+  assert.equal(refusal(refused!), "This session is ephemeral.");
   for (const no of [null, {}, { type: "ack", id: 1, ok: true }, { type: "ack", id: "x" }, { sessionId: "s", topic: "session" }]) assert.equal(parseAck(no), null);
 });
 
@@ -44,7 +64,7 @@ test("a request resolves with the matching ack and acks are not envelopes", asyn
   assert.deepEqual(JSON.parse(s.sent[0] as string), { type: "rate", id: "r1", sessionId: "s1", candidateId: "c1", stars: 5 });
   s.receive(JSON.stringify({ type: "ack", id: "other", ok: true }));
   s.receive(JSON.stringify({ type: "ack", id: "r1", ok: false, error: "ephemeral" }));
-  assert.deepEqual(await pending, { id: "r1", ok: false, error: "ephemeral" });
+  assert.deepEqual(await pending, { id: "r1", ok: false, error: "ephemeral", message: null, stored: false, sessionId: null, path: null });
   assert.deepEqual(envelopes, []);
   assert.equal(client.state.received, 0);
 });

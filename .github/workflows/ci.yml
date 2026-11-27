@@ -123,3 +123,17 @@ jobs:
           $env:LOOKBACK_USER_DATA = Join-Path $env:RUNNER_TEMP "lookback-smoke-viewer"
           npx electron . --smoke-viewer | Tee-Object -Variable out
           if ($LASTEXITCODE -ne 0 -or -not ($out -match "LOOKBACK_SMOKE ok")) { exit 1 }
+      - name: Smoke (a killed recorder is restarted on a new handshake)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:LOOKBACK_USER_DATA = Join-Path $env:RUNNER_TEMP "lookback-smoke-supervise"
+          npx electron . --smoke --smoke-supervise | Tee-Object -Variable out
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match "LOOKBACK_SMOKE ok")) { exit 1 }
+      - name: Smoke (storage warnings near and at the clips budget)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:LOOKBACK_USER_DATA = Join-Path $env:RUNNER_TEMP "lookback-smoke-storage"
+          npx electron . --smoke --smoke-storage | Tee-Object -Variable out
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match "LOOKBACK_SMOKE ok")) { exit 1 }

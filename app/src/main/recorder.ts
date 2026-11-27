@@ -31,6 +31,8 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
   private ready: ReadyInfo | null = null;
   private profilerUrl: string | null = null;
   private readonly log: string[] = [];
+  /** The child's last stderr lines, kept for the crash report. */
+  private stderrTail: string[] = [];
   private readyTimer: NodeJS.Timeout | null = null;
   private stopping = false;
   private current: RecorderState = idle("stopped", null);
@@ -69,6 +71,21 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
     return [...this.log];
   }
 
+  /** The last stderr lines of the current or last run (for a crash report). */
+  get stderrLines(): string[] {
+    return [...this.stderrTail];
+  }
+
+  /** The reason from the recorder's last `lookback: fatal: …` line, if it wrote one. */
+  get fatal(): string | null {
+    for (let i = this.stderrTail.length - 1; i >= 0; i--) {
+      const m = FATAL.exec(this.stderrTail[i] ?? "");
+      if (m) return m[1] ?? null;
+    }
+
+    return null;
+  }
+
   start(command: Command): void {
     if (this.child) {
       return;
@@ -77,6 +94,7 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
     this.ready = null;
     this.profilerUrl = null;
     this.stopping = false;
+    this.stderrTail = [];
     this.set({ ...idle("starting", null), command: command.display, startedAt: Date.now() });
     this.append(`starting ${command.display}`);
 
@@ -98,14 +116,20 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
     this.set({ ...this.current, pid: child.pid ?? null });
 
     const out = new LineSplitter((line) => this.onStdout(line));
-    const err = new LineSplitter((line) => this.append(line));
+    const err = new LineSplitter((raw) => {
+      // Windows console output ends lines with CRLF.
+      const line = raw.replace(/\r$/, "");
+      this.append(line);
+      this.stderrTail.push(line.length > 500 ? `${line.slice(0, 500)}…` : line);
+      if (this.stderrTail.length > STDERR_TAIL) this.stderrTail.shift();
+    });
     child.stdout?.setEncoding("utf8").on("data", (chunk: string) => out.push(chunk));
     child.stderr?.setEncoding("utf8").on("data", (chunk: string) => err.push(chunk));
 
     this.readyTimer = setTimeout(() => {
       if (this.current.status === "starting") {
         this.append(`no LOOKBACK_READY line after ${Math.round(this.readyTimeoutMs / 1000)} s; stopping`);
-        this.fail("the recorder did not report ready in time");
+        this.fail("the recorder did not report ready in time", true);
       }
     }, this.readyTimeoutMs);
 
@@ -131,7 +155,8 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
       if (this.stopping) {
         this.set({ ...idle("stopped", null), command: this.current.command });
       } else if (this.current.status !== "failed") {
-        this.set({ ...idle("exited", `the recorder exited unexpectedly (${how})`), command: this.current.command });
+        const fatal = this.fatal;
+        this.set({ ...idle("exited", `the recorder exited unexpectedly (${how})${fatal ? `: ${fatal}` : ""}`), command: this.current.command, restartable: true });
       } else {
         this.set({ ...this.current, pid: null });
       }
@@ -205,8 +230,8 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
     }
   }
 
-  private fail(detail: string): void {
-    this.set({ ...this.current, status: "failed", detail, endpoint: null, profiler: false, ingest: false, calibrate: false });
+  private fail(detail: string, restartable = false): void {
+    this.set({ ...this.current, status: "failed", detail, endpoint: null, profiler: false, ingest: false, calibrate: false, restartable });
     this.ready = null;
     this.profilerUrl = null;
     this.child?.kill("SIGKILL");
@@ -236,8 +261,12 @@ export class RecorderHost extends EventEmitter<RecorderHostEvents> {
 }
 
 function idle(status: RecorderState["status"], detail: string | null): RecorderState {
-  return { status, command: null, pid: null, pipe: null, endpoint: null, profiler: false, ingest: false, calibrate: false, detail, startedAt: null };
+  return { status, command: null, pid: null, pipe: null, endpoint: null, profiler: false, ingest: false, calibrate: false, detail, startedAt: null, restartable: false };
 }
+
+const STDERR_TAIL = 20;
+/** What the recorder's watchdogs write to stderr just before they end the process on purpose. */
+const FATAL = /^\s*lookback: fatal: (.+)$/;
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);

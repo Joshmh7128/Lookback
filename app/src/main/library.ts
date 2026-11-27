@@ -43,6 +43,11 @@ export class Library {
       return false;
     }
 
+    // Recorder-wide status (storage) is not about a session; the shell reads it elsewhere.
+    if (isObject(e["storageStatus"])) {
+      return false;
+    }
+
     const qpc = num(e["qpc"]);
     if (isObject(e["sessionStarted"])) {
       this.started(sessionId, qpc, e["sessionStarted"]);
@@ -138,6 +143,8 @@ export class Library {
       }
 
       c.savedPath = path;
+      c.saving = false;
+      c.saveNote = null;
       return this.changed();
     }
 
@@ -163,6 +170,42 @@ export class Library {
     }
 
     c.ratingStored = true;
+    c.ratingNote = null;
+    return this.changed();
+  }
+
+  /** The recorder refused to store this rating; keeps it in memory with the reason. */
+  markRefused(sessionId: string, candidateId: string, rating: Rating, note: string): boolean {
+    const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
+    if (!c || c.rating !== rating) {
+      return false;
+    }
+
+    c.ratingStored = false;
+    c.ratingNote = note;
+    return this.changed();
+  }
+
+  /** A save request is out (true), or came back (false, with the recorder's path or reason). */
+  setSaving(sessionId: string, candidateId: string, saving: boolean, result: { path?: string | null; note?: string | null } = {}): boolean {
+    const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
+    if (!c) {
+      return false;
+    }
+
+    c.saving = saving;
+    if (saving) {
+      c.saveNote = null;
+    }
+
+    if (result.path) {
+      c.savedPath = result.path;
+    }
+
+    if (result.note !== undefined) {
+      c.saveNote = result.note;
+    }
+
     return this.changed();
   }
 
@@ -202,6 +245,7 @@ export class Library {
 
     c.rating = rating;
     c.ratingStored = stored;
+    c.ratingNote = null;
   }
 
   /** Drops a session the user no longer wants listed (memory only). */
@@ -300,6 +344,9 @@ export class Library {
       savedPath: existing?.savedPath ?? null,
       rating: this.ratings.get(ratingKey(s.view.id, id)) ?? 0,
       ratingStored: existing?.ratingStored ?? false,
+      ratingNote: existing?.ratingNote ?? null,
+      saving: existing?.saving ?? false,
+      saveNote: existing?.saveNote ?? null,
     };
     s.candidates.set(id, view);
     if (s.candidates.size > MAX_CANDIDATES) {

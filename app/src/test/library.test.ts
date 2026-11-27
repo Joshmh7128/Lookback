@@ -104,6 +104,47 @@ test("an acked rating is marked stored; a newer rating supersedes the ack", () =
   assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.ratingStored, false);
 });
 
+test("a refused rating keeps the recorder's reason until the next rating", () => {
+  const lib = new Library();
+  lib.apply(started("s1", 0));
+  lib.apply(candidate("s1", "c1", 100));
+  lib.rate("s1", "c1", 4);
+  assert.equal(lib.markRefused("s1", "c1", 4, "This session is ephemeral."), true);
+  let c = lib.snapshot().sessions[0]!.candidates[0]!;
+  assert.equal(c.ratingNote, "This session is ephemeral.");
+  assert.equal(c.ratingStored, false);
+  assert.equal(c.rating, 4);
+  assert.equal(lib.markRefused("s1", "c1", 2, "stale"), false);
+  lib.rate("s1", "c1", 5);
+  c = lib.snapshot().sessions[0]!.candidates[0]!;
+  assert.equal(c.ratingNote, null);
+});
+
+test("storage envelopes are not sessions", () => {
+  const lib = new Library();
+  assert.equal(lib.apply({ qpc: "1", sessionId: "recorder", topic: "recorder.storage", storageStatus: { clipsBytes: "1" } }), false);
+  assert.equal(lib.snapshot().sessions.length, 0);
+});
+
+test("a save in flight, its path, and a refusal with the recorder's reason", () => {
+  const lib = new Library();
+  lib.apply(started("live", 0, { sourceKind: "SOURCE_KIND_LIVE_GAME", title: "Overwatch" }));
+  lib.apply(candidate("live", "c1", 100));
+  assert.equal(lib.setSaving("live", "c1", true), true);
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.saving, true);
+  lib.setSaving("live", "c1", false, { note: "Saved clips are at the 10 GB budget." });
+  let c = lib.snapshot().sessions[0]!.candidates[0]!;
+  assert.equal(c.saving, false);
+  assert.equal(c.saveNote, "Saved clips are at the 10 GB budget.");
+  lib.setSaving("live", "c1", true);
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.saveNote, null);
+  lib.setSaving("live", "c1", false, { path: "D:\\clips\\live-001.mp4", note: null });
+  c = lib.snapshot().sessions[0]!.candidates[0]!;
+  assert.equal(c.savedPath, "D:\\clips\\live-001.mp4");
+  assert.equal(lib.snapshot().sessions[0]!.previewable, true, "a saved clip can be previewed");
+  assert.equal(lib.setSaving("live", "nope", true), false);
+});
+
 test("a ClipRating from the recorder (field 20, clip.rating) sets stars as stored", () => {
   const lib = new Library();
   lib.apply(started("s1", 0));

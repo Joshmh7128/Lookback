@@ -82,6 +82,28 @@ or in the state the renderer sees. States: `stopped → starting → ready`, or
 time). Stop is a terminate, then a kill after 3 s. Quitting the app stops the
 recorder first.
 
+Arguments the shell adds: `--Recorder:ParentProcessId=<shell pid>`, so the
+recorder exits when the shell does however the shell ends (closed, crashed or
+killed); `--Recorder:ProfilesDirectory` and `--Recorder:DatasetsDirectory`
+for the checkout's `profiles/` and `datasets/` (or the folders in
+Settings), so calibration can save and ratings land where `ml/` trains. With
+no datasets folder the recorder uses its default,
+`%LOCALAPPDATA%\Lookback\datasets`, which Settings shows. A recorder that
+does not know an option ignores it.
+
+### Supervision
+
+`RecorderSupervisor` (`supervisor.ts`) restarts the recorder when it exits
+unexpectedly: a crash, or a watchdog ending it on purpose after writing
+`lookback: fatal: <reason>` to stderr. Restarts wait 1 s, 2 s, then 5 s;
+after 5 restarts within a minute the shell stops trying. A banner shows what
+happened (the fatal reason when there is one), the countdown, and on
+**Details** the recorder's last stderr lines; once it has given up, **Start
+the recorder** tries again and resets the count. Each start re-reads
+`LOOKBACK_READY` (the port and token change) and the stream, viewer and
+footage jobs follow the new handshake. A stop the user asks for, or a
+recorder that cannot be found or spawned, is never restarted.
+
 ## Library, timeline and ratings
 
 `StreamClient` (`stream.ts`) holds the read-only `/events` socket, with
@@ -130,6 +152,29 @@ shell itself opened, or that the recorder reported as saved clips, are
 registered, under random ids; nothing is copied or transcoded, and the
 renderer's CSP allows media from that scheme only.
 
+### Live recordings, saving clips and storage
+
+When the recorder records a game it detects, its LIVE_GAME session (titled
+with the game) lists candidates from the clipper like footage does. A live
+recording has no file the shell may read, so its candidates are previewed
+from their **saved clip**: press **Save** on a candidate (or <kbd>S</kbd>).
+The shell sends `save` and waits up to 30 s (the recorder cuts the clip from
+its recording); the ack's `path` and the `clip.saved` envelope fill in the
+clip, the row shows its file name and **Show file**, and the preview plays it.
+A refusal (`clips-full`, `ephemeral`, or `unsupported` when the moment is no
+longer recorded) shows the recorder's message under the button. Footage and
+official-player sessions have no Save button.
+
+The recorder reports its storage in `recorder.storage` (StorageStatus,
+Envelope field 21) every 10 s and after each save: saved clips and recordings
+against their budgets (10 GB and 20 GB by default) and the drive's free
+space. These envelopes are not sessions. When clips reach the warning
+threshold (90%), a banner says "Saved clips are at X of 10 GB"; when they are
+full, a red banner and a blocking notice say so, and Save is disabled until
+there is room. **Open clips folder** opens the folder of a clip the recorder
+saved. Settings shows both budgets; they are the recorder's `ClipsBudgetGB` and
+`FootageBudgetGB` options.
+
 **Retention.** The shell writes no session data. The library and ratings are
 in memory; each rating is offered to the recorder (`rate`, below) and marked
 **stored** only when the recorder acknowledges it. Without an ack within 2 s
@@ -145,12 +190,16 @@ token and Origin checks:
 |---|---|
 | `{"type":"rate","id","sessionId","candidateId","stars":0..5}` | Rate a candidate; 0 clears |
 | `{"type":"analyze","id","path","profile"?,"retention":"owned\|permissioned\|open-license","permissionRef"?}` | Analyse a footage file; `permissionRef` required unless owned |
-| `{"type":"save","id","sessionId","candidateId"}` | Cut the clip: refused as `unsupported` until the recorder hosts live capture |
+| `{"type":"save","id","sessionId","candidateId"}` | Cut a live recording's candidate into a clip under the recorder's clips budget |
 
 The recorder answers the sending client only with
 `{"type":"ack","id","ok":true}` or
-`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported","message"}`.
-A stored rating's ack carries `"stored":true`; an `analyze` ack carries the new `sessionId`.
+`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported|clips-full","message"}`.
+A stored rating's ack carries `"stored":true`; an `analyze` ack carries the new
+`sessionId`; a `save` ack carries the clip's `path`, and a `clip.saved`
+envelope follows. `save` is refused as `clips-full` at the clips budget,
+`ephemeral` for official-player sessions, and `unsupported` for footage files
+or a moment that is no longer recorded.
 On success it publishes `ClipRating` (Envelope field 20, topic `clip.rating`:
 `candidate_id` 1, `session_id` 2, `stars` 3; `source_id` "shell") to every
 client, stored through the M4 `RatingStore` and gated by
@@ -159,12 +208,16 @@ get `ok:false "ephemeral"` and nothing is written. For `analyze` it runs the
 analysis and publishes an ordinary FILE session (path in the title; events,
 candidates, QA and the end, but no signal frames).
 
-Shell behaviour today: every `rate` is sent; no ack in 2 s or `ok:false`
-keeps the rating in memory. `analyze` with no ack (or `bad-request`) falls
-back to the testbench; any other refusal is shown and not worked around.
-Incoming `clip.rating` envelopes set the stars as stored. A recorder that
-predates the commands ignores inbound messages, so all of this degrades to
-the in-memory path.
+What the shell does with them:
+
+| Command | Ack `ok` | Ack refused | No ack (a recorder before the commands) |
+|---|---|---|---|
+| `rate` (2 s) | "stored" when `stored:true` | stars kept in memory, "not stored" with the `message` | kept in memory |
+| `analyze` (2 s) | session linked by the ack's `sessionId` (and by title, the exact path) | the job fails with the `message`; never worked around | `lookback-testbench live --pipe` instead |
+| `save` (30 s) | the clip's `path` fills in the row and the preview | the `message` under Save | "the recorder did not answer" |
+
+Incoming `clip.rating` envelopes set the stars as stored, and `clip.saved`
+envelopes fill in saved clips, whichever client asked.
 
 ## The official-player viewer
 
@@ -218,9 +271,10 @@ sequenceDiagram
 
 Stored in `userData/settings.json` (paths and recorder options only; each
 value is sanitized on load, so a hand-edited file cannot stop the app). Recorder
-path, testbench path, datasets folder, profiles folder, pipe name, WebSocket
-port, serve the profiler page, start the recorder on launch. Changes to
-recorder options apply on its next start.
+path, testbench path, datasets folder (also where the recorder stores
+ratings), profiles folder, pipe name, WebSocket port, serve the profiler page,
+start the recorder on launch. The page shows where ratings are stored. Changes
+to recorder options apply on its next start.
 
 ## Tests and smoke runs
 
@@ -244,6 +298,9 @@ npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=over
 | `footage` | `analyze` first, testbench fallback with the right arguments, permission references, refusals not worked around, linking sessions by title |
 | `media` | Byte ranges, only registered files served under opaque ids, 206/416/404/405 |
 | `stream` | Envelope parsing, reconnect with backoff, stale sockets ignored |
+| `control` (save, storage) | `save` messages and acks with `path`, `clips-full` refusals, StorageStatus parsing (uint64 strings, defaults left out) |
+| `supervisor` | Restart after 1/2/5 s, give up after 5 in a minute, older restarts expire, user stops and unfixable failures left alone, a user action cancels a pending restart |
+| `recorder-control` | Against a recorder with control commands (skipped otherwise): an ephemeral rating refused with a message, `bad-request` and `unsupported`, `analyze` refusing a missing file, parent-exit; with `LOOKBACK_TEST_FOOTAGE`, analyze → candidate → a stored, broadcast rating in the datasets folder the shell passed |
 | `files` | Settings sanitizing and atomic save, static path escapes, recorder lookup and args, profile ids, the viewer server's Host check and CSP |
 | `recorder-integration` | Against the real built recorder: frames over `/ingest` become an ephemeral official-player session on `/events`, the video id never comes back, stop ends it, a wrong token is refused |
 
@@ -253,16 +310,28 @@ exits 0 or 1. `--smoke-candidates=N` also waits for N clip candidates (fed
 with `lookback-testbench live … --pipe <name>`), then opens the Library tab,
 presses <kbd>5</kbd> and checks the rating. `--smoke-footage=<file>` does the
 whole rating flow: opens the file as "Open footage" would, waits for a
-candidate, rates it and checks that the preview player loaded the file. Set
+candidate, rates it and checks that the preview player loaded the file (and
+reports whether the recorder stored the rating). `--smoke-supervise` kills
+the recorder once it is up and passes when the supervisor has it ready again
+on a new handshake. `--smoke-storage` feeds synthetic storage reports (near
+the clips budget, then full) and checks the banner, the blocking notice and
+the Settings line. `--smoke-live` lets the recorder record the repo's stand-in
+game (`lookback-testwindow.exe`, allowed through a scratch detection list),
+waits for its LIVE_GAME session, adds a candidate to the shell's library only
+and presses Save in the window; the recorder does not know that candidate and
+refuses it, and the run passes when the refusal shows under the button (a
+real save was verified in the recorder's own CaptureServiceTests). Every smoke
+run points the recorder's ratings and recordings at a folder in its userData,
+never the checkout or the user's store. Set
 `LOOKBACK_USER_DATA` to keep a run's userData in a scratch folder. CI runs the
 unit tests on Linux and Windows, and on Windows also builds the recorder,
-runs the integration tests and both smoke runs.
+runs the integration tests and the startup, viewer, supervise and storage
+smoke runs (the footage and live runs need ffmpeg footage and a capturable
+desktop, so they are run by hand).
 
 ## Limits and next steps
 
 - Ratings and the library are in memory until the recorder implements the
   agreed commands; footage analysis goes through the testbench until then.
-- If the shell is killed (not quit), the recorder keeps running; a
-  parent-exit watch in the recorder would close that gap.
 - Video only in calibration (see [Official-Player Calibration](Official-Player-Calibration#limits)).
 - No packaging yet: `resources/recorder` is looked up, but no installer builds it.

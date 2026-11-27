@@ -49,9 +49,10 @@ function setup(ack: Ack | null, options: { testbench?: boolean; pipe?: string | 
 }
 
 const FILE = "D:\\videos\\my match.mp4";
+const ack = (ok: boolean, extra: Partial<Ack> = {}): Ack => ({ id: "", ok, error: null, message: null, stored: false, sessionId: null, path: null, ...extra });
 
 test("the recorder's analyze command is tried first, and its session is linked by title", async () => {
-  const t = setup({ id: "", ok: true, error: null });
+  const t = setup(ack(true));
   const job = await t.manager.open(FILE, { profile: "cs2", retention: "owned", permissionRef: "" });
   assert.equal(job.via, "recorder");
   assert.equal(job.status, "analysing");
@@ -84,8 +85,19 @@ test("without an ack the shell falls back to lookback-testbench live into the re
   assert.equal(t.manager.list[0]!.status, "done");
 });
 
+test("an analyze ack naming the session links it as soon as the session appears", async () => {
+  const t = setup(ack(true, { sessionId: "rec-1" }));
+  const job = await t.manager.open(FILE, { profile: "", retention: "owned", permissionRef: "" });
+  assert.equal(job.sessionId, "rec-1");
+  assert.deepEqual(t.linked, []); // not in the library yet
+  t.sessions.push(session("rec-1", FILE));
+  t.manager.link();
+  assert.deepEqual(t.linked, ["rec-1"]);
+  assert.equal(t.manager.pathFor("rec-1"), FILE);
+});
+
 test("permissioned footage passes its reference; a failing run reports why", async () => {
-  const t = setup({ id: "", ok: false, error: "bad-request" });
+  const t = setup(null);
   await t.manager.open(FILE, { profile: "overwatch", retention: "permissioned", permissionRef: "licence #12" });
   const args = t.spawned[0]!.args;
   assert.deepEqual(args.slice(-4), ["--retention", "permissioned", "--permission-ref", "licence #12"]);
@@ -97,11 +109,14 @@ test("permissioned footage passes its reference; a failing run reports why", asy
   assert.match(job.detail ?? "", /RetentionViolation/);
 });
 
-test("a refusal the recorder understood is not worked around", async () => {
-  const t = setup({ id: "", ok: false, error: "ephemeral" });
+test("a refusal from the recorder is shown with its message and not worked around", async () => {
+  const t = setup(ack(false, { error: "bad-request", message: "analyze needs \"path\", an absolute path to a video file." }));
   const job = await t.manager.open(FILE, { profile: "", retention: "owned", permissionRef: "" });
   assert.equal(job.status, "failed");
+  assert.equal(job.detail, 'analyze needs "path", an absolute path to a video file.');
   assert.equal(t.spawned.length, 0);
+  const bare = setup(ack(false, { error: "unsupported" }));
+  assert.equal((await bare.manager.open(FILE, { profile: "", retention: "owned", permissionRef: "" })).detail, "refused (unsupported)");
 });
 
 test("no recorder or no testbench fails clearly", async () => {

@@ -76,21 +76,44 @@ function basename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+export interface RecorderExtras {
+  /** The checkout's profiles folder: turns on the calibration panel's Save. */
+  profilesDir?: string | null;
+  /** Where ratings go (`<dir>/<game>/ratings.jsonl`); unset, the recorder uses %LOCALAPPDATA%/Lookback/datasets. */
+  datasetsDir?: string | null;
+  /** The shell's pid: the recorder exits when the shell does, however it ends. */
+  parentPid?: number | null;
+}
+
 /**
- * Recorder arguments for the chosen settings. `profilesDir` (when known)
- * turns on the calibration panel's Save. The token is never an argument.
+ * Recorder arguments for the chosen settings. The token is never an
+ * argument. Options an older recorder does not know are ignored by its
+ * configuration binder.
  */
-export function recorderArgs(settings: Settings, profilesDir: string | null = null): string[] {
+export function recorderArgs(settings: Settings, extras: RecorderExtras = {}): string[] {
   const args = [`--Recorder:PipeName=${settings.pipeName}`, `--Recorder:WebSocketPort=${settings.webSocketPort}`];
   if (settings.profilerPage) {
     args.push("--Recorder:Profiler=true");
   }
 
-  if (profilesDir) {
-    args.push(`--Recorder:ProfilesDirectory=${profilesDir}`);
+  if (extras.profilesDir) {
+    args.push(`--Recorder:ProfilesDirectory=${extras.profilesDir}`);
+  }
+
+  if (extras.datasetsDir) {
+    args.push(`--Recorder:DatasetsDirectory=${extras.datasetsDir}`);
+  }
+
+  if (extras.parentPid && Number.isInteger(extras.parentPid) && extras.parentPid > 0) {
+    args.push(`--Recorder:ParentProcessId=${extras.parentPid}`);
   }
 
   return args;
+}
+
+/** The recorder's own default ratings folder, for the Settings page when no datasets folder is passed. */
+export function defaultRatingsFolder(env: NodeJS.ProcessEnv): string {
+  return join(env["LOCALAPPDATA"] ?? join(env["USERPROFILE"] ?? "~", "AppData", "Local"), "Lookback", "datasets");
 }
 
 /** The profiles folder: the one in settings, else the repository's, else none. */

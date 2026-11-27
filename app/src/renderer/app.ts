@@ -2,7 +2,7 @@
 // recorder's profiler page, the dataset browser and settings. Everything
 // comes from the main process through `window.lookback`; this page opens no
 // sockets and stores nothing.
-import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StreamState, TimelineMark } from "../shared/api";
+import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StorageState, StreamState, SupervisionState, TimelineMark } from "../shared/api";
 
 declare global {
   interface Window {
@@ -203,7 +203,9 @@ function stars(c: CandidateView, s: LibrarySessionSnapshot, big = false): HTMLDi
       e.stopPropagation();
       rate(s.id, c.id, 0);
     });
-    box.append(clear, el("span", { class: "stored", title: c.ratingStored ? "The recorder stored this rating" : "Kept in the shell's memory only" }, c.ratingStored ? "stored" : "in memory"));
+    const label = c.ratingStored ? "stored" : c.ratingNote ? "not stored" : "in memory";
+    const tip = c.ratingStored ? "The recorder stored this rating" : (c.ratingNote ?? "Kept in the shell's memory only");
+    box.append(clear, el("span", { class: `stored${c.ratingNote ? " refused" : ""}`, title: tip }, label));
   }
 
   return box;
@@ -254,15 +256,7 @@ function renderLibrary(): void {
 }
 
 function candidateRow(s: LibrarySessionSnapshot, c: CandidateView): HTMLTableRowElement {
-  let clip: Node = el("span", { class: "muted" }, "—");
-  if (c.savedPath) {
-    const b = el("button", { title: c.savedPath }, "Show file");
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      void api.revealClip(c.savedPath ?? "");
-    });
-    clip = b;
-  }
+  const clip = clipCell(s, c);
 
   const qa = c.qa
     ? el("span", { class: c.qa.passed ? "qa-pass" : "qa-fail", title: c.qa.checks.map((k) => `${k.passed ? "✓" : "✗"} ${k.name} ${k.value.toFixed(2)} ${k.detail}`).join("\n") }, c.qa.passed ? "pass" : "fail")
@@ -280,6 +274,35 @@ function candidateRow(s: LibrarySessionSnapshot, c: CandidateView): HTMLTableRow
   );
   row.addEventListener("click", () => selectCandidate(c.id));
   return row;
+}
+
+/** Saved clip: where it is. Live session: a Save button (or why saving failed). Otherwise nothing. */
+function clipCell(s: LibrarySessionSnapshot, c: CandidateView): HTMLElement {
+  if (c.savedPath) {
+    const b = el("button", { title: c.savedPath }, "Show file");
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void api.revealClip(c.savedPath ?? "");
+    });
+    return el("div", {}, b, el("span", { class: "muted save-note", title: c.savedPath }, c.savedPath.split(/[\\/]/).pop() ?? ""));
+  }
+
+  if (s.sourceKind !== "live_game") {
+    return el("span", { class: "muted", title: s.sourceKind === "file" ? "Footage files are already on disk" : "Nothing is saved from this source" }, "—");
+  }
+
+  const full = storage?.clipsFull === true;
+  const b = el("button", { title: full ? "Saved clips are at their storage limit" : "Cut this moment from the recording and save it (S)" }, c.saving ? "Saving…" : "Save");
+  b.disabled = c.saving || full;
+  b.addEventListener("click", (e) => {
+    e.stopPropagation();
+    save(s.id, c.id);
+  });
+  return el("div", {}, b, ...(c.saveNote ? [el("span", { class: "save-note", title: c.saveNote }, c.saveNote)] : []));
+}
+
+function save(sessionId: string, candidateId: string): void {
+  void api.saveClip(sessionId, candidateId);
 }
 
 function selectCandidate(id: string | null): void {
@@ -317,7 +340,7 @@ function renderSelected(): void {
     return;
   }
 
-  starBox.replaceChildren(stars(c, s, true));
+  starBox.replaceChildren(stars(c, s, true), ...(c.ratingNote ? [el("p", { class: "rating-note" }, `Not stored: ${c.ratingNote}`)] : []));
   const key = `${s.id}\u0000${c.id}`;
   if (previewFor === key) return;
   previewFor = key;
@@ -326,7 +349,10 @@ function renderSelected(): void {
     if (previewFor !== key) return;
     if (!p) {
       stopPreview();
-      $("preview-info").textContent += " · no preview: open this footage in Lookback to watch its candidates";
+      $("preview-info").textContent +=
+        s.sourceKind === "live_game"
+          ? " · no preview yet: save the clip (S) to watch it; a live recording has no file of its own"
+          : " · no preview: open this footage in Lookback to watch its candidates";
       return;
     }
 
@@ -365,6 +391,10 @@ document.addEventListener("keydown", (e) => {
   } else if ((e.key === "ArrowUp" || e.key === "k") && rows.length) {
     e.preventDefault();
     selectCandidate(rows[Math.max(0, at - 1)]!.id);
+  } else if ((e.key === "s" || e.key === "S") && s && at >= 0) {
+    e.preventDefault();
+    const c = rows[at]!;
+    if (s.sourceKind === "live_game" && !c.savedPath && !c.saving) save(s.id, c.id);
   } else if (e.key === " " && t?.tagName !== "BUTTON" && t?.tagName !== "VIDEO") {
     e.preventDefault();
     if (video.paused) void video.play().catch(() => undefined);
@@ -613,6 +643,120 @@ form.addEventListener("submit", (e) => {
     fillSettings(saved);
     $("settings-status").textContent = "saved";
   });
+});
+
+// ---------------------------------------------------------------- storage
+
+// The recorder's clip and footage budgets (recorder.storage). A banner when
+// saved clips near their budget; a blocking notice when they reach it.
+let storage: StorageState | null = null;
+let fullShown = false;
+
+function gb(bytes: number): string {
+  const g = bytes / 1024 ** 3;
+  return g >= 10 ? g.toFixed(0) : g.toFixed(1);
+}
+
+function renderStorage(): void {
+  const s = storage;
+  const banner = $("storage-banner");
+  if (!s) {
+    banner.hidden = true;
+    $("storage-settings").textContent = "Storage: the recorder has not reported yet.";
+    return;
+  }
+
+  const clips = `${gb(s.clipsBytes)} of ${gb(s.clipsBudgetBytes)} GB`;
+  if (s.clipsFull || s.clipsNearLimit) {
+    banner.hidden = false;
+    banner.className = `banner${s.clipsFull ? " bad" : ""}`;
+    $("storage-text").textContent = s.clipsFull ? `Saved clips are full (${clips}): new clips cannot be saved until you delete some.` : `Saved clips are at ${clips}. Delete clips you do not need before the limit is reached.`;
+  } else {
+    banner.hidden = true;
+  }
+
+  const dialog = $<HTMLDialogElement>("clips-full");
+  if (s.clipsFull && !fullShown) {
+    fullShown = true;
+    $("clips-full-text").textContent = `Saved clips use ${clips}, the whole clips budget.`;
+    if (!dialog.open) dialog.showModal();
+  } else if (!s.clipsFull) {
+    fullShown = false;
+    if (dialog.open) dialog.close();
+  }
+
+  $("storage-settings").textContent = `Storage: saved clips ${clips}; recordings ${gb(s.footageBytes)} of ${gb(s.footageBudgetBytes)} GB; ${gb(s.volumeFreeBytes)} GB free on the drive. Budgets are set with the recorder's ClipsBudgetGB and FootageBudgetGB options.`;
+}
+
+for (const id of ["storage-open", "clips-full-open"]) {
+  $(id).addEventListener("click", () => void api.openClipsFolder());
+}
+
+api.onStorage((s) => {
+  const wasFull = storage?.clipsFull;
+  storage = s;
+  renderStorage();
+  if (wasFull !== s.clipsFull) renderLibrary();
+});
+void api.getStorage().then((s) => {
+  storage = s;
+  renderStorage();
+});
+
+// ----------------------------------------------------------- supervision
+
+// Shown when the recorder stopped unexpectedly: what it said, and when the
+// shell restarts it (or that it stopped trying).
+let supervision: SupervisionState | null = null;
+let showCrashLog = false;
+function renderSupervision(): void {
+  const s = supervision;
+  const banner = $("banner");
+  const crash = s?.lastCrash;
+  const recent = crash !== null && crash !== undefined && Date.now() - crash.at < 120_000;
+  if (!s || (!s.gaveUp && s.nextRestartAt === null && !recent)) {
+    banner.hidden = true;
+    return;
+  }
+
+  banner.hidden = false;
+  banner.className = `banner${s.gaveUp ? " bad" : ""}`;
+  const why = crash ? (crash.fatal ? `stopped on purpose: ${crash.fatal}` : crash.detail) : "stopped";
+  let text: string;
+  if (s.gaveUp) {
+    text = `The recorder ${why}. It stopped ${s.restarts >= s.maxRestarts ? `${s.restarts} times in a minute` : "and could not be started again"}, so Lookback is no longer restarting it.`;
+  } else if (s.nextRestartAt !== null) {
+    const secs = Math.max(0, Math.ceil((s.nextRestartAt - Date.now()) / 1000));
+    text = `The recorder ${why}. Restarting in ${secs} s (restart ${s.restarts + 1} of ${s.maxRestarts} this minute).`;
+  } else {
+    text = `The recorder ${why}. Lookback restarted it.`;
+  }
+
+  $("banner-text").textContent = text;
+  $<HTMLButtonElement>("banner-start").hidden = !s.gaveUp;
+  const log = $("banner-log");
+  log.hidden = !showCrashLog || !crash;
+  log.textContent = crash ? crash.stderr.join("\n") || "(nothing on stderr)" : "";
+}
+
+$("banner-details").addEventListener("click", () => {
+  showCrashLog = !showCrashLog;
+  renderSupervision();
+});
+$("banner-start").addEventListener("click", () => void api.startRecorder().then(renderRecorder));
+api.onSupervision((s) => {
+  supervision = s;
+  renderSupervision();
+});
+void api.getSupervision().then((s) => {
+  supervision = s;
+  renderSupervision();
+});
+window.setInterval(renderSupervision, 500);
+void api.getPaths().then((p) => {
+  $("ratings-path").textContent = p.ratingsInCheckout
+    ? `Ratings are stored by the recorder in ${p.ratings} (the checkout's datasets folder, where ml/ trains).`
+    : `Ratings are stored by the recorder in ${p.ratings} (its default). Set a datasets folder above to store them in a checkout.`;
 });
 
 // ------------------------------------------------------------------- boot

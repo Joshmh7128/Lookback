@@ -1,19 +1,21 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import { spawn, type ChildProcess } from "node:child_process";
+import { dirname, join } from "node:path";
+import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { newRequestId, rateMessage, validFootageRequest } from "./control";
+import { newRequestId, parseStorage, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
 import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
-import { datasetsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
+import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
 import { MEDIA_SCHEME, MediaRegistry, serveMedia, VIDEO_EXTENSIONS } from "./media";
 import { listProfiles } from "./profiles";
 import { RecorderHost } from "./recorder";
+import { RecorderSupervisor } from "./supervisor";
 import { allowNavigation, hardenApp, lockPermissions } from "./security";
 import { loadSettings, saveSettings, sanitizeSettings } from "./settings";
 import { BROWSE_CSP, contentType, resolveStatic, SHELL_CSP } from "./static-files";
@@ -39,6 +41,12 @@ const argValue = (name: string): string | null => process.argv.find((a) => a.sta
 /** With --smoke, analyse this file through "Open footage" (no dialog), then rate and preview a candidate in the window. */
 const SMOKE_FOOTAGE = argValue("smoke-footage");
 const SMOKE_PROFILE = argValue("smoke-profile") ?? "generic";
+/** With --smoke, kill the recorder once it is up and pass when the supervisor has it ready again on a new handshake. */
+const SMOKE_SUPERVISE = process.argv.includes("--smoke-supervise");
+/** With --smoke, feed synthetic storage reports (near the clips budget, then full) and check the window's warnings. */
+const SMOKE_STORAGE = process.argv.includes("--smoke-storage");
+/** With --smoke, let the recorder record the repo's stand-in game window and drive Save on its live session. */
+const SMOKE_LIVE = process.argv.includes("--smoke-live");
 /** With --smoke, also wait for this many clip candidates before rating one through the window. */
 const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
@@ -105,8 +113,22 @@ function findRepoRoot(start: string): string | null {
 // ---------------------------------------------------------------- recorder
 
 function startRecorder(): RecorderState {
-  const profiles = profilesFolder(settings, locate());
-  const command = locateTool(RECORDER, settings.recorderPath, locate(), recorderArgs(settings, profiles));
+  const ctx = locate();
+  // Smoke runs keep everything the recorder writes (ratings, recordings, clips)
+  // in their own userData, never in the checkout or the user's store.
+  const smokeDir = SMOKE ? join(app.getPath("userData"), "smoke-recorder") : null;
+  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: smokeDir ? join(smokeDir, "datasets") : datasetsFolder(settings, ctx), parentPid: process.pid });
+  if (smokeDir) {
+    mkdirSync(smokeDir, { recursive: true });
+    args.push(`--Recorder:StoreDirectory=${join(smokeDir, "store")}`);
+    if (SMOKE_LIVE) {
+      const detection = join(smokeDir, "detection.json");
+      writeFileSync(detection, JSON.stringify({ allow: [{ exe: "lookback-testwindow.exe", profile: "generic" }] }));
+      args.push(`--Recorder:DetectionSettings=${detection}`);
+    }
+  }
+
+  const command = locateTool(RECORDER, settings.recorderPath, ctx, args);
   if (!command) {
     recorder.reportFailure("Lookback.Recorder was not found. Build it with `dotnet build Lookback.slnx -c Release`, or set its path in Settings.");
     return recorder.state;
@@ -116,8 +138,16 @@ function startRecorder(): RecorderState {
   return recorder.state;
 }
 
+// Restarts the recorder after an unexpected exit (see supervisor.ts).
+const supervisor = new RecorderSupervisor(recorder, () => {
+  recorder.note("restarting the recorder after an unexpected exit");
+  return startRecorder().status !== "failed";
+});
+supervisor.on("state", (state) => send("lookback:supervision", state));
+
 recorder.on("state", (state) => {
   send("lookback:state", state);
+  if (state.status !== "ready") storage = null;
   const info = recorder.connection;
   if (info) {
     stream.connect(eventsUrl(info));
@@ -136,7 +166,16 @@ recorder.on("log", (line) => send("lookback:log", line));
 
 let libraryTimer: NodeJS.Timeout | null = null;
 let sentRevision = -1;
+// The recorder's storage use (recorder.storage), every 10 s and after each save.
+let storage: StorageState | null = null;
 stream.on("envelope", (envelope) => {
+  const s = parseStorage(envelope);
+  if (s) {
+    storage = s;
+    send("lookback:storage", s);
+    return;
+  }
+
   if (library.apply(envelope)) {
     scheduleLibrary();
     const topic = (envelope as { topic?: unknown }).topic;
@@ -314,14 +353,24 @@ function pagesSession(): Electron.Session {
 
 function registerIpc(): void {
   handle("lookback:get-state", fromMain, () => recorder.state);
-  handle("lookback:start", fromMain, () => startRecorder());
+  handle("lookback:start", fromMain, () => {
+    supervisor.reset();
+    return startRecorder();
+  });
   handle("lookback:stop", fromMain, async () => {
+    supervisor.reset();
     await recorder.stop();
     return recorder.state;
   });
   handle("lookback:restart", fromMain, async () => {
+    supervisor.reset();
     await recorder.stop();
     return startRecorder();
+  });
+  handle("lookback:get-supervision", fromMain, () => supervisor.state);
+  handle("lookback:get-paths", fromMain, (): ShellPaths => {
+    const datasets = datasetsFolder(settings, locate());
+    return { ratings: datasets ?? defaultRatingsFolder(process.env), ratingsInCheckout: datasets !== null, profiles: profilesFolder(settings, locate()) };
   });
   handle("lookback:get-log", fromMain, () => recorder.logTail);
   handle("lookback:get-stream", fromMain, (): StreamState => stream.state);
@@ -337,9 +386,42 @@ function registerIpc(): void {
     // Offer it to the recorder; without an ack it stays in memory only.
     const id = newRequestId();
     void stream.request(id, rateMessage(id, sessionId, candidateId, rating)).then((ack) => {
-      if (ack?.ok && library.markStored(sessionId, candidateId, rating)) scheduleLibrary();
+      if (!ack) return; // an older recorder: memory only
+      const changed = ack.ok && ack.stored ? library.markStored(sessionId, candidateId, rating) : !ack.ok && library.markRefused(sessionId, candidateId, rating, refusal(ack));
+      if (changed) scheduleLibrary();
     });
     return true;
+  });
+  handle("lookback:save", fromMain, (sessionId, candidateId) => {
+    if (typeof sessionId !== "string" || typeof candidateId !== "string" || !library.candidateOf(sessionId, candidateId)) return false;
+    if (storage?.clipsFull) {
+      library.setSaving(sessionId, candidateId, false, { note: "Saved clips are at their storage limit; delete some clips first." });
+      scheduleLibrary();
+      return false;
+    }
+
+    library.setSaving(sessionId, candidateId, true);
+    scheduleLibrary();
+    const id = newRequestId();
+    void stream.request(id, saveMessage(id, sessionId, candidateId), SAVE_TIMEOUT_MS).then((ack) => {
+      if (!ack) {
+        library.setSaving(sessionId, candidateId, false, { note: "The recorder did not answer; it may not be able to save clips yet." });
+      } else if (ack.ok) {
+        library.setSaving(sessionId, candidateId, false, { path: ack.path, note: null });
+      } else {
+        library.setSaving(sessionId, candidateId, false, { note: refusal(ack) });
+      }
+
+      scheduleLibrary();
+    });
+    return true;
+  });
+  handle("lookback:get-storage", fromMain, () => storage);
+  handle("lookback:open-clips", fromMain, async () => {
+    // The folder of a clip the recorder reported saving; the shell knows no other.
+    const clip = library.snapshot().sessions.flatMap((s) => s.candidates).find((c) => c.savedPath && existsSync(c.savedPath));
+    if (!clip?.savedPath) return false;
+    return (await shell.openPath(dirname(clip.savedPath))) === "";
   });
   handle("lookback:open-footage", fromMain, async (raw) => {
     const request = validFootageRequest(raw);
@@ -489,6 +571,56 @@ function runSmoke(): void {
       .finally(() => app.exit(ok ? 0 : 1));
   };
 
+  // The live run: start the stand-in game, wait for its LIVE_GAME session,
+  // then press Save in the window. That window rarely gives the clipper a
+  // candidate, so the run adds one to the shell's library only; the recorder
+  // does not know it and refuses the save, which proves the whole path from
+  // the button to the recorder's answer on screen.
+  const smokeLive = async (base: Record<string, unknown>): Promise<{ ok: boolean; detail: Record<string, unknown> }> => {
+    const exe = repoRoot ? join(repoRoot, "tests", "Lookback.Detection.TestWindow", "bin", "Release", "net10.0-windows10.0.22621.0", "lookback-testwindow.exe") : "";
+    if (!exe || !existsSync(exe)) return { ok: false, detail: { ...base, reason: "lookback-testwindow.exe is not built" } };
+    testWindow = spawn(exe, ["Lookback smoke", "60"], { stdio: ["pipe", "ignore", "ignore"], windowsHide: false });
+    const wait = async (check: () => boolean, ms: number): Promise<boolean> => {
+      const end = Date.now() + ms;
+      while (!check()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      return true;
+    };
+    const live = (): ReturnType<Library["snapshot"]>["sessions"][number] | undefined => library.snapshot().sessions.find((s) => s.sourceKind === "live_game");
+    if (!(await wait(() => live() !== undefined, 45_000))) return { ok: false, detail: { ...base, reason: "no LIVE_GAME session for the test window", log: recorder.logTail.slice(-15) } };
+    const session = live()!;
+    const at = session.startQpc + 5 * (session.qpcFrequency || 1e7);
+    stream.emit("envelope", {
+      qpc: String(at),
+      sessionId: session.id,
+      topic: "clip.candidate",
+      clipCandidate: { candidateId: "smoke-candidate", startQpc: String(session.startQpc), endQpc: String(at), peakQpc: String(at), heuristicScore: 0.5, reasons: ["smoke"] },
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const contents = mainWindow!.webContents;
+    const clicked: unknown = await contents.executeJavaScript(
+      `(() => { document.querySelector('#tabs button[data-tab="library"]').click();
+        const s = [...document.querySelectorAll("#lib-sessions button")].find((b) => b.textContent.includes(${JSON.stringify(session.title || "")}) && b.textContent.includes("live game"));
+        if (s) s.click();
+        return true; })()`,
+      true,
+    );
+    await new Promise((r) => setTimeout(r, 400));
+    const pressed: unknown = await contents.executeJavaScript(`(() => { const b = [...document.querySelectorAll("#lib-rows button")].find((x) => x.textContent === "Save"); if (!b) return false; b.click(); return true; })()`, true);
+    const refused = await wait(() => library.candidateOf(session.id, "smoke-candidate")?.saveNote !== null && library.candidateOf(session.id, "smoke-candidate")?.saveNote !== undefined, 35_000);
+    await new Promise((r) => setTimeout(r, 400));
+    const shown: unknown = await contents.executeJavaScript(`(() => [...document.querySelectorAll("#lib-rows .save-note")].map((n) => n.textContent))()`, false);
+    await wait(() => storage !== null, 12_000);
+    const note = library.candidateOf(session.id, "smoke-candidate")?.saveNote ?? null;
+    return {
+      ok: clicked === true && pressed === true && refused && Array.isArray(shown) && shown.length > 0,
+      detail: { ...base, session: { title: session.title, retention: session.retention, sourceKind: session.sourceKind }, saveButton: pressed, saveNote: note, shown, storage },
+    };
+  };
+
   let rendererReady = false;
   ipcMain.once("lookback:rendered", (event) => {
     if (fromMain(event)) rendererReady = true;
@@ -496,9 +628,14 @@ function runSmoke(): void {
   let viewerOpened = false;
   let rating = false;
   let footageOpened = false;
+  let killed: { pid: number | null; endpoint: string | null } | null = null;
+  let storageStep = 0;
+  let liveStep = 0;
+  let testWindow: ChildProcess | null = null;
   const timer = setInterval(() => {
     const state = recorder.state;
-    if (state.status === "failed" || state.status === "exited") {
+    // In the supervise run the exit is the point; the supervisor brings it back.
+    if ((state.status === "failed" || state.status === "exited") && !(SMOKE_SUPERVISE && killed)) {
       clearInterval(timer);
       finish(false, { reason: `recorder ${state.status}`, detail: state.detail, log: recorder.logTail.slice(-15) });
       return;
@@ -507,6 +644,66 @@ function runSmoke(): void {
     const base = { recorder: state.status, stream: stream.state.status, received: stream.state.received, renderer: rendererReady };
     const up = state.status === "ready" && stream.state.status === "open" && rendererReady;
     const candidates = library.snapshot().sessions.reduce((n, x) => n + x.candidates.length, 0);
+    if (SMOKE_LIVE) {
+      if (!up || liveStep > 0) return;
+      liveStep = 1;
+      clearInterval(timer);
+      void smokeLive(base).then(
+        (r) => {
+          testWindow?.stdin?.end();
+          finish(r.ok, r.detail);
+        },
+        (err: unknown) => {
+          testWindow?.stdin?.end();
+          finish(false, { ...base, reason: err instanceof Error ? err.message : String(err), log: recorder.logTail.slice(-15) });
+        },
+      );
+      return;
+    }
+
+    if (SMOKE_STORAGE) {
+      if (!up || storageStep > 0) return;
+      storageStep = 1;
+      clearInterval(timer);
+      const gib = 1024 ** 3;
+      const report = (clips: number, near: boolean, full: boolean): void => {
+        stream.emit("envelope", {
+          sessionId: "recorder",
+          topic: "recorder.storage",
+          storageStatus: { clipsBytes: String(clips), clipsBudgetBytes: String(10 * gib), footageBytes: String(3 * gib), footageBudgetBytes: String(20 * gib), clipsNearLimit: near, clipsFull: full, volumeFreeBytes: String(400 * gib) },
+        });
+      };
+      const read = async (): Promise<unknown> =>
+        mainWindow?.webContents.executeJavaScript(
+          `(() => ({ banner: document.getElementById("storage-banner").hidden ? null : document.getElementById("storage-text").textContent, dialog: document.getElementById("clips-full").open, settings: document.getElementById("storage-settings").textContent }))()`,
+          false,
+        );
+      const pause = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+      void (async () => {
+        report(9.2 * gib, true, false);
+        await pause(300);
+        const near = (await read()) as Record<string, unknown>;
+        report(10 * gib, true, true);
+        await pause(300);
+        const full = (await read()) as Record<string, unknown>;
+        const ok = typeof near["banner"] === "string" && /9\.2 of 10 GB/.test(near["banner"] as string) && near["dialog"] === false && full["dialog"] === true && /full/.test(String(full["banner"])) && /20 GB/.test(String(full["settings"]));
+        finish(ok, { ...base, near, full });
+      })();
+      return;
+    }
+
+    if (SMOKE_SUPERVISE) {
+      if (up && !killed) {
+        killed = { pid: state.pid, endpoint: state.endpoint };
+        recorder.note(`smoke: killing the recorder (pid ${state.pid}) to test the supervisor`);
+        if (state.pid) process.kill(state.pid);
+      } else if (killed && up && state.pid !== killed.pid) {
+        clearInterval(timer);
+        finish(state.endpoint !== killed.endpoint, { ...base, before: killed, after: { pid: state.pid, endpoint: state.endpoint }, supervision: supervisor.state });
+      }
+
+      return;
+    }
     if (up && !SMOKE_VIEWER && candidates >= SMOKE_CANDIDATES) {
       if (SMOKE_CANDIDATES === 0) {
         clearInterval(timer);
@@ -536,11 +733,13 @@ function runSmoke(): void {
               const rated = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 5).length;
               const p = (preview ?? {}) as Record<string, unknown>;
               const previewOk = !SMOKE_FOOTAGE || (p["src"] === MEDIA_SCHEME && Number(p["readyState"]) >= 2 && Number(p["width"]) > 0);
-              finish(rated === 1 && previewOk, { ...base, candidates, rated, preview, footage: footage.list });
+              const stored = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 5 && c.ratingStored).length;
+              finish(rated === 1 && previewOk, { ...base, candidates, rated, stored, preview, footage: footage.list });
             });
         }
       });
     }
+
 
     if (up && SMOKE_FOOTAGE && !footageOpened) {
       footageOpened = true;
@@ -573,6 +772,7 @@ function runSmoke(): void {
 
 async function shutdown(): Promise<void> {
   quitting = true;
+  supervisor.dispose();
   footage.stopAll();
   viewer?.close();
   stream.disconnect();

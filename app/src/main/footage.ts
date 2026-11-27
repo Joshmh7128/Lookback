@@ -1,16 +1,16 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import type { FootageJob, FootageRequest, SessionView } from "../shared/api";
-import { analyzeMessage, newRequestId, type Ack } from "./control";
+import { analyzeMessage, newRequestId, refusal, type Ack } from "./control";
 import { LineSplitter } from "./handshake";
 import type { Command } from "./locate";
 
 // "Open footage…": analyse a file the user owns (or has permission for) so
 // its clip candidates can be previewed and rated.
 //
-// First choice is the recorder's `analyze` command (agreed, recorder side
-// pending). When the recorder does not ack it, the shell uses the path that
-// already exists: `lookback-testbench live <file> --pipe <recorder pipe>`,
+// First choice is the recorder's `analyze` command. When the recorder does
+// not ack it at all (one that predates the command), the shell uses the path
+// that already exists: `lookback-testbench live <file> --pipe <recorder pipe>`,
 // which analyses the file, applies RetentionRules, writes nothing, and
 // publishes an ordinary FILE session into the recorder's bus, so it reaches
 // /events like any other. Either way the session's title is the file's path,
@@ -37,6 +37,8 @@ export interface FootageDeps {
 
 interface Job extends FootageJob {
   path: string;
+  /** True once the library has the session and it was marked previewable. */
+  linked: boolean;
   child: ChildProcess | null;
   tail: string[];
 }
@@ -67,7 +69,7 @@ export class FootageManager extends EventEmitter<FootageEvents> {
   }
 
   async open(path: string, request: FootageRequest): Promise<FootageJob> {
-    const job: Job = { id: newRequestId(), name: fileName(path), profile: request.profile || "generic", via: null, status: "starting", sessionId: null, detail: null, path, child: null, tail: [] };
+    const job: Job = { id: newRequestId(), name: fileName(path), profile: request.profile || "generic", via: null, status: "starting", sessionId: null, detail: null, path, linked: false, child: null, tail: [] };
     this.jobs.unshift(job);
     this.changed();
 
@@ -75,11 +77,15 @@ export class FootageManager extends EventEmitter<FootageEvents> {
     if (ack?.ok) {
       job.via = "recorder";
       job.status = "analysing";
+      if (ack.sessionId) {
+        this.claim(job, ack.sessionId);
+      }
+
       this.deps.log(`footage: the recorder is analysing ${job.name}`);
-    } else if (ack && ack.error !== "bad-request") {
-      // The recorder understood and refused (for example retention): do not work around it.
+    } else if (ack) {
+      // The recorder understood and refused (a bad path, retention): show why; never work around it.
       job.status = "failed";
-      job.detail = `the recorder refused it (${ack.error ?? "no reason"})`;
+      job.detail = refusal(ack);
     } else {
       this.startTestbench(job, request);
     }
@@ -96,11 +102,16 @@ export class FootageManager extends EventEmitter<FootageEvents> {
       if (!job.sessionId && (job.status === "analysing" || job.status === "starting")) {
         const session = this.deps.sessionsByTitle(job.path).find((s) => s.sourceKind === "file" && !this.claimed.has(s.id));
         if (session) {
-          job.sessionId = session.id;
-          this.claimed.add(session.id);
-          this.deps.linked(session.id);
+          this.claim(job, session.id);
           changed = true;
         }
+      }
+
+      if (job.sessionId && !job.linked && this.deps.sessionsByTitle(job.path).some((x) => x.id === job.sessionId)) {
+        // The recorder named the session in its ack; mark it once it shows up.
+        job.linked = true;
+        this.deps.linked(job.sessionId);
+        changed = true;
       }
 
       if (job.sessionId && job.status === "analysing" && job.via === "recorder") {
@@ -114,6 +125,15 @@ export class FootageManager extends EventEmitter<FootageEvents> {
 
     if (changed) {
       this.changed();
+    }
+  }
+
+  private claim(job: Job, sessionId: string): void {
+    job.sessionId = sessionId;
+    this.claimed.add(sessionId);
+    job.linked = this.deps.sessionsByTitle(job.path).some((s) => s.id === sessionId);
+    if (job.linked) {
+      this.deps.linked(sessionId);
     }
   }
 
