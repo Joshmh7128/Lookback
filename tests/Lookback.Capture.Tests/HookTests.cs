@@ -97,14 +97,13 @@ public class HookAllowlistTests
     [Fact]
     public void Notepad_is_refused_before_anything_starts()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only");
+        string dir = NativeBuild.Require(); // first, so the refusal is the allowlist's, not "not built"
         string notepad = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "notepad.exe");
         int before = Process.GetProcessesByName("notepad").Length;
         var e = Assert.Throws<HookRefusedException>(() => HookInjector.Launch(new HookLaunchRequest { ExecutablePath = notepad, AllowPresentHook = true }));
         Assert.StartsWith("Refused", e.Message, StringComparison.Ordinal);
         Assert.Equal(before, Process.GetProcessesByName("notepad").Length);
 
-        string dir = NativeBuild.Require();
         Assert.Contains("not a Lookback test app", TestAppAllowlist.Check(notepad, dir, out _), StringComparison.Ordinal);
         Assert.Contains("not a Lookback test app", e.Message, StringComparison.Ordinal);
     }
