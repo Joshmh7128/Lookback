@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Analysis frame and audio block types, and the footage decoder (FileSource).</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Core\Lookback.Core.csproj" />
+  </ItemGroup>
+</Project>

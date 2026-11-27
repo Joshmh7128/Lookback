@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>lookback-testbench</AssemblyName>
+    <Description>Runs footage files through the signal pipeline and renders a timeline report.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Signals\Lookback.Signals.csproj" />
+    <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Report\report.html" LogicalName="report.html" />
+    <InternalsVisibleTo Include="Lookback.Testbench.Tests" />
+  </ItemGroup>
+</Project>

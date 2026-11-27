@@ -15,10 +15,15 @@ src/
   Lookback.Contracts/         generated schema + Topics + RetentionRules
   Lookback.Core/              clock, lock-free ring, event bus
   Lookback.Stream/            framing, pipes, WebSocket bridge, session log
+  Lookback.Media/             analysis format, frames, ffmpeg FileSource
+  Lookback.Signals/           video + audio signals, DSP, publisher
   Lookback.Recorder/          service executable
+  Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
   Lookback.Core.Tests/
   Lookback.Stream.Tests/
+  Lookback.Signals.Tests/
+  Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
   wiki/                       source of this wiki
@@ -35,6 +40,8 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 ```mermaid
 flowchart TB
     R[Lookback.Recorder<br/>exe] --> S[Lookback.Stream]
+    TB[Lookback.Testbench<br/>exe] --> S & SG[Lookback.Signals]
+    SG --> MD[Lookback.Media] --> C
     S --> C[Lookback.Core]
     C --> K[Lookback.Contracts]
     K --> P[(proto/lookback/v1/events.proto)]
@@ -44,6 +51,9 @@ flowchart TB
 
     TC[Lookback.Core.Tests] --> C
     TS[Lookback.Stream.Tests] --> S
+    TSG[Lookback.Signals.Tests] --> SG
+    TTB[Lookback.Testbench.Tests] --> TB
+    MD -. runs .-> FF[[ffmpeg / ffprobe]]
 ```
 
 ## What lives where
@@ -53,15 +63,17 @@ flowchart TB
 | `Lookback.Contracts` | `Topics.cs`, `RetentionRules.cs`, generated `Events.cs` | The vocabulary: message types, topic names, and the persistence rule |
 | `Lookback.Core` | `Time/IClock.cs`, `Time/QpcTime.cs`, `Buffers/SpscRing.cs`, `Bus/IEventBus.cs`, `Bus/InProcessEventBus.cs`, `Bus/EnvelopeFactory.cs` | Timekeeping and in-memory movement of data, with no I/O |
 | `Lookback.Stream` | `Framing/EnvelopeFraming.cs`, `Pipes/*`, `WebSockets/WebSocketBridge.cs`, `SessionLog/*` | Every way an envelope leaves the process: pipe, socket or file |
+| `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
+| `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
+| `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Report/*` | Footage CLI and the timeline viewer |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
 `Lookback.Detection`, `Lookback.Capture`, `Lookback.Gpu`, `Lookback.Encode`,
-`Lookback.Replay`, `Lookback.Audio`, `Lookback.Signals`, `Lookback.Clipper`,
-`Lookback.Quality`, `Lookback.Governor`, `Lookback.Memory`,
-`Lookback.Testbench`, `native/hook`, `app/`, `ml/`.
+`Lookback.Replay`, `Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Governor`, `Lookback.Memory`, `native/hook`, `app/`, `ml/`.
 
 ```mermaid
 flowchart TB
@@ -75,11 +87,11 @@ flowchart TB
         DET[Detection] --> CAP[Capture] --> GPU[Gpu] --> ENC[Encode] --> REP[Replay]
         AUD[Audio]
         GOVN[Governor]
-        SIGL[Signals lib]
         CLPL[Clipper lib]
         QUAL[Quality]
     end
-    subgraph Foundation["Foundation (M0)"]
+    subgraph Foundation["Foundation (M0, M1)"]
+        SIGL[Signals] --> MED[Media] --> CORE
         STR[Stream] --> CORE[Core] --> CON[Contracts]
     end
     Hosts --> Pipeline --> Foundation

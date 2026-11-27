@@ -22,6 +22,13 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
+      # FileSource and the testbench decode footage with ffmpeg.
+      - name: Install ffmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install ffmpeg (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ffmpeg -y --no-progress
       - run: dotnet restore Lookback.slnx
       - run: dotnet build Lookback.slnx --no-restore -c Release
       - run: dotnet test --solution Lookback.slnx --no-build -c Release

@@ -1,7 +1,7 @@
 # Architecture
 
 This page shows the whole system, including the parts that later milestones
-build. Parts that exist today are marked **M0**.
+build. Parts that exist today are marked **M0** or **M1**.
 
 ## Processes
 
@@ -19,7 +19,7 @@ flowchart LR
     subgraph Recorder["Lookback.Recorder (C#)"]
         DET[Detection<br/>M3]
         CAP[Capture backends<br/>WGC · DXGI dup · hook · FileSource]
-        GPU[GPU downscale + convert<br/>M1]
+        GPU[GPU downscale + convert<br/>M3]
         ENC[Hardware encode<br/>M3]
         RING[RAM replay ring<br/>M3]
         DISK[Disk session store<br/>M3]
@@ -30,8 +30,8 @@ flowchart LR
     end
 
     subgraph Signals["Lookback.Signals (C#)"]
-        VS[Video signals]
-        AS[Audio signals]
+        VS[Video signals<br/>M1]
+        AS[Audio signals<br/>M1]
         IS[Input signals]
         LOG[Session log<br/>M0]
     end
@@ -137,6 +137,6 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    M0[M0 foundation] --> M1[M1 signals on footage] --> M2[M2 clipper + viewer] --> M3[M3 live capture]
+    M0[M0 foundation ✓] --> M1[M1 signals on footage] --> M2[M2 clipper + viewer] --> M3[M3 live capture]
     M3 --> M4[M4 learned scoring] --> M5[M5 quality reports] --> M6[M6 present hook + HDR] --> M7[M7 memory module]
 ```

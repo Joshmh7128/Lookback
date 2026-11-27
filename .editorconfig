@@ -28,3 +28,7 @@ dotnet_diagnostic.CA2007.severity = none
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1515.severity = none
 dotnet_diagnostic.CA1861.severity = none
+
+# Console executables have no synchronization context to escape.
+[src/Lookback.Testbench/**.cs]
+dotnet_diagnostic.CA2007.severity = none

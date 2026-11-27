@@ -16,18 +16,21 @@ public sealed class SessionLogRecorder : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
 
-    public SessionLogRecorder(IEventBus bus, SessionLogWriter writer, string sessionId, TimeSpan? flushInterval = null)
+    public SessionLogRecorder(IEventBus bus, SessionLogWriter writer, string sessionId, TimeSpan? flushInterval = null, int capacity = 65_536)
     {
         ArgumentNullException.ThrowIfNull(bus);
         ArgumentNullException.ThrowIfNull(writer);
         _writer = writer;
         _sessionId = sessionId;
-        _subscription = bus.Subscribe("*", capacity: 65_536);
+        _subscription = bus.Subscribe("*", capacity);
         _pump = PumpAsync(flushInterval ?? TimeSpan.FromSeconds(1), _cts.Token);
     }
 
     /// <summary>Events lost because disk writes fell behind.</summary>
     public long Dropped => _subscription.Dropped;
+
+    /// <summary>Events waiting to be written. Replays use this to pace themselves.</summary>
+    public int Queued => _subscription.Count;
 
     // Cancellation only interrupts waiting, never a write: a write cut off
     // part-way would leave a torn record in the middle of the log.

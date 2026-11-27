@@ -31,10 +31,13 @@ flowchart LR
     PR[Pull request / push to main] --> M{matrix}
     M --> W[windows-latest]
     M --> U[ubuntu-latest]
-    W & U --> R1[restore] --> B[build -c Release] --> T[dotnet test]
+    W -- choco --> FF[install ffmpeg]
+    U -- apt --> FF
+    FF --> R1[restore] --> B[build -c Release] --> T[dotnet test]
 ```
 
-Windows is the product platform. Linux runs too, because everything in M0 is
+ffmpeg is installed on both legs because FileSource and the testbench
+tests decode generated footage. Windows is the product platform. Linux runs too, because everything in M0 is
 platform-neutral (named pipes map to Unix domain sockets there) and the
 Linux runners are fast. Capture code (M1 onwards) is Windows-only and its
 tests will run only on the Windows leg; D3D11 compute runs on the WARP
