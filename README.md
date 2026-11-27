@@ -27,6 +27,17 @@ cd app; npm ci; npm start
 The full walkthrough, with expected output and troubleshooting, is
 [docs/wiki/Quickstart.md](docs/wiki/Quickstart.md).
 
+To demo every component (recorder stream, signals, profiles, detection,
+clipper, live capture, encode, audio, governor, watchdog, ratings and
+training, the shell) on generated test footage, one command each:
+
+```powershell
+./scripts/showcase.ps1 list
+```
+
+What each demo shows and what you should see is in
+[docs/wiki/Showcase.md](docs/wiki/Showcase.md).
+
 ## Status
 
 - **M0 (done):** event schema, in-process bus, named pipes, WebSocket
