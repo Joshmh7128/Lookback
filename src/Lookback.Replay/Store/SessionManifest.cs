@@ -142,5 +142,9 @@ public sealed record SegmentRecord(int Run, int Seq, string File, long StartQpc,
 
 [JsonSourceGenerationOptions(WriteIndented = true, UseStringEnumConverter = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(SessionManifest))]
-[JsonSerializable(typeof(SegmentRecord))]
 internal sealed partial class StoreJson : JsonSerializerContext;
+
+/// <summary>One-line JSON for <c>segments.jsonl</c>; indentation would break lines (and on Windows add CR).</summary>
+[JsonSourceGenerationOptions(WriteIndented = false, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(SegmentRecord))]
+internal sealed partial class StoreLineJson : JsonSerializerContext;

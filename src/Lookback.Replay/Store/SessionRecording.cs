@@ -215,7 +215,7 @@ public sealed class SessionRecording : IAsyncDisposable
         long start = segment.Min(p => p.DtsQpc);
         long end = cutQpc != long.MaxValue ? cutQpc : segment.Max(p => p.DtsQpc + Math.Max(0, p.DurationQpc));
         var rec = new SegmentRecord(_run, _seq, file, start, end, bytes.Length);
-        File.AppendAllText(Path.Combine(_dir, IndexFile), JsonSerializer.Serialize(rec, StoreJson.Default.SegmentRecord).Replace('\n', ' ') + "\n");
+        File.AppendAllText(Path.Combine(_dir, IndexFile), JsonSerializer.Serialize(rec, StoreLineJson.Default.SegmentRecord) + "\n");
         _store.Added(SessionId, _manifest.StartedUtc, rec);
     }
 }

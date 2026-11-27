@@ -297,7 +297,7 @@ public sealed class SegmentStore
             SegmentRecord? rec = null;
             try
             {
-                rec = JsonSerializer.Deserialize(line, StoreJson.Default.SegmentRecord);
+                rec = JsonSerializer.Deserialize(line, StoreLineJson.Default.SegmentRecord);
             }
             catch (JsonException)
             {
