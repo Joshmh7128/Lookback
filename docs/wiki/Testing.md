@@ -23,6 +23,7 @@ xUnit v3 on Microsoft.Testing.Platform. Run everything with
 | | `SlowSubscriberDropsOldestWithoutBlockingPublisher` | Ten publishes into a queue of four: publish never fails, the newest four survive, `Dropped` is 6 |
 | | `UnsubscribedReaderStopsReceiving` | Disposed subscriptions get nothing |
 | | `DisposeCompletesReaders` | Shutdown lets readers drain and finish; later publishes return false |
+| `StallWatchdogTests.cs` | `ReportsABusyStepOnceItOutlivesTheThreshold`, `OneEpisodeIsReportedOnceAndANewEpisodeRearms`, `IdleThreadsAndShortStepsAreNeverReported`, `DisposedWatchesStopReporting`, `TheThreadedWatchdogFiresOnItsOwn` | The stall watchdog on a manual clock: reports once per stuck step, ignores idle threads and short steps |
 
 ## `Lookback.Stream.Tests`
 
@@ -158,6 +159,13 @@ See [Live Capture](Live-Capture#tests).
 | | `Software_h264_on_the_gpu_reads_converter_output` | The same from `Nv12Converter` output on a real adapter |
 | | `Hardware_encoder_round_trips_through_the_muxer` (H.264, HEVC) | Every display adapter's hardware MFT: all frames out, `Dispose` drains in under 3 s, same clip checks |
 | `EncodeTickerTests.cs` | `Irregular_capture_becomes_constant_rate_packets` | Slow, bursty, then absent capture still gives one packet per tick at constant spacing, repeats counted, nothing skipped or busy |
+| `EncodeTickerFaultTests.cs` | `A_hung_encoder_is_abandoned_and_the_next_one_takes_over_on_the_same_grid` | An encoder stuck inside a call is abandoned (never waited on), the next one continues on the original tick grid, and the stalled one is blocklisted |
+| | `An_encoder_that_takes_frames_but_never_outputs_is_replaced` | Ticks due with no packets out count as a stall |
+| | `An_encoder_that_refuses_all_input_is_replaced` | An encoder that is always busy counts as a stall |
+| | `When_every_encoder_stalls_the_process_is_ended_instead_of_hanging` | An exhausted fallback chain calls Fatal with the reason |
+| | `Too_many_swaps_in_one_session_end_the_process` | More than `MaxRecoveries` swaps calls Fatal |
+| | `Dispose_returns_promptly_even_with_a_stuck_encoder` | Teardown never hangs on a stuck encoder |
+| | `The_blocklist_survives_a_restart` | Stalled encoders are remembered per adapter and driver version, and a driver update gets a fresh chance |
 
 ## `Lookback.Detection.Tests`
 

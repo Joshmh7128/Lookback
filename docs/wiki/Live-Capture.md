@@ -106,12 +106,13 @@ ffprobe on the 8 s clip: `hevc 1920x1080`, 486 frames, average frame rate
 60.000, keyframes at exactly 0, 2, 4, 6 and 8 s, `has_b_frames=0`, and
 `ffmpeg -v error -f null` decodes it with no errors.
 
-On the iGPU (monitor 2, `AMD Radeon(TM) Graphics`), AMF H.264 at 1080p60
-also runs live and decodes cleanly. AMF HEVC is not reliable yet; see below.
+On the iGPU (monitor 2, `AMD Radeon(TM) Graphics`), AMF H.264 and AMF HEVC
+at 1080p60 also run live and decode cleanly.
 
 When ticks and captures both stop, the bench prints `STALLED:` with each
-thread's phase (`EncodeTicker.Phase`: capture-thread conversion, encoder
-input, encoder events), which is how the AMF HEVC stall was located.
+thread's phase (`EncodeTicker.Phase`), and the watchdog acts as described
+below. Bench flags: `--stall-ms` (watchdog threshold), `--isolate` (encoder on
+its own device), `--no-blocklist`.
 
 ## Tests
 
@@ -128,19 +129,74 @@ input, encoder events), which is how the AMF HEVC stall was located.
 WARP has no video processor, so the CI encoder case uploads NV12 built on
 the CPU; the converter is covered on real adapters.
 
+## No deadlocks: one device lock, a watchdog, fail-fast
+
+### The deadlock that was
+
+Live capture used to stall within seconds, intermittently, on NVIDIA and
+AMD alike (AMF HEVC hit it most). Native stacks from a hung process (cdb on
+AETHER) showed a lock-order inversion:
+
+```
+WGC capture thread:  dcomp!CFlipConsumer::ProcessUpdateContent   holds  D3D11 device lock
+                     → our frame callback                         waits  GpuDevice.Lock (managed)
+encode ticker:       holds GpuDevice.Lock
+                     → ID3D11DeviceContext::CopyResource          waits  D3D11 device lock
+```
+
+WGC raises `FrameArrived` from inside DirectComposition's flip processing,
+which already holds the device's multithread lock. Our own managed lock was
+taken second on that thread and first on the encode thread. Whether the two
+threads met was down to timing, which is why it came and went, and why a busy
+machine or a slower encoder made it likelier. Moving the encoder to its own
+device did not help at the time, because the handoff still took the capture
+device's lock the same way.
+
+**Fix:** `GpuDevice` has exactly one lock, D3D11's own recursive multithread
+lock (`ID3D11Multithread::Enter`, exposed as `using (gpu.Enter())`). There is
+no second lock to order, and the capture callback simply re-enters the lock
+DirectComposition already holds. After the fix, on AETHER, 1080p60 for 12 s:
+NVENC HEVC 3/3, AMF HEVC 3/3, AMF H.264 1/1, and the opt-in separate-device
+mode on both GPUs: 0 stalls, 0 encoder swaps, every clip decodes.
+
+### The harness that keeps it from coming back
+
+Every thread on the path reports a heartbeat (`Beat`: which step, since when)
+to a `StallWatchdog` (`Lookback.Core.Diagnostics`), which never blocks or
+interrupts the stuck thread:
+
+| Watch | Stalled when | Action |
+|---|---|---|
+| Encode ticker step | one `Encode` call runs longer than `StallAfter` (2 s) | swap encoders |
+| Encoder output | ticks are due but no packet comes out for `StallAfter` | swap encoders |
+| Capture thread | the frame callback runs longer than 2 × `StallAfter` | fail fast |
+
+A swap abandons the stuck encoder (released on a reaper thread only once no
+call is inside it, otherwise leaked) and starts the next one in the fallback
+chain on a fresh thread, on the same tick grid: hardware MFTs for the codec →
+hardware H.264 → software H.264. Creating the replacement is itself bounded
+(a driver can hang there too). The stalled encoder goes into
+`%LOCALAPPDATA%\Lookback\encoder-blocklist.json`, keyed by adapter vendor,
+device and driver version, so the next run starts further down the chain and
+a driver update gets a fresh chance. When the chain is exhausted, after
+`MaxRecoveries` swaps, or when the capture thread is wedged, `Fatal` writes the
+reason and every thread's phase to stderr and ends the process
+(`Environment.FailFast`): the recorder closes instead of hanging, and the shell
+restarts it. `Dispose` never waits more than a few seconds on an encoder.
+
+`EncodeTickerFaultTests` inject encoders that hang inside a call, accept
+frames but never output, or refuse all input, and check the swap, the tick
+grid, the blocklist, the fatal path and a prompt `Dispose`.
+
 ## Known issues
 
-- **AMF HEVC can deadlock with live WGC capture.** On AETHER's iGPU at
-  1080p60, two of three runs stalled within ~2 s: the ticker sat in
-  `CopyResource` holding `GpuDevice.Lock` (so waiting on D3D11's own device
-  lock), and the capture thread waited behind it. The AMF MFT's thread holds
-  the immediate context's lock and does not let go, most likely waiting on GPU
-  work that in turn waits on a WGC frame the blocked capture thread still
-  holds. The same encoder passes alone (`EncoderTests`), and NVENC and AMF
-  H.264 do not show it. Fix planned: give the encoder its own D3D11 device on
-  the same adapter and hand frames over through a shared, keyed-mutex NV12
-  texture, so the MFT never shares a context lock with capture; plus a
-  watchdog that recreates a stalled encoder.
+- **Creating a DXGI factory stalls NVENC briefly.** Enumerating adapters or
+  outputs while encoding (`CaptureTarget.Outputs`, `ForWindow`, `FindWindow`,
+  the governor probe) made the constant-rate tests miss ticks in 3 of 9 runs
+  on AETHER. Enumerate only when (re)targeting and before the encoder starts;
+  game detection reads adapter LUIDs from `QueryDisplayConfig`. The GPU
+  encoder test classes run serially for the same reason.
+
 - **AMF HEVC ignores the bitrate.** It produced about 3x the CBR target in
   `EncoderTests` (4 Mbps asked, ~12 Mbps out); AMF H.264 and NVENC hold it.
 - **GOPs count frames, not time.** A tick the encoder had no room for

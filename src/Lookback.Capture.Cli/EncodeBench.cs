@@ -1,6 +1,7 @@
 using System.Globalization;
 using Lookback.Capture;
 using Lookback.Contracts;
+using Lookback.Core.Diagnostics;
 using Lookback.Core.Time;
 using Lookback.Encode;
 using Lookback.Replay.Mp4;
@@ -20,18 +21,22 @@ internal sealed class EncodeBench : IDisposable
     private readonly EncodeTicker _ticker;
     private readonly double _seconds;
     private readonly string _out;
+    private readonly StallWatchdog _watchdog;
+    private readonly IDisposable _captureWatch;
     private EncodeStats _last;
 
-    private EncodeBench(LiveCaptureSession session, ReplayRing ring, EncodeTicker ticker, double seconds, string output)
+    private EncodeBench(LiveCaptureSession session, ReplayRing ring, EncodeTicker ticker, double seconds, string output, StallWatchdog watchdog, IDisposable captureWatch)
     {
         _session = session;
         _ring = ring;
         _ticker = ticker;
         _seconds = seconds;
         _out = output;
+        _watchdog = watchdog;
+        _captureWatch = captureWatch;
     }
 
-    public static string Usage => "[--encode <seconds> --out clip.mp4 [--codec h264|hevc] [--fps 60] [--size 1920x1080] [--mbps 20] [--software]]";
+    public static string Usage => "[--encode <seconds> --out clip.mp4 [--codec h264|hevc] [--fps 60] [--size 1920x1080] [--mbps 20] [--software] [--isolate] [--stall-ms 2000] [--no-blocklist]]";
 
     /// <summary>Starts the encode path when <c>--encode</c> is given; null otherwise. Throws on a refused or bad request.</summary>
     public static EncodeBench? TryStart(string[] args, LiveCaptureSession session)
@@ -61,17 +66,30 @@ internal sealed class EncodeBench : IDisposable
         long bitrate = (long)(double.Parse(Arg(args, "--mbps") ?? "20", CultureInfo.InvariantCulture) * 1_000_000);
 
         long freq = SystemClock.Instance.Frequency;
+        var stallAfter = TimeSpan.FromMilliseconds(int.Parse(Arg(args, "--stall-ms") ?? "2000", CultureInfo.InvariantCulture));
         var ring = new ReplayRing(capacityBytes: Math.Max(64L << 20, (long)(bitrate / 8 * (seconds + 6) * 1.5)), maxDurationQpc: (long)((seconds + 4) * freq));
+        var watchdog = new StallWatchdog(SystemClock.Instance, TimeSpan.FromMilliseconds(250));
         try
         {
-            var settings = new VideoEncoderSettings(codec, w, h, fps, bitrate) { PreferHardware = !args.Contains("--software") };
-            EncodeTicker ticker = EncodeTicker.Start(session.Gpu, settings, ring, trackId: 1, SystemClock.Instance);
+            var settings = new VideoEncoderSettings(codec, w, h, fps, bitrate) { PreferHardware = !args.Contains("--software"), IsolateDevice = args.Contains("--isolate") };
+            var options = new EncodeTickerOptions
+            {
+                Watchdog = watchdog,
+                StallAfter = stallAfter,
+                Blocklist = args.Contains("--no-blocklist") ? null : new EncoderBlocklist(EncoderBlocklist.DefaultPath),
+                Log = m => Console.Error.WriteLine(m),
+            };
+            EncodeTicker ticker = EncodeTicker.Start(session.Gpu, settings, ring, trackId: 1, SystemClock.Instance, options);
             session.FrameTap = ticker.FrameTap;
-            Console.WriteLine($"encoding {codec} {w}x{h}@{fps} {bitrate / 1e6:F0} Mbps with {ticker.EncoderName} ({(ticker.IsHardware ? "hardware" : "software")})");
-            return new EncodeBench(session, ring, ticker, seconds, output);
+
+            // A wedged capture thread cannot be recovered in-process: end it rather than hang.
+            IDisposable captureWatch = watchdog.Watch("capture thread", session.CaptureBeat, stallAfter * 2, r => Fatal.Default($"capture thread stuck in {r.Step} for {r.For.TotalSeconds:F1} s [{ticker.Phase}]"));
+            Console.WriteLine($"encoding {ticker.Settings.Codec} {w}x{h}@{fps} {bitrate / 1e6:F0} Mbps with {ticker.EncoderName} ({(ticker.IsHardware ? "hardware" : "software")}, {(ticker.IsIsolated ? "own device" : "capture device")})");
+            return new EncodeBench(session, ring, ticker, seconds, output, watchdog, captureWatch);
         }
         catch
         {
+            watchdog.Dispose();
             ring.Dispose();
             throw;
         }
@@ -87,6 +105,11 @@ internal sealed class EncodeBench : IDisposable
             line += $"  STALLED: {_ticker.Phase}";
         }
 
+        if (s.Recoveries != _last.Recoveries)
+        {
+            line += $"  now on {_ticker.EncoderName}";
+        }
+
         _last = s;
         return line;
     }
@@ -95,6 +118,7 @@ internal sealed class EncodeBench : IDisposable
     public void Finish()
     {
         _session.FrameTap = null;
+        _captureWatch.Dispose();
         _ticker.Dispose();
         var first = new List<EncodedPacket>(1);
         _ring.ReadFrom(_ring.TailSequence, first, 1, out _);
@@ -121,7 +145,9 @@ internal sealed class EncodeBench : IDisposable
 
     public void Dispose()
     {
+        _captureWatch.Dispose();
         _ticker.Dispose();
+        _watchdog.Dispose();
         _ring.Dispose();
     }
 

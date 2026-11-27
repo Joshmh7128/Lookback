@@ -117,12 +117,15 @@ Rebase on main before merging; they touch this file's rows too.
 
 1. ~~Encoder test on Windows~~ **done** (`tests/Lookback.Capture.Tests/EncoderTests.cs`,
    every display adapter: NVENC and AMF on AETHER).
-   **Next here:** AMF HEVC can deadlock with live WGC capture on the iGPU
-   (see the wiki's Live-Capture known issues). Give the encoder its own D3D11
-   device on the same adapter, hand frames over through a shared keyed-mutex
-   NV12 texture, and add a stall watchdog that recreates the encoder. Also:
-   AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per busy tick
-   (force IDRs at GOP-aligned ticks).
+   ~~Live capture deadlock~~ **fixed**: a lock-order inversion between WGC's
+   flip thread (holds the D3D11 device lock, then took our managed lock) and
+   the encode ticker (the reverse). `GpuDevice` now has one lock, D3D11's own
+   (`using (gpu.Enter())`); never add a second lock around device use. A
+   `StallWatchdog` swaps stalled encoders down the fallback chain, blocklists
+   them per adapter/driver, and fails fast when nothing is left or capture is
+   wedged. Encoder-on-own-device (`IsolateDevice`) is verified and opt-in.
+   Still open: AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per
+   busy tick (force IDRs at GOP-aligned ticks).
 2. ~~CFR ticker and `--encode`~~ **done** (`EncodeTicker`, `EncodeBench`).
 3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
 4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
@@ -150,7 +153,52 @@ Rebase on main before merging; they touch this file's rows too.
    `clip.saved`. Ratings persist through the M4 `RatingStore` only when
    `RetentionRules.CanPersist` allows; official-player sessions get
    `ephemeral` and nothing is written. The shell keeps ratings in memory
-   when there is no ack within ~2 s or the ack is `ok:false`.
+   when there is no ack within ~2 s or the ack is `ok:false`. `stars` is
+   1–5 for content ("is this a highlight"), 0 clears.
+   Also agreed:
+   `{"type":"analyze","id":"…","path":"<absolute path>","profile":"<optional>","retention":"owned|permissioned|open-license","permissionRef":"<unless owned>"}`.
+   The recorder acks, then runs FootageAnalyzer + ProfileRunner (with
+   `publishCandidates: false`) + `ClipperRunner` on the file and publishes
+   a normal FILE session on `/events` (SessionStarted with `title` = exactly
+   the path sent, which the shell uses to link previews, then `game.event`,
+   `clip.candidate`, `qa.report`, SessionEnded; no signal frames to the
+   shell). `RetentionRules.Validate` applies. Until this exists the shell
+   falls back to `lookback-testbench live <file> --pipe <recorder pipe>`.
+   Hosting the clipper (branch `claude/clipper-v1`): with a profile,
+   `new ProfileRunner(bus, catalog, gameId, method, sessionId, freq, publishCandidates: false)`
+   and `new ClipperRunner(bus, catalog, gameId, sessionId, freq)`; for an
+   unknown game `new ClipperRunner(bus, sessionId, freq)`. Dispose the
+   ProfileRunner first at session end. Per-candidate features for M4 come
+   from `ClipperRunner.CandidateFinished` (`CandidateFeatures`,
+   "clipper-features/1"; runs on the pump thread, hand off).
+   Hosting ratings (PR #21, `Lookback.Scoring`): create
+   `new RatingStore(datasetRoot)` and
+   `new RatingSink(bus, store, new RatingSinkOptions { Source = "shell", SessionLookup = …, CandidateLookup = …, OnOutcome = … })`
+   before any session starts (it learns sessions from `session` and
+   candidates from `clip.*`). On `rate`: ack, then publish `ClipRating` on
+   `clip.rating`; the sink applies `RetentionRules.CanPersist` and refuses
+   ephemeral, official-player and unknown sessions. Or call
+   `store.Append(...)` synchronously and put its `RatingWriteResult` in the
+   ack, but never both, or the rating is written twice.
+   Hosting game detection (PR #20, `src/Lookback.Detection.Windows`):
+   `await using DetectionRunner d = WindowsDetection.CreateRunner(bus);`
+   (1 s poll, built-in profiles, user allow/deny list in
+   `%LOCALAPPDATA%\Lookback\detection.json`). `d.Changed` fires on the poll
+   thread after the `game.lifecycle` envelope is published, with `Kind`
+   Detected, Focused, Unfocused, WindowChanged or Exited. On Detected or
+   WindowChanged call `WindowsDetection.TryCaptureTarget(c.Game)` (null if the
+   window is gone) and start or retarget the capture session. Honour
+   `c.Game.Policy` (`AllowPresentHook`, `AllowMemoryReading`); never relax it.
+   Wire `d.HintsChanged += g => profileRunner.ApplyHints(g.Hints, now)` and
+   call `ApplyHints` once right after starting the ProfileRunner. If the
+   capture session reuses `c.Game.Id` as its session id, publish one lifecycle
+   envelope again after `SessionStarted` (`StreamSnapshot` resets per session).
+   **Never create a DXGI factory while encoding** (`CaptureTarget.Outputs`,
+   `ForWindow`, `FindWindow`, the governor probe's adapter scan): measured by
+   the detection session on AETHER, it stalls NVENC briefly and the ticker
+   counts busy ticks. Call those helpers only when (re)targeting, never on a
+   timer, and run the governor probe before the encoder starts. Detection
+   gets adapter LUIDs from `QueryDisplayConfig` instead.
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with

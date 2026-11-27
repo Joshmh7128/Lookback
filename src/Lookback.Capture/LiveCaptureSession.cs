@@ -5,6 +5,7 @@ using Lookback.Capture.Wgc;
 using Lookback.Contracts;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
+using Lookback.Core.Diagnostics;
 using Lookback.Core.Time;
 using Lookback.Signals;
 using Lookback.Signals.Video;
@@ -110,6 +111,14 @@ public sealed class LiveCaptureSession : IAsyncDisposable
 
     public string? StoppedReason { get; private set; }
 
+    /// <summary>
+    /// The capture thread's heartbeat: busy for the whole frame callback
+    /// (analysis downscale and the encode path's conversion). Hosts watch it
+    /// and end the process if it stays busy: a wedged capture device cannot
+    /// be recovered in-process.
+    /// </summary>
+    public Beat CaptureBeat { get; } = new();
+
     /// <summary>Called for every captured frame after the analysis tap, on the capture thread. The encode path hooks in here.</summary>
     public CapturedFrameHandler? FrameTap { get; set; }
 
@@ -150,12 +159,20 @@ public sealed class LiveCaptureSession : IAsyncDisposable
 
     private void OnFrame(Vortice.Direct3D11.ID3D11Texture2D texture, long qpc, TransferFunction transfer)
     {
-        if (_analyzer.WantsVideo(qpc))
+        CaptureBeat.Enter("frame callback", SystemClock.Instance.Now);
+        try
         {
-            _downscaler.Process(texture, qpc, transfer, _deliver);
-        }
+            if (_analyzer.WantsVideo(qpc))
+            {
+                _downscaler.Process(texture, qpc, transfer, _deliver);
+            }
 
-        FrameTap?.Invoke(texture, qpc, transfer);
+            FrameTap?.Invoke(texture, qpc, transfer);
+        }
+        finally
+        {
+            CaptureBeat.Exit();
+        }
     }
 
     private static ICaptureSource CreateSource(GpuDevice gpu, LiveSessionOptions o)
