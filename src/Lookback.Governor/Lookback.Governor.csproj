@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Resource governor: sizes the replay ring, the disk store and the recording quality to this machine, and steps quality down under pressure.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Replay\Lookback.Replay.csproj" />
+  </ItemGroup>
+</Project>

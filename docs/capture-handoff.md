@@ -13,7 +13,7 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Clip writer (ring → fMP4 clip, starts on a keyframe, no re-encode) | `Lookback.Replay` | **Done**, tested |
 | Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins, clip read-back from disk) | `Lookback.Replay` | **Done**, tested |
 | Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | **Done**, tested |
-| Governor policy (probe → ring/disk budget + quality tier, hysteresis) | `Lookback.Governor` | Next |
+| Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is still to come |
 | Audio sample clock (WASAPI device position → QPC, drift correction) | `Lookback.Media` | Next |
 | Live analyzer (push frames/audio from capture threads into the signal banks) | `Lookback.Signals` | Next |
 | WGC capture (CsWinRT), DXGI duplication fallback | `Lookback.Capture` (Windows) | Planned |
