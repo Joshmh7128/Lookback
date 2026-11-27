@@ -65,7 +65,7 @@ the shell's memory.
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
 | Electron shell: library, timeline, 1–5 star rating, official-player viewer and ingest sender | `app/` | In progress |
 | WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
-| Governor Windows probe | Governor.Windows | In progress |
+| Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
 | Clipper v1: normalisation, excitement curve, peaks, windows, merge, QA gates | Clipper | In progress (M2) |
 | Game detection: process and window watcher, profile matching, `GameLifecycle` | Detection | In progress (M2) |
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference | Scoring · `ml/` | In progress (M4) |

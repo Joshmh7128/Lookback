@@ -31,6 +31,7 @@ internal static class MfGuids
     public static readonly Guid Audio = new("73647561-0000-0010-8000-00AA00389B71");
     public static readonly Guid H264 = new("34363248-0000-0010-8000-00AA00389B71");
     public static readonly Guid Hevc = new("43564548-0000-0010-8000-00AA00389B71");
+    public static readonly Guid Av1 = new("31305641-0000-0010-8000-00AA00389B71");
     public static readonly Guid Nv12 = new("3231564E-0000-0010-8000-00AA00389B71");
     public static readonly Guid Aac = new("00001610-0000-0010-8000-00AA00389B71");
     public static readonly Guid Pcm = new("00000001-0000-0010-8000-00AA00389B71");

@@ -18,6 +18,7 @@
 - [Recorder Host](Recorder-Host)
 - [Media Library](Media-Library)
 - [Signals Library](Signals-Library)
+- [Resource Governor](Resource-Governor)
 - [Game Profiles](Game-Profiles)
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
