@@ -15,5 +15,6 @@ builder.Services.Configure<RecorderOptions>(builder.Configuration.GetSection("Re
 builder.Services.AddSingleton<InProcessEventBus>();
 builder.Services.AddSingleton<IEventBus>(sp => sp.GetRequiredService<InProcessEventBus>());
 builder.Services.AddHostedService<StreamHostService>();
+builder.Services.AddHostedService<ParentWatcher>();
 
 await builder.Build().RunAsync().ConfigureAwait(false);

@@ -27,4 +27,22 @@ public sealed class RecorderOptions
     /// built-in profiles and saving is off.
     /// </summary>
     public string? ProfilesDirectory { get; set; }
+
+    /// <summary>
+    /// Where ratings are stored, as <c>&lt;dir&gt;/&lt;game&gt;/ratings.jsonl</c>
+    /// (the checkout's <c>datasets</c> folder, so <c>ml/</c> trains on them).
+    /// Unset: <c>%LOCALAPPDATA%\Lookback\datasets</c>.
+    /// </summary>
+    public string? DatasetsDirectory { get; set; }
+
+    /// <summary>The shell's process id: the recorder stops when that process exits, however it exits.</summary>
+    public int? ParentProcessId { get; set; }
+
+    /// <summary>Accept control commands (<c>rate</c>, <c>analyze</c>, <c>save</c>) on <c>/events</c>. On by default.</summary>
+    public bool Control { get; set; } = true;
+
+    /// <summary>The ratings folder in effect.</summary>
+    public string ResolvedDatasetsDirectory => DatasetsDirectory is { Length: > 0 } d
+        ? Path.GetFullPath(d)
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lookback", "datasets");
 }
