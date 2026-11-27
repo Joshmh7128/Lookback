@@ -191,6 +191,12 @@ Rebase on main before merging; they touch this file's rows too.
    call `ApplyHints` once right after starting the ProfileRunner. If the
    capture session reuses `c.Game.Id` as its session id, publish one lifecycle
    envelope again after `SessionStarted` (`StreamSnapshot` resets per session).
+   **Never create a DXGI factory while encoding** (`CaptureTarget.Outputs`,
+   `ForWindow`, `FindWindow`, the governor probe's adapter scan): measured by
+   the detection session on AETHER, it stalls NVENC briefly and the ticker
+   counts busy ticks. Call those helpers only when (re)targeting, never on a
+   timer, and run the governor probe before the encoder starts. Detection
+   gets adapter LUIDs from `QueryDisplayConfig` instead.
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with

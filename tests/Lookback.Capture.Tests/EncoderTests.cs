@@ -19,6 +19,7 @@ namespace Lookback.Capture.Tests;
 /// CI case uploads NV12 built on the CPU and runs the software H.264 MFT.
 /// Hardware cases run where a GPU encoder exists (NVENC on AETHER).
 /// </summary>
+[Collection(GpuEncoderCollection.Name)]
 public class EncoderTests(ITestOutputHelper output)
 {
     private const long Freq = 10_000_000;

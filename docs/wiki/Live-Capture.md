@@ -175,6 +175,13 @@ grid, the blocklist, the fatal path and a prompt `Dispose`.
 
 ## Known issues
 
+- **Creating a DXGI factory stalls NVENC briefly.** Enumerating adapters or
+  outputs while encoding (`CaptureTarget.Outputs`, `ForWindow`, `FindWindow`,
+  the governor probe) made the constant-rate tests miss ticks in 3 of 9 runs
+  on AETHER. Enumerate only when (re)targeting and before the encoder starts;
+  game detection reads adapter LUIDs from `QueryDisplayConfig`. The GPU
+  encoder test classes run serially for the same reason.
+
 - **AMF HEVC ignores the bitrate.** It produced about 3x the CBR target in
   `EncoderTests` (4 Mbps asked, ~12 Mbps out); AMF H.264 and NVENC hold it.
 - **GOPs count frames, not time.** A tick the encoder had no room for

@@ -14,6 +14,7 @@ namespace Lookback.Capture.Tests;
 /// packet per tick with constant spacing, repeats counted. Needs the video
 /// processor, so it skips on WARP-only machines.
 /// </summary>
+[Collection(GpuEncoderCollection.Name)]
 public class EncodeTickerTests(ITestOutputHelper output)
 {
     [Fact]
