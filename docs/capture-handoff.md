@@ -22,7 +22,7 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback) | `Lookback.Encode` (Windows) | `MfVideoEncoder` **done**, verified on AETHER: NVENC H.264 and HEVC, software H.264 on the RTX and on WARP, all round-trip through the ring and muxer (ffprobe: every frame, keyframe every 2 s, no B-frames, no decode errors) |
 | CFR encode clock and bench | `Lookback.Encode` (`EncodeTicker`), `Lookback.Capture.Cli` | **Done**, tested. Live on AETHER: WGC 144 fps in, HEVC 1080p60 out at 60.0 fps, 0 skipped, 0 busy (`lookback-capture --encode 8 --out clip.mp4`) |
 | AAC encode (`MfAacEncoder`: Microsoft AAC MFT, sync, 48 kHz stereo, float→PCM16, 128/160/192 kbps, raw access units, ASC from `MF_MT_USER_DATA`, sample-count timeline with gap fill and trim) | `Lookback.Encode` (Windows) | **Done**, tested on AETHER and the Windows CI runner (ring → `ClipWriter` → ffprobe `aac,48000,2`, decoded onset within 0.1 ms of its QPC, 0 B per call) |
-| WASAPI endpoint loopback (silence keep-alive), process loopback (build 20348+, runtime check, falls back to the endpoint where allowed), mic track; QPC via `SampleClock`, drift-following resample to 48 kHz stereo, hops through `LiveAudioAssembler`, re-open on default-device change; `AudioCapturePolicy` (official player: never system loopback, encoder or mic); `lookback-capture audio` | `Lookback.Audio`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (Realtek loopback hears a rendered 997 Hz tone, clock fit within 2 ppm, 0 B per packet, Yeti mic streams, re-open gap ~30 ms filled). Process loopback written, never run (needs 20348+) |
+| WASAPI endpoint loopback (silence keep-alive), process loopback (build 19041+, falls back to the endpoint on failure or silence where allowed), mic track; QPC via `SampleClock`, drift-following resample to 48 kHz stereo, hops through `LiveAudioAssembler`, re-open on default-device change; `AudioCapturePolicy` (official player: never system loopback, encoder or mic); `lookback-capture audio` | `Lookback.Audio`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (Realtek loopback hears a rendered 997 Hz tone, clock fit within 2 ppm, 0 B per packet, Yeti mic streams, re-open gap ~30 ms filled). Process loopback verified on 19045: isolates the target and its children (Electron audio included); timeout fallback |
 | Recorder control commands on `/events` (`rate`, `analyze`, `save` refused until live capture), parent-exit | `Lookback.Recorder`, `Lookback.Stream` | **Done**, tested end to end against the built recorder |
 | Recorder live capture (`CaptureService`), `save`, storage budgets and `recorder.storage` | `Lookback.Recorder` | **Done**, verified on AETHER with the stand-in game window |
 | Governor runtime controller in live sessions; testbench multi-recorder mode | `Lookback.Recorder` | Next |
@@ -76,7 +76,9 @@ Also a Parsec virtual display. 64 GB RAM, NVMe on C: and D:. VS 2022 17.14
 10.0.404.
 
 Consequences:
-- No process loopback (needs build 20348+). Fall back to endpoint loopback.
+- Process loopback works from build 19041 (Microsoft documents 20348; OBS
+  uses 19041 too), with Windows 10 quirks and a timeout fallback to endpoint
+  loopback; see the wiki's Live Capture page.
 - WGC `IsBorderRequired` is Windows 11 only. Check at runtime; on Windows 10
   the yellow border shows.
 - Multi-adapter: create the capture/convert/encode device on the adapter
@@ -149,9 +151,10 @@ governor probe (step 5, `claude/governor-probe`).
    - A default-device change re-opens on the new device (its format may
      differ); the timeline carries on and the gap is filled. Tested by
      driving the notification hook, not by switching AETHER's real default.
-   - Process loopback (`ActivateAudioInterfaceAsync`) is written to the docs
-     but has never run: AETHER is 19045. Its test runs on 20348+ with an
-     audio device, which CI runners don't have.
+   - Process loopback (`ActivateAudioInterfaceAsync`) runs from build 19041
+     and is verified on AETHER (19045): it isolates the target and its
+     children. Activation failure, or silence from the target while the
+     endpoint plays, falls back to endpoint loopback where allowed.
    - Wiring: `AudioCapturePolicy.Decide(started, OsBuild, gamePid, mic)`
      gives the plan; then `WasapiSource.Start(AudioSourceOptions.ForGame(plan,
      pid), plan.Encode ? aac.Encode : null, b => analyzer.SubmitAudio(b))`.

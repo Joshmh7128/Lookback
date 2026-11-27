@@ -15,10 +15,13 @@ using Lookback.Replay.Packets;
 /// ring and saves it as an audio-only clip at the end. Saving is refused
 /// unless <see cref="RetentionRules.CanPersist"/> allows it, so an
 /// <c>--official-player</c> run never creates an encoder or writes anything.
+/// <c>--pid</c> asks for process loopback of that process and its children
+/// (<c>--process-only</c>: without them); a fallback to the endpoint is
+/// printed when it happens.
 /// </summary>
 internal static class AudioBench
 {
-    public const string Usage = "lookback-capture audio [--list] [--seconds 10] [--pid <game pid>] [--mic] [--official-player] [--kbps 160] [--out audio.mp4]";
+    public const string Usage = "lookback-capture audio [--list] [--seconds 10] [--pid <game pid>] [--process-only] [--mic] [--official-player] [--kbps 160] [--out audio.mp4]";
 
     private const long RingBytes = 64L << 20;
 
@@ -32,7 +35,7 @@ internal static class AudioBench
                 Console.WriteLine($"{(d.IsRender ? "render " : "capture")} {(d.IsDefault ? "*" : " ")} {d.Name}");
             }
 
-            Console.WriteLine($"Windows build {AudioCapturePolicy.OsBuild}; process loopback {(AudioCapturePolicy.ProcessLoopbackSupported(AudioCapturePolicy.OsBuild) ? "available" : $"needs {AudioCapturePolicy.ProcessLoopbackMinBuild}+")}");
+            Console.WriteLine($"Windows build {AudioCapturePolicy.OsBuild}; process loopback {(AudioCapturePolicy.ProcessLoopbackSupported(AudioCapturePolicy.OsBuild) ? "tried (falls back to system loopback if it fails or stays silent)" : $"needs {AudioCapturePolicy.ProcessLoopbackMinBuild}+")}");
             return 0;
         }
 
@@ -67,7 +70,11 @@ internal static class AudioBench
         using MfAacEncoder? micAac = ring is null || !plan.Microphone ? null : MfAacEncoder.Create(new AacEncoderSettings(kbps * 1000) { Role = "mic" }, ring, trackId: 2, freq);
 
         var meter = new Meter();
-        using WasapiSource game = WasapiSource.Start(AudioSourceOptions.ForGame(plan, pid ?? 0), gameAac is null ? null : gameAac.Encode, meter.OnHop);
+        using WasapiSource game = WasapiSource.Start(AudioSourceOptions.ForGame(plan, pid ?? 0) with
+        {
+            IncludeProcessTree = !args.Contains("--process-only"),
+            Log = m => Console.WriteLine($"game: {m}"),
+        }, gameAac is null ? null : gameAac.Encode, meter.OnHop);
         using WasapiSource? mic = plan.Microphone ? WasapiSource.Start(new AudioSourceOptions { Kind = AudioSourceKind.Microphone }, micAac is null ? null : micAac.Encode) : null;
         Console.WriteLine($"game: {game.Description}{(game.FallbackReason is { } why ? $" ({why})" : "")}{(game.LastError is { } e ? $" [{e}]" : "")}");
         if (mic is not null)
@@ -82,7 +89,7 @@ internal static class AudioBench
             await Task.Delay(1000).ConfigureAwait(false);
             float peak = meter.TakePeak();
             string level = peak > 0 ? $"{20 * Math.Log10(peak),6:F1} dBFS" : "  -inf dBFS";
-            Console.WriteLine($"{t.Elapsed.TotalSeconds,5:F1}s  game {level}  packets {game.Packets}  hops {meter.Hops}  rate {game.MeasuredRate:F2} Hz  resets {game.ClockResets}  glitches {game.Discontinuities}  " +
+            Console.WriteLine($"{t.Elapsed.TotalSeconds,5:F1}s  game{(game.Kind == AudioSourceKind.SystemLoopback && plan.Game == AudioSourceKind.ProcessLoopback ? " (endpoint)" : "")} {level}  packets {game.Packets}  hops {meter.Hops}  rate {game.MeasuredRate:F2} Hz  resets {game.ClockResets}  glitches {game.Discontinuities}  " +
                 $"alloc {game.CaptureThreadAllocatedBytes} B{(mic is null ? "" : $"  mic packets {mic.Packets}")}{(gameAac is null ? "" : $"  aac {gameAac.PacketsOut}")}");
         }
 

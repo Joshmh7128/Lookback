@@ -26,11 +26,29 @@ public sealed record AudioSourceOptions
     public bool IncludeProcessTree { get; init; } = true;
 
     /// <summary>
-    /// When process loopback is unavailable (Windows builds before 20348),
-    /// capture the whole default render endpoint instead. False for
-    /// official-player sessions, which never get system loopback.
+    /// When process loopback is unavailable (Windows builds before 19041),
+    /// fails to activate, or hears nothing while the endpoint plays (see
+    /// <see cref="ProcessLoopbackProbe"/>), capture the whole default render
+    /// endpoint instead. False for official-player sessions, which never get
+    /// system loopback.
     /// </summary>
     public bool AllowEndpointFallback { get; init; } = true;
+
+    /// <summary>
+    /// How long the default render endpoint may be audibly playing while
+    /// process loopback delivers only silence before it counts as not working.
+    /// Once the process has produced one non-silent sample, it is trusted for
+    /// the rest of the session. This is a timeout measured on the capture
+    /// thread's own 20 ms loop; nothing waits on it.
+    /// </summary>
+    public TimeSpan ProcessLoopbackProbe { get; init; } = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// One line when the source falls back from process loopback, or stops
+    /// trusting it where no fallback is allowed. Called on a thread-pool
+    /// thread, never the capture thread.
+    /// </summary>
+    public Action<string>? Log { get; init; }
 
     /// <summary>The QPC frequency timestamps are in (the session clock's).</summary>
     public long QpcFrequency { get; init; } = Stopwatch.Frequency;
@@ -58,8 +76,9 @@ public sealed record AudioSourceOptions
 
 /// <summary>
 /// One WASAPI capture stream in shared, event-driven mode: endpoint loopback
-/// of the default render device, process loopback (build 20348+, otherwise
-/// endpoint loopback with <see cref="FallbackReason"/> set, if allowed), or
+/// of the default render device, process loopback (build 19041+; if it is
+/// unavailable, fails, or stays silent while the endpoint plays, endpoint
+/// loopback with <see cref="FallbackReason"/> set, where allowed), or
 /// the default microphone. A dedicated MMCSS thread pulls packets, converts
 /// <c>u64QPCPosition</c> (100 ns) to raw QPC, smooths it with a
 /// <see cref="SampleClock"/> against the device position, and resamples to
@@ -75,6 +94,8 @@ public sealed record AudioSourceOptions
 public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
 {
     private const int WarmupPackets = 50;
+    private const float AudiblePeak = 0.001f; // -60 dBFS
+    private const float NonSilentSample = 1e-4f;
     private static readonly TimeSpan FitBeforeTrim = TimeSpan.FromSeconds(5);
 
     private readonly AudioSourceOptions _options;
@@ -95,7 +116,11 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
     private nint _client;
     private nint _capture;
     private RenderStream? _keepAlive;
+    private static readonly TimeSpan DefaultClockTolerance = TimeSpan.FromMilliseconds(20);
+    private static readonly TimeSpan ProcessLoopbackClockTolerance = TimeSpan.FromMilliseconds(3);
+
     private SampleClock? _clock;
+    private TimeSpan _clockTolerance;
     private PcmFormat? _format;
     private float[] _float = [];
     private float[] _out = [];
@@ -111,6 +136,13 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
     private volatile string? _deviceId;
     private volatile string? _device;
     private volatile string? _lastError;
+    private volatile AudioSourceKind _kind;
+    private volatile string? _fallbackReason;
+    private volatile bool _proven;
+    private nint _meter;
+    private long _audibleTicks;
+    private long _lastProbe;
+    private long _synthPosition;
     private long _packets, _frames, _silent, _discontinuities, _timestampErrors, _deviceChanges, _opens, _invalidations;
 
     private WasapiSource(AudioSourceOptions options, PcmHandler? onPcm, Action<AudioBlock>? onHop)
@@ -120,7 +152,7 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
         _onHop = onHop;
         _freq = options.QpcFrequency;
         Requested = options.Kind;
-        Kind = options.Kind;
+        _kind = options.Kind;
         if (Kind == AudioSourceKind.ProcessLoopback && !AudioCapturePolicy.ProcessLoopbackSupported(AudioCapturePolicy.OsBuild))
         {
             string why = $"process loopback needs Windows build {AudioCapturePolicy.ProcessLoopbackMinBuild}+, this is {AudioCapturePolicy.OsBuild}";
@@ -129,8 +161,8 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
                 throw new NotSupportedException($"{why}, and this session may not fall back to system loopback.");
             }
 
-            Kind = AudioSourceKind.SystemLoopback;
-            FallbackReason = $"{why}; capturing the default render endpoint instead";
+            _kind = AudioSourceKind.SystemLoopback;
+            _fallbackReason = $"{why}; capturing the default render endpoint instead";
         }
 
         if (Kind == AudioSourceKind.ProcessLoopback && options.ProcessId == 0)
@@ -157,11 +189,17 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
     /// <summary>What was asked for.</summary>
     public AudioSourceKind Requested { get; }
 
-    /// <summary>What is captured (differs from <see cref="Requested"/> after a fallback).</summary>
-    public AudioSourceKind Kind { get; }
+    /// <summary>What is captured (differs from <see cref="Requested"/> after a fallback, which can happen mid-session).</summary>
+    public AudioSourceKind Kind => _kind;
 
-    /// <summary>Why process loopback fell back to the endpoint, or null.</summary>
-    public string? FallbackReason { get; }
+    /// <summary>
+    /// Why process loopback fell back to the endpoint, or null. Where no
+    /// fallback is allowed, why process loopback is not trusted.
+    /// </summary>
+    public string? FallbackReason => _fallbackReason;
+
+    /// <summary>True once process loopback has delivered a non-silent sample.</summary>
+    public bool ProcessAudioHeard => _proven;
 
     /// <summary>The device's friendly name while open, or null.</summary>
     public string? Device => _device;
@@ -205,7 +243,7 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
 
     public string Description =>
         $"{Kind switch { AudioSourceKind.ProcessLoopback => $"process loopback of pid {_options.ProcessId}", AudioSourceKind.Microphone => "microphone", _ => "endpoint loopback" }}"
-        + $"{(Device is { } d ? $" of {d}" : "")}{(Format is { } f ? $" ({f})" : "")}";
+        + $"{(Kind != AudioSourceKind.ProcessLoopback && Device is { } d ? $" of {d}" : "")}{(Format is { } f ? $" ({f})" : "")}";
 
     /// <summary>
     /// Starts capture and waits for the first open. If no device is there yet
@@ -327,11 +365,10 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
         try
         {
             _enumerator = Wasapi.CreateEnumerator();
-            if (Kind != AudioSourceKind.ProcessLoopback)
-            {
-                _notify = ComCallback.ForNotifications(this);
-                Native.Check(Wasapi.RegisterNotification(_enumerator, _notify.Pointer), "RegisterEndpointNotificationCallback");
-            }
+
+            // Registered for process loopback too, so a fallback to the endpoint follows device changes.
+            _notify = ComCallback.ForNotifications(this);
+            Native.Check(Wasapi.RegisterNotification(_enumerator, _notify.Pointer), "RegisterEndpointNotificationCallback");
 
             while (!_stopping)
             {
@@ -341,8 +378,14 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
                 }
                 catch (Exception ex) when (ex is WasapiException or TimeoutException)
                 {
-                    _lastError = ex.Message;
                     CloseStream();
+                    if (Kind == AudioSourceKind.ProcessLoopback && _options.AllowEndpointFallback)
+                    {
+                        FallBack($"process loopback of pid {_options.ProcessId} failed ({ex.Message})");
+                        continue;
+                    }
+
+                    _lastError = ex.Message;
                     _firstOpen.Set();
                     _ = Native.WaitForSingleObject(_wake, 1000);
                     continue;
@@ -398,6 +441,10 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
             format = new PcmFormat(StereoResampler.OutputRate, 2, SampleEncoding.IeeeFloat, 8, 32);
             _device = $"pid {_options.ProcessId}";
             _deviceId = null;
+            if (!_proven)
+            {
+                OpenEndpointMeter();
+            }
         }
         else
         {
@@ -433,6 +480,11 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
         Native.Check(Wasapi.SetEventHandle(_client, _event), "IAudioClient.SetEventHandle");
         Native.Check(Wasapi.GetService(_client, Wasapi.IidAudioCaptureClient, out _capture), "IAudioClient.GetService(capture)");
         Native.Check(Wasapi.GetBufferSize(_client, out uint bufferFrames), "IAudioClient.GetBufferSize");
+        if (bufferFrames == 0 || bufferFrames > (uint)format.SampleRate * 2)
+        {
+            // Process loopback on Windows 10 reports success without a count.
+            bufferFrames = (uint)(bufferHns * format.SampleRate / TimeSpan.TicksPerSecond);
+        }
 
         // Allocation happens here, per open, never per packet.
         int maxFrames = (int)Math.Max(bufferFrames, (uint)format.SampleRate / 10);
@@ -448,20 +500,102 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
             _out = new float[outFrames * 2];
         }
 
-        if (_clock is null || _clock.SampleRate != format.SampleRate)
+        // Process-loopback stamps are synthesized exactly 10 ms apart, but jump forward (~7–17 ms on
+        // Windows 10) when the target starts or stops a stream. Inside the default 20 ms tolerance that
+        // jump would bend the rate fit, so it gets a tight tolerance and the jump becomes a reset (and
+        // a short gap the assembler and encoder fill with silence).
+        TimeSpan tolerance = Kind == AudioSourceKind.ProcessLoopback ? ProcessLoopbackClockTolerance : DefaultClockTolerance;
+        if (_clock is null || _clock.SampleRate != format.SampleRate || _clockTolerance != tolerance)
         {
-            _clock = new SampleClock(format.SampleRate, _freq);
+            _clock = new SampleClock(format.SampleRate, _freq, tolerance);
+            _clockTolerance = tolerance;
             _lastResets = 0;
         }
 
         _resampler.Reset();
         _firstPacket = true;
+        _synthPosition = 0;
         Volatile.Write(ref _format, format);
         _allocPrior += _allocCurrent;
         _allocCurrent = 0;
         _warm = 0;
         Native.Check(Wasapi.Start(_client), "IAudioClient.Start");
         Interlocked.Increment(ref _opens);
+    }
+
+    /// <summary>
+    /// The default render endpoint's peak meter: process loopback is only
+    /// suspect while the endpoint is audibly playing and the process is not.
+    /// Best effort; without a meter there is no silence fallback.
+    /// </summary>
+    private void OpenEndpointMeter()
+    {
+        _audibleTicks = 0;
+        _lastProbe = Stopwatch.GetTimestamp();
+        if (_meter != 0 || Wasapi.GetDefaultAudioEndpoint(_enumerator, Wasapi.FlowRender, Wasapi.RoleConsole, out nint device) < 0)
+        {
+            return;
+        }
+
+        if (Wasapi.Activate(device, Wasapi.IidAudioMeterInformation, out nint meter) >= 0)
+        {
+            _meter = meter;
+        }
+
+        Marshal.Release(device);
+    }
+
+    /// <summary>
+    /// Called on every wake of the capture loop while process loopback is
+    /// unproven. True once the endpoint has been audible for
+    /// <see cref="AudioSourceOptions.ProcessLoopbackProbe"/> in total with
+    /// nothing but silence from the process.
+    /// </summary>
+    private bool ProbeSaysSilent()
+    {
+        if (_meter == 0)
+        {
+            return false;
+        }
+
+        if (_proven)
+        {
+            Native.Release(ref _meter);
+            return false;
+        }
+
+        long now = Stopwatch.GetTimestamp();
+        long elapsed = Math.Min(now - _lastProbe, Stopwatch.Frequency / 10);
+        _lastProbe = now;
+        if (Wasapi.GetPeakValue(_meter, out float peak) >= 0 && peak > AudiblePeak)
+        {
+            _audibleTicks += elapsed;
+        }
+
+        if (_audibleTicks < _options.ProcessLoopbackProbe.TotalSeconds * Stopwatch.Frequency)
+        {
+            return false;
+        }
+
+        Native.Release(ref _meter);
+        return true;
+    }
+
+    /// <summary>Switches to endpoint loopback; the next open captures the default render device.</summary>
+    private void FallBack(string why)
+    {
+        _kind = AudioSourceKind.SystemLoopback;
+        _fallbackReason = $"{why}; capturing the default render endpoint instead";
+        _lastError = null;
+        Notify(_fallbackReason);
+    }
+
+    private void Notify(string line)
+    {
+        if (_options.Log is { } log)
+        {
+            ThreadPool.QueueUserWorkItem(static s => s.log(s.line), (log, line), preferLocal: false);
+        }
     }
 
     private nint ActivateProcessLoopback()
@@ -520,6 +654,19 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
                 return;
             }
 
+            if (Kind == AudioSourceKind.ProcessLoopback && ProbeSaysSilent())
+            {
+                string why = $"process loopback of pid {_options.ProcessId} heard nothing while the endpoint played for {_options.ProcessLoopbackProbe.TotalSeconds:0.#} s";
+                if (_options.AllowEndpointFallback)
+                {
+                    FallBack(why);
+                    return;
+                }
+
+                _fallbackReason = $"{why}; this session may not fall back to system loopback, so it stays on the process";
+                Notify(_fallbackReason);
+            }
+
             while (true)
             {
                 if (Wasapi.CaptureNextPacketSize(_capture, out uint next) < 0)
@@ -556,6 +703,17 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
                 else
                 {
                     format.ToFloat(new ReadOnlySpan<byte>(data, count * format.BlockAlign), count, pcm);
+                    if (!_proven && Kind == AudioSourceKind.ProcessLoopback && IsAudible(pcm))
+                    {
+                        _proven = true;
+                    }
+                }
+
+                if (Kind == AudioSourceKind.ProcessLoopback)
+                {
+                    // Process loopback on Windows 10 reports device position 0 for every packet; count frames instead.
+                    position = (ulong)_synthPosition;
+                    _synthPosition += frames;
                 }
 
                 if (Wasapi.CaptureReleaseBuffer(_capture, frames) < 0)
@@ -625,6 +783,19 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
         }
     }
 
+    private static bool IsAudible(ReadOnlySpan<float> pcm)
+    {
+        foreach (float v in pcm)
+        {
+            if (v > NonSilentSample || v < -NonSilentSample)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void Invalidated()
     {
         Interlocked.Increment(ref _invalidations);
@@ -640,6 +811,7 @@ public sealed unsafe class WasapiSource : IDisposable, IDeviceNotifications
 
         _keepAlive?.Dispose();
         _keepAlive = null;
+        Native.Release(ref _meter);
         Native.Release(ref _capture);
         Native.Release(ref _client);
         _device = null;

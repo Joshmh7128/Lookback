@@ -9,7 +9,11 @@ public enum AudioSourceKind
     /// <summary>Endpoint loopback: everything the default render device plays.</summary>
     SystemLoopback,
 
-    /// <summary>One process (and its children) only. Windows build 20348 and later.</summary>
+    /// <summary>
+    /// One process (and its children) only. Windows build 19041 (Windows 10
+    /// 2004) and later; Microsoft documents 20348, but it works earlier, as
+    /// OBS's application audio capture also relies on.
+    /// </summary>
     ProcessLoopback,
 
     /// <summary>The default capture device (eConsole role).</summary>
@@ -33,8 +37,18 @@ public sealed record AudioPlan(AudioSourceKind? Game, bool AllowEndpointFallback
 /// </summary>
 public static class AudioCapturePolicy
 {
-    /// <summary>First Windows build with <c>AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK</c>.</summary>
-    public const int ProcessLoopbackMinBuild = 20348;
+    /// <summary>
+    /// First Windows build where <c>AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK</c>
+    /// is tried: Windows 10 2004. Microsoft's docs say 20348, but it activates
+    /// and isolates the process on 19041+ (measured on 19045; OBS gates its
+    /// application audio capture on 19041 too). Because it is undocumented
+    /// there, <see cref="WasapiSource"/> checks it: an activation failure, or
+    /// silence from the process while the endpoint is playing, falls back.
+    /// </summary>
+    public const int ProcessLoopbackMinBuild = 19041;
+
+    /// <summary>The build Microsoft documents process loopback from.</summary>
+    public const int ProcessLoopbackDocumentedBuild = 20348;
 
     /// <summary>This machine's Windows build number (0 elsewhere).</summary>
     public static int OsBuild => OperatingSystem.IsWindows() ? Environment.OSVersion.Version.Build : 0;
@@ -66,7 +80,7 @@ public static class AudioCapturePolicy
         bool mic = microphone && encode;
         AudioSourceKind game = process ? AudioSourceKind.ProcessLoopback : AudioSourceKind.SystemLoopback;
         string source = process
-            ? $"process loopback of pid {targetProcessId}"
+            ? $"process loopback of pid {targetProcessId} (system loopback if it fails or stays silent)"
             : targetProcessId is not null
                 ? $"system loopback (process loopback needs Windows build {ProcessLoopbackMinBuild}+, this is {osBuild})"
                 : "system loopback";

@@ -71,7 +71,7 @@ refused or unanswered rating stays in the shell's memory.
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
 | Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17) |
 | Shell on the recorder's commands: supervision and parent-exit, stored ratings, Save clips, storage warnings | `app/` | Done (#26) |
-| WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback untested (needs build 20348+) |
+| WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback from build 19041, verified on Windows 10 19045, with a timeout fallback |
 | Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
 | [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |
 | Game detection: process and window watcher, profile matching, allow/deny lists, debounced `GameLifecycle`, `lookback-detect` bench ([Game Detection](Game-Detection)) | Detection · Detection.Windows | Done (#20); the recorder wiring hosts it |
