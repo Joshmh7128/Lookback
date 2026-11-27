@@ -4,7 +4,7 @@
 - Warnings are errors; analyzers at `latest-recommended`. Library code uses `ConfigureAwait(false)`.
 - Hot paths (capture, audio, signals): no per-frame managed allocations. Use `SpscRing<T>`, `ArrayPool`, `Span`.
 - All timestamps are raw QPC ticks from `IClock`. Never mix in `DateTime` for event time.
-- Anything that writes session data to disk must go through `RetentionRules`. Official-player sources are ephemeral; never add a path that persists them.
+- Anything that writes session data to disk must go through `RetentionRules`. Official-player sources are ephemeral; never add a path that persists them. The one derived write is profile numbers (region rectangles, rule thresholds) the user confirms, gated by `RetentionRules.ValidateDerived` and written only by `CalibrationWriter`; never widen it to frames, audio, signal series, times or video ids.
 - Schema changes go in `proto/lookback/v1/events.proto`; never renumber or reuse field numbers.
 - Do not add game-specific APIs or memory reading to the clipping path; signals stay game-agnostic.
 - Game knowledge lives in `profiles/*.json` as data (HUD regions plus rules over existing signals). A profile never adds a new kind of measurement; if a game needs one, add a game-agnostic signal instead. Profiles for anti-cheat titles keep `allowPresentHook` and `allowMemoryReading` false.
