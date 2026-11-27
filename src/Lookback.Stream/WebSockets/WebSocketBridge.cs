@@ -62,6 +62,17 @@ public sealed class WebSocketBridgeOptions
     /// its handler sees the socket.
     /// </summary>
     public IReadOnlyList<BridgeSocket> Sockets { get; init; } = [];
+
+    /// <summary>
+    /// Handles a text message a client sends on <c>/events</c> (a control
+    /// command such as <c>rate</c> or <c>analyze</c>) and returns the reply to
+    /// send to that client only, or null for none. Null (the default) ignores
+    /// inbound messages. Replies never interleave with streamed events.
+    /// </summary>
+    public Func<string, CancellationToken, ValueTask<string?>>? Control { get; init; }
+
+    /// <summary>Longest inbound control message accepted; longer ones are dropped unread.</summary>
+    public int MaxControlMessageBytes { get; init; } = 64 * 1024;
 }
 
 /// <summary>A WebSocket endpoint the bridge accepts at <paramref name="Path"/> and hands to <paramref name="Handler"/>.</summary>
@@ -76,9 +87,10 @@ public sealed record BridgePage(string Path, string Html);
 
 /// <summary>
 /// Streams bus events to the Electron shell as JSON text frames over a
-/// loopback-only WebSocket at <c>/events</c>. Read-only in M0; the rating and
-/// clip-request messages arrive with the clipper milestone. Optionally serves
-/// static pages (the live profiler) from the same origin.
+/// loopback-only WebSocket at <c>/events</c>, and hands each client's text
+/// messages to <see cref="WebSocketBridgeOptions.Control"/>, replying to that
+/// client only. Optionally serves static pages (the live profiler) from the
+/// same origin.
 /// </summary>
 public sealed class WebSocketBridge : IAsyncDisposable
 {
@@ -287,8 +299,11 @@ public sealed class WebSocketBridge : IAsyncDisposable
         CancellationToken ct = closed.Token;
         Interlocked.Increment(ref _clients);
 
-        // Inbound messages are ignored for now; a client close ends the send loop.
-        Task receive = DrainReceivesAsync(socket, ct).ContinueWith(
+        // One send at a time per socket: streamed events and control replies share it.
+        using var sendLock = new SemaphoreSlim(1, 1);
+
+        // Inbound text goes to the control handler (or is dropped); a client close ends the send loop.
+        Task receive = ReceiveAsync(socket, sendLock, ct).ContinueWith(
             _ => closed.Cancel(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         try
         {
@@ -299,14 +314,14 @@ public sealed class WebSocketBridge : IAsyncDisposable
                 {
                     if (Topics.Matches(_options.TopicPattern, envelope.Topic))
                     {
-                        await SendAsync(socket, envelope, ct).ConfigureAwait(false);
+                        await SendAsync(socket, sendLock, Encoding.UTF8.GetBytes(Json.Format(envelope)), ct).ConfigureAwait(false);
                     }
                 }
             }
 
             await foreach (Envelope envelope in sub.ReadAllAsync(ct).ConfigureAwait(false))
             {
-                await SendAsync(socket, envelope, ct).ConfigureAwait(false);
+                await SendAsync(socket, sendLock, Encoding.UTF8.GetBytes(Json.Format(envelope)), ct).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -332,15 +347,25 @@ public sealed class WebSocketBridge : IAsyncDisposable
         Interlocked.Decrement(ref _clients);
     }
 
-    private static async Task SendAsync(WebSocket socket, Envelope envelope, CancellationToken ct)
+    private static async Task SendAsync(WebSocket socket, SemaphoreSlim sendLock, byte[] payload, CancellationToken ct)
     {
-        byte[] payload = Encoding.UTF8.GetBytes(Json.Format(envelope));
-        await socket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ct).ConfigureAwait(false);
+        await sendLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await socket.SendAsync(payload, WebSocketMessageType.Text, endOfMessage: true, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            sendLock.Release();
+        }
     }
 
-    private static async Task DrainReceivesAsync(WebSocket socket, CancellationToken ct)
+    /// <summary>Reads whole text messages and hands each to the control handler; binary and oversized messages are dropped.</summary>
+    private async Task ReceiveAsync(WebSocket socket, SemaphoreSlim sendLock, CancellationToken ct)
     {
-        byte[] buffer = new byte[1024];
+        byte[] buffer = new byte[4096];
+        using var message = new MemoryStream();
+        bool overflow = false;
         try
         {
             while (socket.State == WebSocketState.Open)
@@ -350,6 +375,42 @@ public sealed class WebSocketBridge : IAsyncDisposable
                 {
                     return;
                 }
+
+                if (result.MessageType != WebSocketMessageType.Text || _options.Control is null)
+                {
+                    continue;
+                }
+
+                if (!overflow)
+                {
+                    if (message.Length + result.Count > _options.MaxControlMessageBytes)
+                    {
+                        overflow = true;
+                        message.SetLength(0);
+                    }
+                    else
+                    {
+                        message.Write(buffer, 0, result.Count);
+                    }
+                }
+
+                if (!result.EndOfMessage)
+                {
+                    continue;
+                }
+
+                if (!overflow)
+                {
+                    string text = Encoding.UTF8.GetString(message.GetBuffer(), 0, (int)message.Length);
+                    string? reply = await _options.Control(text, ct).ConfigureAwait(false);
+                    if (reply is not null)
+                    {
+                        await SendAsync(socket, sendLock, Encoding.UTF8.GetBytes(reply), ct).ConfigureAwait(false);
+                    }
+                }
+
+                message.SetLength(0);
+                overflow = false;
             }
         }
         catch (OperationCanceledException)

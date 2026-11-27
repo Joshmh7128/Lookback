@@ -50,6 +50,7 @@ xUnit v3 on Microsoft.Testing.Platform. Run everything with
 | | `WritesReadsAndSeeksWithOutOfOrderRecords` | 1 000 records with neighbours swapped; seeking from seven different times returns exactly the records a full scan would, and the index really skips ahead |
 | | `ToleratesTornTail` | A log cut mid-record by a crash reads up to the last complete record |
 | | `RecorderCapturesOnlyItsSessionFromTheBus` | The bus-to-disk recorder keeps its own session's events, all of them, and nothing else |
+| `BridgeControlTests.cs` | `A_reply_goes_to_the_sender_only`, `Replies_and_streamed_events_never_interleave`, `Oversized_messages_are_dropped_and_the_socket_carries_on`, `Without_a_handler_inbound_messages_are_ignored` | The bridge's control hook: per-client replies, whole frames under concurrent event streaming, a size cap, and the old read-only behaviour without a handler |
 
 ## `Lookback.Signals.Tests`
 
@@ -316,6 +317,18 @@ loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
 | | `Microphone_track_opens_and_streams` | The default mic streams at 48 kHz with current stamps and 0 B per packet |
 | `ResamplerTests.cs` | 5 tests | A unity ratio is a two-frame delay; 44.1, 96 and 47.99 kHz resample to 48 kHz keeping pitch, level and length; surround downmix cannot clip and drops LFE; PCM16, PCM24 and float decode |
 | `PolicyTests.cs` | 4 tests | Official player: never system loopback, encoder or mic; a live game falls back to system loopback before 20348 and says so; ephemeral is analysis only; invalid retention is refused |
+
+## `Lookback.Recorder.Tests`
+
+| File | Test | What it proves |
+|---|---|---|
+| `ControlServiceTests.cs` | `A_rating_of_an_owned_session_is_stored_and_published` | `rate` on a known candidate writes one line to `datasets/<game>/ratings.jsonl`, acks `stored`, and publishes `ClipRating` on the bus |
+| | `Official_player_ratings_are_refused_and_nothing_is_written` | An ephemeral session's rating gets `ephemeral` and no file is created |
+| | `Unknown_sessions_and_candidates_are_refused` | `unknown-session` and `unknown-candidate`, nothing written |
+| | `Malformed_commands_get_bad_request` | Bad stars, missing fields, unknown types, non-JSON and non-objects all get `bad-request` |
+| | `Save_is_refused_until_live_capture_lands` | `save` acks `unsupported` |
+| | `Analyze_refuses_what_it_cannot_run` | Relative or missing paths, unknown profiles, permissioned footage without a reference, unknown retention |
+| | `Footage_is_analysed_into_a_file_session_whose_candidates_can_be_rated` | A generated clip becomes a FILE session titled with its exact path, with candidates and no `signals.*` envelopes on the bus; one of its candidates is then rated and stored |
 
 ## Testing approach
 

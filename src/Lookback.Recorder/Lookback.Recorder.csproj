@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Description>Lookback recorder service host. In M0 it hosts the event bus, the pipe server and the WebSocket bridge.</Description>
+    <Description>Lookback recorder service host: the event bus, the pipe server, the WebSocket bridge, official-player calibration, and the shell's control commands (ratings, footage analysis).</Description>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
@@ -9,8 +9,13 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Lookback.Recorder.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
     <ProjectReference Include="..\Lookback.Profiler\Lookback.Profiler.csproj" />
     <ProjectReference Include="..\Lookback.Calibration\Lookback.Calibration.csproj" />
+    <ProjectReference Include="..\Lookback.Clipper\Lookback.Clipper.csproj" />
+    <ProjectReference Include="..\Lookback.Scoring\Lookback.Scoring.csproj" />
   </ItemGroup>
 </Project>
