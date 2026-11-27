@@ -99,7 +99,9 @@ Arguments the shell adds: `--Recorder:ParentProcessId=<shell pid>`, so the
 recorder exits when the shell does however the shell ends (closed, crashed or
 killed); `--Recorder:ProfilesDirectory` and `--Recorder:DatasetsDirectory`
 for the checkout's `profiles/` and `datasets/` (or the folders in
-Settings), so calibration can save and ratings land where `ml/` trains. With
+Settings), so calibration can save and ratings land where `ml/` trains; and
+`--Recorder:ModelDirectory` for the checkout's `ml/out/model`, where training
+writes the learned clip scorer (restart the app after training to load it). With
 no datasets folder the recorder uses its default,
 `%LOCALAPPDATA%\Lookback\datasets`, which Settings shows. A recorder that
 does not know an option ignores it.

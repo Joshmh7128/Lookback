@@ -12,7 +12,7 @@ import { validRect } from "./frames";
 import { validPosition } from "./ingest";
 import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
-import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
+import { datasetsFolder, defaultRatingsFolder, locateTool, modelFolder, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
 import { MEDIA_SCHEME, MediaRegistry, serveMedia, VIDEO_EXTENSIONS } from "./media";
 import { listProfiles } from "./profiles";
 import { RecorderHost } from "./recorder";
@@ -118,7 +118,7 @@ function startRecorder(): RecorderState {
   // Smoke runs keep everything the recorder writes (ratings, recordings, clips)
   // in their own userData, never in the checkout or the user's store.
   const smokeDir = SMOKE ? join(app.getPath("userData"), "smoke-recorder") : null;
-  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: smokeDir ? join(smokeDir, "datasets") : datasetsFolder(settings, ctx), parentPid: process.pid });
+  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: smokeDir ? join(smokeDir, "datasets") : datasetsFolder(settings, ctx), parentPid: process.pid, modelDir: modelFolder(ctx) });
   if (smokeDir) {
     mkdirSync(smokeDir, { recursive: true });
     args.push(`--Recorder:StoreDirectory=${join(smokeDir, "store")}`);

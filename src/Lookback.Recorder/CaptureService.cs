@@ -55,6 +55,7 @@ internal sealed partial class CaptureService : IAsyncDisposable
     private readonly RecorderOptions _options;
     private readonly SessionDirectory _sessions;
     private readonly ILogger _logger;
+    private ClipScoring _scoring = null!; // set by Start; shared with footage analysis, owned by the host
     private readonly SegmentStore _store;
     private readonly EncoderBlocklist _blocklist = new(EncoderBlocklist.DefaultPath);
     private readonly StallWatchdog _watchdog = new(SystemClock.Instance, TimeSpan.FromMilliseconds(250));
@@ -80,13 +81,14 @@ internal sealed partial class CaptureService : IAsyncDisposable
     }
 
     /// <summary>Opens the store (sweeping expired segments) and starts game detection.</summary>
-    public static CaptureService Start(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger)
+    public static CaptureService Start(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger, ClipScoring? scoring = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         string root = options.ResolvedStoreDirectory;
         var store = SegmentStore.Open(new StoreOptions { Root = root, BudgetBytes = (long)(options.FootageBudgetGB * (1L << 30)) });
         SweepResult swept = CacheSweeper.Sweep(store);
         var service = new CaptureService(bus, options, sessions, logger, store);
+        service._scoring = scoring ?? ClipScoring.HeuristicOnly();
         LogStarted(logger, root, options.FootageBudgetGB, options.ClipsBudgetGB, swept.BytesFreed >> 20);
         service._worker = Task.Run(service.WorkAsync);
         service._status = Task.Run(service.StatusLoopAsync);
@@ -481,7 +483,8 @@ internal sealed partial class CaptureService : IAsyncDisposable
                 SessionRecording recording = owner._store.BeginSession(game.Id, session.Started, SystemClock.Instance.Now, ring);
                 var profile = new ProfileRunner(owner._bus, catalog, profileId, game.Match.Method, game.Id, freq, publishCandidates: false);
                 profile.ApplyHints(game.Hints, SystemClock.Instance.Now);
-                var clipper = new ClipperRunner(owner._bus, catalog, profileId, game.Id, freq);
+                // Every candidate gets its features (and a model score when there is a model) before it is published.
+                var clipper = new ClipperRunner(owner._bus, catalog, profileId, game.Id, freq, owner._scoring.Options(freq));
 
                 // The analyzer named its signals when capture started: before the session was
                 // announced and before the profile and clipper subscribed. Name them again now, or
