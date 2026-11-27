@@ -35,6 +35,7 @@
     <Project Path="tests/Lookback.Governor.Tests/Lookback.Governor.Tests.csproj" />
     <Project Path="tests/Lookback.Governor.Windows.Tests/Lookback.Governor.Windows.Tests.csproj" />
     <Project Path="tests/Lookback.Profiles.Tests/Lookback.Profiles.Tests.csproj" />
+    <Project Path="tests/Lookback.Recorder.Tests/Lookback.Recorder.Tests.csproj" />
     <Project Path="tests/Lookback.Replay.Tests/Lookback.Replay.Tests.csproj" />
     <Project Path="tests/Lookback.Scoring.Tests/Lookback.Scoring.Tests.csproj" />
     <Project Path="tests/Lookback.Signals.Tests/Lookback.Signals.Tests.csproj" />

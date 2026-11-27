@@ -180,9 +180,9 @@ in memory; each rating is offered to the recorder (`rate`, below) and marked
 **stored** only when the recorder acknowledges it. Without an ack within 2 s
 it stays "in memory" and is gone when the app quits.
 
-### Control commands on `/events` (agreed, recorder side pending)
+### Control commands on `/events`
 
-Agreed with the live-capture thread; the M4 scorer design reserves Envelope
+The recorder handles these (see [Recorder Host](Recorder-Host#control-commands)); the M4 scorer design reserves Envelope
 field 20 for `ClipRating`. Text JSON on the existing `/events` socket, same
 token and Origin checks:
 
@@ -190,11 +190,12 @@ token and Origin checks:
 |---|---|
 | `{"type":"rate","id","sessionId","candidateId","stars":0..5}` | Rate a candidate; 0 clears |
 | `{"type":"analyze","id","path","profile"?,"retention":"owned\|permissioned\|open-license","permissionRef"?}` | Analyse a footage file; `permissionRef` required unless owned |
-| `{"type":"save","id","sessionId","candidateId"}` | Cut the clip (later, once the replay ring can) |
+| `{"type":"save","id","sessionId","candidateId"}` | Cut the clip: refused as `unsupported` until the recorder hosts live capture |
 
 The recorder answers the sending client only with
 `{"type":"ack","id","ok":true}` or
-`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request"}`.
+`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request|unsupported","message"}`.
+A stored rating's ack carries `"stored":true`; an `analyze` ack carries the new `sessionId`.
 On success it publishes `ClipRating` (Envelope field 20, topic `clip.rating`:
 `candidate_id` 1, `session_id` 2, `stars` 3; `source_id` "shell") to every
 client, stored through the M4 `RatingStore` and gated by
