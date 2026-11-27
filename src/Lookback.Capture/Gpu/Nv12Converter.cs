@@ -10,7 +10,7 @@ namespace Lookback.Capture.Gpu;
 /// conversion on the GPU), letterboxed to keep the aspect ratio. Holds the
 /// latest converted frame so a constant-rate encode clock can repeat it when
 /// the capture source delivers nothing (WGC only sends frames on change).
-/// Call under <see cref="GpuDevice.Lock"/>.
+/// Call inside <see cref="GpuDevice.Enter"/>.
 /// </summary>
 public sealed class Nv12Converter : IDisposable
 {

@@ -26,7 +26,7 @@ internal sealed class TimelineData
     /// <summary>Game events recognised by the profile.</summary>
     public List<EventMark> Events { get; } = [];
 
-    /// <summary>Clip candidates built from the events.</summary>
+    /// <summary>Clip candidates from the clipper (events fused with the excitement curve), with their QA.</summary>
     public List<CandidateMark> Candidates { get; } = [];
 
     /// <summary>Which profile (game, sub-game, mode) was active when.</summary>
@@ -43,7 +43,15 @@ internal sealed class TimelineData
 
     internal sealed record EventMark(string Name, double At, double Start, double End, float Confidence, float Weight, IReadOnlyList<string> Evidence);
 
-    internal sealed record CandidateMark(string Id, double Start, double End, double Peak, float Score, float Probability, string Profile, IReadOnlyList<string> Reasons);
+    internal sealed record CandidateMark(string Id, double Start, double End, double Peak, float Score, float Probability, string Profile, IReadOnlyList<string> Reasons)
+    {
+        /// <summary>The candidate's QA report, if one was published.</summary>
+        public QaMark? Qa { get; set; }
+    }
+
+    internal sealed record QaMark(bool Passed, IReadOnlyList<QaCheckMark> Checks);
+
+    internal sealed record QaCheckMark(string Name, bool Passed, float Value, string Detail);
 
     internal sealed record ProfileSpan(string Id, double Start, double End, string Method, float Confidence, IReadOnlyList<string> Evidence);
 

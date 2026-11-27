@@ -250,7 +250,7 @@ public sealed unsafe class HookCaptureSource : ICaptureSource
                 return false;
             }
 
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.CopyResource(_own!, _shared[slot]!);
             }
@@ -317,7 +317,7 @@ public sealed unsafe class HookCaptureSource : ICaptureSource
             }
 
             ulong read;
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.CopyResource(_own!, _shared[slot]!);
                 read = ++_readValue;

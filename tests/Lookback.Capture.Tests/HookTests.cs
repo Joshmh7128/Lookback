@@ -228,7 +228,7 @@ public class HookCaptureTests
 
         public unsafe uint Read(ID3D11Texture2D texture)
         {
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.CopySubresourceRegion(_staging, 0, 0, 0, 0, texture, 0, new Vortice.Mathematics.Box(0, 0, 0, Width, Height, 1));
                 MappedSubresource m = _gpu.Context.Map(_staging, 0, MapMode.Read);

@@ -30,6 +30,7 @@ internal static class TimelineBuilder
         var events = new List<TimelineData.EventMark>();
         var profiles = new List<(double At, ProfileDetected D)>();
         var candidates = new List<TimelineData.CandidateMark>();
+        var qa = new Dictionary<string, TimelineData.QaMark>(StringComparer.Ordinal);
         double Sec(ulong q) => QpcTime.ToTimeSpan((long)q, frequency).TotalSeconds;
         await foreach (Envelope e in reader.ReadAsync(cancellationToken: ct).ConfigureAwait(false))
         {
@@ -43,6 +44,13 @@ internal static class TimelineBuilder
             {
                 ClipCandidate c = e.ClipCandidate;
                 candidates.Add(new TimelineData.CandidateMark(c.CandidateId, Sec(c.StartQpc), Sec(c.EndQpc), Sec(c.PeakQpc), c.HeuristicScore, c.HighlightProbability, c.GameProfile, [.. c.Reasons]));
+                continue;
+            }
+
+            if (e.PayloadCase == Envelope.PayloadOneofCase.QaReport)
+            {
+                QaReport q = e.QaReport;
+                qa[q.CandidateId] = new TimelineData.QaMark(q.Passed, [.. q.Checks.Select(k => new TimelineData.QaCheckMark(k.Name, k.Passed, k.Value, k.Detail))]);
                 continue;
             }
 
@@ -134,7 +142,7 @@ internal static class TimelineBuilder
             data.Lanes.Add(new TimelineData.Lane
             {
                 Name = schema.Names[index],
-                Family = schema.Family switch { SignalFamily.Audio => "audio", SignalFamily.Rules => "rules", _ => "video" },
+                Family = schema.Family switch { SignalFamily.Audio => "audio", SignalFamily.Rules => "rules", SignalFamily.Clipper => "clipper", _ => "video" },
                 Step = steps[schemaId],
                 Values = Densify(s),
             });
@@ -146,6 +154,11 @@ internal static class TimelineBuilder
         }
 
         data.Events.AddRange(events.OrderBy(x => x.At));
+        foreach (TimelineData.CandidateMark c in candidates)
+        {
+            c.Qa = qa.GetValueOrDefault(c.Id);
+        }
+
         data.Candidates.AddRange(candidates.OrderBy(x => x.Start));
         profiles.Sort((a, b) => a.At.CompareTo(b.At));
         for (int i = 0; i < profiles.Count; i++)

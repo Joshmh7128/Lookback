@@ -20,11 +20,11 @@ public class TestbenchRunnerTests(FootageFixture fixture) : IClassFixture<Footag
         Assert.True(File.Exists(r.SessionBasePath + SessionLogFormat.LogExtension));
         Assert.True(File.Exists(r.ReportPath));
 
-        // Everything published reached the log: both schemas, every frame and hop, and the end marker.
+        // Everything published reached the log: both schemas (and the clipper's curve), every frame and hop, and the end marker.
         await using SessionLogReader reader = await SessionLogReader.OpenAsync(r.SessionBasePath!, ct);
         List<Envelope> all = await reader.ReadAsync(cancellationToken: ct).ToListAsync(ct);
-        Assert.Equal(2, all.Count(e => e.PayloadCase == Envelope.PayloadOneofCase.SignalSchema));
-        Assert.Equal(r.Analysis.VideoFrames + r.Analysis.AudioHops, all.Count(e => e.PayloadCase == Envelope.PayloadOneofCase.SignalFrame));
+        Assert.Equal(3, all.Count(e => e.PayloadCase == Envelope.PayloadOneofCase.SignalSchema));
+        Assert.Equal(r.Analysis.VideoFrames + r.Analysis.AudioHops, all.Count(e => e.PayloadCase == Envelope.PayloadOneofCase.SignalFrame && e.Topic != "signals.clipper"));
         Assert.Single(all, e => e.PayloadCase == Envelope.PayloadOneofCase.SessionEnded);
     }
 

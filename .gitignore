@@ -22,3 +22,9 @@ browse-out/
 
 # Native build output
 native/out/
+
+# Learned scorer: local venv, training outputs and caches
+ml/.venv/
+ml/out/
+__pycache__/
+.pytest_cache/

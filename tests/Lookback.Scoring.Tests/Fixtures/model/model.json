@@ -1,0 +1,137 @@
+{
+  "format": "lookback.scorer/1",
+  "featureSchema": "clip-features/1",
+  "featureNames": [
+    "heuristic_score",
+    "duration_s",
+    "event_count",
+    "event_kinds",
+    "max_contribution",
+    "mean_contribution",
+    "event_density",
+    "peak_position",
+    "motion_z",
+    "flash_z",
+    "red_edge_z",
+    "hud_activity_z",
+    "loudness_z",
+    "onset_rate",
+    "scene_cuts",
+    "black_fraction",
+    "frozen_fraction",
+    "silent_fraction",
+    "video_coverage",
+    "audio_coverage",
+    "curve_mean",
+    "curve_max",
+    "curve_above_high",
+    "curve_peaks",
+    "curve_peak_max",
+    "event_confidence_mean",
+    "flux_z",
+    "scene_cut_z",
+    "loudness_z_max",
+    "motion_z_max"
+  ],
+  "featureMeans": [
+    0.47260041111111106,
+    9.589417488888888,
+    1.89010989010989,
+    1.0777777777777777,
+    0.46137990909090904,
+    0.35755845555555543,
+    0.20084914772727272,
+    0.4851806590909092,
+    -0.15098665934065936,
+    -0.05354072527472529,
+    0.04367948888888892,
+    0.07478452222222226,
+    0.09887769318181822,
+    2.0765115714285707,
+    0.09657317777777777,
+    0.010667643678160916,
+    0.015739586956521744,
+    0.21088232954545455,
+    1.0,
+    0.9534883720930233,
+    0.2740948333333333,
+    0.46061395555555545,
+    0.21630536263736266,
+    1.3555555555555556,
+    0.4320498023255813,
+    0.5138662391304348,
+    -0.0591682087912088,
+    0.029064459770114945,
+    1.0271432696629212,
+    0.7135971931818182
+  ],
+  "input": "features",
+  "output": "probabilities",
+  "positiveColumn": 1,
+  "games": [
+    "synth-a",
+    "synth-b"
+  ],
+  "calibration": {
+    "global": {
+      "a": 0.9987980429784177,
+      "b": -0.0005700371607884069,
+      "n": 94
+    },
+    "profiles": {
+      "synth-a": {
+        "a": 1.0324940234941096,
+        "b": -0.34308023313096503,
+        "n": 46
+      },
+      "synth-a.mode1": {
+        "a": 1.0281143167913274,
+        "b": -0.4278370215849585,
+        "n": 23
+      },
+      "synth-a.mode2": {
+        "a": 1.0632516965460101,
+        "b": -0.5378247870937344,
+        "n": 23
+      },
+      "synth-b": {
+        "a": 0.969591307132255,
+        "b": 0.33867897045876094,
+        "n": 48
+      }
+    }
+  },
+  "training": {
+    "trainedAt": "2026-11-27T17:42:14+00:00",
+    "rows": 94,
+    "sessions": 8,
+    "C": 0.1,
+    "strength": 20.0,
+    "overall": {
+      "heuristic": {
+        "auc": 0.788932,
+        "log_loss": 0.627707,
+        "brier": 0.101909,
+        "ece": 0.107252,
+        "precision_at_3": 0.583333,
+        "n": 94
+      },
+      "model": {
+        "auc": 0.867439,
+        "log_loss": 0.588232,
+        "brier": 0.080567,
+        "ece": 0.050795,
+        "precision_at_3": 0.75,
+        "n": 94
+      },
+      "calibrated": {
+        "auc": 0.867439,
+        "log_loss": 0.529015,
+        "brier": 0.056226,
+        "ece": 0.066188,
+        "precision_at_3": 0.75,
+        "n": 94
+      }
+    }
+  }
+}
