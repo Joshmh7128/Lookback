@@ -22,16 +22,18 @@ namespace Lookback.Recorder;
 /// <c>ClipRating</c> on <c>clip.rating</c> so every client sees it.</item>
 /// <item><c>analyze</c>: runs a footage file through the profile and the
 /// clipper (<see cref="FootageSessions"/>); the ack carries the session id.</item>
-/// <item><c>save</c>: needs live capture in the recorder; refused as
-/// <c>unsupported</c> until that lands.</item>
+/// <item><c>save</c>: cuts the candidate's window from a live recording
+/// (RAM ring, else the stored segments) into <c>clips/</c> and publishes
+/// <c>ClipSaved</c>; refused with <c>clips-full</c> at the clips budget, and
+/// <c>unsupported</c> for footage files or without live capture.</item>
 /// </list>
 /// </summary>
-internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger)
+internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger, CaptureService? capture = null)
 {
     private const int MaxIdLength = 128;
 
     /// <summary>Handles one text message from a client; returns the reply JSON.</summary>
-    public ValueTask<string?> HandleAsync(string text, CancellationToken ct)
+    public async ValueTask<string?> HandleAsync(string text, CancellationToken ct)
     {
         _ = ct;
         JsonDocument doc;
@@ -41,7 +43,7 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         }
         catch (JsonException)
         {
-            return ValueTask.FromResult<string?>(Ack(null, false, "bad-request", "Not JSON."));
+            return Ack(null, false, "bad-request", "Not JSON.");
         }
 
         using (doc)
@@ -49,24 +51,23 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
             JsonElement root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return ValueTask.FromResult<string?>(Ack(null, false, "bad-request", "Expected a JSON object."));
+                return Ack(null, false, "bad-request", "Expected a JSON object.");
             }
 
             string? id = Str(root, "id");
             if (id is null || id.Length > MaxIdLength)
             {
-                return ValueTask.FromResult<string?>(Ack(null, false, "bad-request", "Every command needs an \"id\" (at most 128 characters)."));
+                return Ack(null, false, "bad-request", "Every command needs an \"id\" (at most 128 characters).");
             }
 
-            string? reply = Str(root, "type") switch
+            return Str(root, "type") switch
             {
                 "rate" => Rate(id, root),
                 "analyze" => Analyze(id, root),
-                "save" => Ack(id, false, "unsupported", "Saving clips needs live capture in the recorder, which is not wired yet."),
+                "save" => await SaveAsync(id, root).ConfigureAwait(false),
                 string other => Ack(id, false, "bad-request", $"Unknown command \"{other}\"."),
                 null => Ack(id, false, "bad-request", "Missing \"type\"."),
             };
-            return ValueTask.FromResult<string?>(reply);
         }
     }
 
@@ -126,6 +127,24 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         return Ack(id, true, null, null, stored: true);
     }
 
+    private async Task<string> SaveAsync(string id, JsonElement root)
+    {
+        string? sessionId = Str(root, "sessionId");
+        string? candidateId = Str(root, "candidateId");
+        if (sessionId is null || candidateId is null)
+        {
+            return Ack(id, false, "bad-request", "save needs \"sessionId\" and \"candidateId\".");
+        }
+
+        if (capture is null)
+        {
+            return Ack(id, false, "unsupported", "Saving clips needs live capture in the recorder, which is off.");
+        }
+
+        SaveResult r = await capture.SaveAsync(sessionId, candidateId).ConfigureAwait(false);
+        return r.Path is null ? Ack(id, false, r.Error, r.Message) : Ack(id, true, null, null, path: r.Path);
+    }
+
     private string Analyze(string id, JsonElement root)
     {
         string? path = Str(root, "path");
@@ -153,8 +172,8 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
     private static string? Str(JsonElement root, string name) =>
         root.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } s ? s : null;
 
-    private static string Ack(string? id, bool ok, string? error, string? message, bool? stored = null, string? sessionId = null) =>
-        JsonSerializer.Serialize(new AckMessage("ack", id, ok, error, message, stored, sessionId), AckJson.Default.AckMessage);
+    private static string Ack(string? id, bool ok, string? error, string? message, bool? stored = null, string? sessionId = null, string? path = null) =>
+        JsonSerializer.Serialize(new AckMessage("ack", id, ok, error, message, stored, sessionId, path), AckJson.Default.AckMessage);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Rated {Candidate} in {Session}: {Stars} stars")]
     private static partial void LogRated(ILogger logger, string session, string candidate, int stars);
@@ -164,7 +183,7 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
 }
 
 /// <summary>The reply to a control command.</summary>
-internal sealed record AckMessage(string Type, string? Id, bool Ok, string? Error, string? Message, bool? Stored, string? SessionId);
+internal sealed record AckMessage(string Type, string? Id, bool Ok, string? Error, string? Message, bool? Stored, string? SessionId, string? Path);
 
 [System.Text.Json.Serialization.JsonSourceGenerationOptions(
     PropertyNamingPolicy = System.Text.Json.Serialization.JsonKnownNamingPolicy.CamelCase,

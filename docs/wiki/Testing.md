@@ -328,6 +328,7 @@ loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
 | | `Malformed_commands_get_bad_request` | Bad stars, missing fields, unknown types, non-JSON and non-objects all get `bad-request` |
 | | `Save_is_refused_until_live_capture_lands` | `save` acks `unsupported` |
 | | `Analyze_refuses_what_it_cannot_run` | Relative or missing paths, unknown profiles, permissioned footage without a reference, unknown retention |
+| `CaptureServiceTests.cs` | `A_detected_game_is_recorded_a_candidate_is_saved_and_exit_ends_the_session` | Windows with a GPU: our stand-in game window, allowed through a temporary detection list, is detected and recorded; a candidate's window is saved and probes as a 3.5–7 s clip with video; storage status counts the clip and the footage; closing the window ends the session |
 | | `Footage_is_analysed_into_a_file_session_whose_candidates_can_be_rated` | A generated clip becomes a FILE session titled with its exact path, with candidates and no `signals.*` envelopes on the bus; one of its candidates is then rated and stored |
 
 ## Testing approach

@@ -75,7 +75,8 @@ the shell's memory.
 | Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
 | No-deadlock encode path: one device lock, stall watchdog, encoder fallback chain, blocklist, fail-fast | Core · Encode · Capture | Done (#22) |
 | Recorder control commands: `rate` (stored, broadcast), `analyze` (footage through profile + clipper), parent-exit | Recorder · Stream | Done |
-| Recorder live capture: detection → capture, encode, audio, ring, store, clipper; `save` | Recorder | Next |
+| Recorder live capture: detection → capture, encode, audio, ring, store, profile + clipper; `save`; storage budgets and `recorder.storage` | Recorder | Done |
+| Governor runtime controller in live sessions; testbench multi-recorder mode | Recorder · Governor | Next |
 | Training the scorer on real ratings | `ml/` · Scoring | Planned (M4), needs ratings |
 | Quality reports: transcode, VMAF, audio checks | Quality | Planned (M5) |
 | HDR encode tone-map, AV1 muxing (`av1C`) | Encode · Replay | Planned (M6) |

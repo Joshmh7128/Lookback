@@ -27,6 +27,7 @@ internal sealed partial class StreamHostService(
     private CalibrationHost? _calibration;
     private SessionDirectory? _sessions;
     private FootageSessions? _footage;
+    private CaptureService? _capture;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -45,7 +46,14 @@ internal sealed partial class StreamHostService(
         {
             _sessions = new SessionDirectory(bus);
             _footage = new FootageSessions(bus, logger);
-            control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger);
+
+            // Live capture: game detection starts a recording for every allowed game (Windows only).
+            if (o.Capture && OperatingSystem.IsWindows())
+            {
+                _capture = CaptureService.Start(bus, o, _sessions, logger);
+            }
+
+            control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);
             LogRatings(logger, o.ResolvedDatasetsDirectory);
         }
 
@@ -85,6 +93,12 @@ internal sealed partial class StreamHostService(
         {
             await _bridge.DisposeAsync().ConfigureAwait(false);
             _bridge = null;
+        }
+
+        if (_capture is not null)
+        {
+            await _capture.DisposeAsync().ConfigureAwait(false);
+            _capture = null;
         }
 
         if (_footage is not null)

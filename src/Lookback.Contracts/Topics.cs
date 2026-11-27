@@ -18,6 +18,7 @@ public static class Topics
     public const string ClipSaved = "clip.saved";
     public const string QaReport = "qa.report";
     public const string ClipRating = "clip.rating";
+    public const string Storage = "recorder.storage";
 
     /// <summary>
     /// True when <paramref name="topic"/> matches <paramref name="pattern"/>.

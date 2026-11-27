@@ -1,6 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Windows: the recorder hosts live capture (WGC/DXGI, Media Foundation, WASAPI). It still builds on
+         Linux (EnableWindowsTargeting) and its control commands run there; capture only starts on Windows. -->
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Keep the output where the shell, CI and the showcase script look for it (bin/<config>/net10.0). -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\$(Configuration)\net10.0\</OutputPath>
     <Description>Lookback recorder service host: the event bus, the pipe server, the WebSocket bridge, official-player calibration, and the shell's control commands (ratings, footage analysis).</Description>
     <ServerGarbageCollection>false</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -17,5 +25,10 @@
     <ProjectReference Include="..\Lookback.Calibration\Lookback.Calibration.csproj" />
     <ProjectReference Include="..\Lookback.Clipper\Lookback.Clipper.csproj" />
     <ProjectReference Include="..\Lookback.Scoring\Lookback.Scoring.csproj" />
+    <ProjectReference Include="..\Lookback.Audio\Lookback.Audio.csproj" />
+    <ProjectReference Include="..\Lookback.Capture\Lookback.Capture.csproj" />
+    <ProjectReference Include="..\Lookback.Encode\Lookback.Encode.csproj" />
+    <ProjectReference Include="..\Lookback.Detection.Windows\Lookback.Detection.Windows.csproj" />
+    <ProjectReference Include="..\Lookback.Governor.Windows\Lookback.Governor.Windows.csproj" />
   </ItemGroup>
 </Project>
