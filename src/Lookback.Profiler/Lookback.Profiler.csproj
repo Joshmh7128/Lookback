@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>The live event profiler: a self-contained page that shows every event on the stream as it fires, for demos and debugging.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="profiler.html" LogicalName="profiler.html" />
+  </ItemGroup>
+</Project>
