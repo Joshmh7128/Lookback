@@ -20,16 +20,9 @@ public class EncodeTickerTests(ITestOutputHelper output)
     public void Irregular_capture_becomes_constant_rate_packets()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Media Foundation is Windows only");
-        GpuDevice gpu;
-        try
-        {
-            gpu = GpuDevice.Create();
-        }
-        catch (InvalidOperationException)
-        {
-            Assert.Skip("no hardware adapter");
-            return;
-        }
+        GpuDevice? maybe = EncoderTests.TryHardwareDevice();
+        Assert.SkipWhen(maybe is null, "no adapter with D3D11 video support");
+        GpuDevice gpu = maybe!;
 
         using (gpu)
         using (var ring = new ReplayRing(1 << 26, 0))

@@ -58,7 +58,13 @@ public class EncoderTests(ITestOutputHelper output)
         int ran = 0;
         foreach (long luid in Targets.CaptureTarget.Outputs().Select(o => o.Luid).Distinct())
         {
-            using GpuDevice gpu = GpuDevice.Create(luid);
+            using GpuDevice? gpu = TryHardwareDevice(luid);
+            if (gpu is null)
+            {
+                output.WriteLine($"adapter {luid:X}: no D3D11 video device (CI's display adapter, for example)");
+                continue;
+            }
+
             if (MfVideoEncoder.List(codec, gpu.Luid, hardware: true).Count == 0)
             {
                 output.WriteLine($"no hardware {codec} encoder on {gpu.Name}");
@@ -72,13 +78,14 @@ public class EncoderTests(ITestOutputHelper output)
         Assert.SkipWhen(ran == 0, $"no hardware {codec} encoder on any adapter");
     }
 
-    private static GpuDevice? TryHardwareDevice()
+    /// <summary>A real adapter with D3D11 video support, or null (no adapter, or one without video support such as a CI VM's).</summary>
+    internal static GpuDevice? TryHardwareDevice(long? luid = null)
     {
         try
         {
-            return GpuDevice.Create();
+            return GpuDevice.Create(luid);
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException or SharpGen.Runtime.SharpGenException)
         {
             return null;
         }
