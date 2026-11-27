@@ -172,6 +172,45 @@ job runs the rest). See [Live Capture](Live-Capture#tests) and
 | | `Source_stops_when_the_test_app_exits` | The app exiting raises `Stopped` once |
 | `EncodeTickerTests.cs` | `Irregular_capture_becomes_constant_rate_packets` | Slow, bursty, then absent capture still gives one packet per tick at constant spacing, repeats counted, nothing skipped or busy |
 
+## `Lookback.Detection.Tests`
+
+Platform-neutral: a fake machine (`FakeProbe`) the test edits between polls,
+and a manual clock. See [Game Detection](Game-Detection).
+
+| File | Test | Proves |
+|---|---|---|
+| `MatcherTests.cs` | `A_listed_executable_is_its_game_ignoring_case` | `overwatch.EXE` is Overwatch, method EXECUTABLE, confidence 1 |
+| | `Anti_cheat_policy_is_surfaced_unchanged` | Overwatch, VALORANT, Roblox and CS2 come with no present hook and no memory reading |
+| | `A_profile_that_allows_more_keeps_its_policy_only_when_matched_by_its_own_executable` | An opt-in into a permissive profile still gets external capture only |
+| | `An_unknown_executable_is_not_a_game_until_opted_in_and_then_gets_generic` | Unknown executables are not even looked up until the user opts them in; then `generic`, MANUAL |
+| | `An_executable_two_profiles_list_is_ambiguous_until_opted_in` | Ambiguity is never guessed; an opt-in naming the profile settles it |
+| | `Deny_wins_over_a_profile_and_over_allow` | A denied executable is never a game |
+| | `A_path_entry_covers_only_that_copy` | Full-path entries match that file only |
+| | `A_shared_runtime_needs_the_window_title` | `javaw.exe` is Minecraft only with a Minecraft window title |
+| | `Launch_args_are_asked_for_only_where_a_profile_reads_them` | Roblox yes, Overwatch no |
+| | `Settings_round_trip_and_missing_file_is_empty` | Save and load agree; a misspelt field is rejected |
+| | `Engine_is_guessed_from_files_beside_the_executable` | Unity and Unreal layouts on disk |
+| `LifecycleTests.cs` | `A_game_with_a_steady_window_is_announced_once_after_the_start_hold_then_focused` | DETECTED then FOCUSED once, after 3 s, with every field and the raw QPC of the confirming poll |
+| | `A_process_without_a_window_or_with_a_short_splash_is_never_announced` | Launcher stubs and a 2 s splash publish nothing |
+| | `An_alt_tab_shorter_than_the_focus_hold_does_not_flap_but_a_real_one_does` | Focus is debounced |
+| | `Exit_is_announced_after_the_grace_with_the_last_state` | EXITED 5 s after the process ends, in the same session |
+| | `A_relaunch_within_the_grace_continues_the_same_run_as_a_window_change` | A new pid of the same game continues the run: one WINDOW_CHANGED, no EXITED |
+| | `A_new_window_monitor_or_mode_that_lasts_changes_the_target` | Splash to game, another monitor (new adapter LUID), and a mode flicker that is ignored |
+| | `Title_changes_refresh_hints_without_publishing` | Roblox launch arguments are read once; a new title raises `HintsChanged` only |
+| | `Only_candidate_processes_are_looked_up` | 50 unrelated processes open no handles |
+| | `A_failing_probe_or_subscriber_does_not_stop_detection` | Errors land in `LastError` and the next poll works |
+
+## `Lookback.Detection.Windows.Tests`
+
+Windows only (they skip elsewhere). They start `lookback-testwindow.exe`, a
+plain Win32 window built with the tests, and list it in a temporary profile.
+
+| File | Test | Proves |
+|---|---|---|
+| `RealProcessTests.cs` | `The_probe_sees_the_process_its_path_launch_args_and_window` | Toolhelp, `QueryFullProcessImageName`, the command line and `EnumWindows` all see the child: pid, path, title, size, monitor, windowed |
+| | `The_probe_answers_for_processes_it_cannot_open_without_throwing` | System and missing pids return nothing instead of failing |
+| | `The_runner_announces_start_and_stop_of_a_real_process_with_its_capture_target` | DETECTED with the right window, launch args and policy, a `CaptureTarget` for that window on the same adapter, then EXITED in the same session |
+
 ## Testing approach
 
 - **Deterministic time.** `ManualClock` and hand-set `qpc` values; no test

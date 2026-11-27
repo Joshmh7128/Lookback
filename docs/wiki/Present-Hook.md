@@ -122,14 +122,23 @@ sequenceDiagram
     GQ->>CQ: Signal(sync, n) → Wait(sync, n)
     CQ->>CQ: CopyResource(slot ← back buffer)
     CQ->>F: Signal(v)
+    F->>GQ: Wait(v), then Present
     Note over R: slot state FREE → READING (CAS)
     R->>F: completed ≥ v? (else wait ≤ 100 ms)
     R->>R: CopyResource(own ← slot), Signal(own fence)
     R->>R: wait own fence (≤ 100 ms), state → FREE
 ```
 
-- The game's queue is never made to wait on ours. It only signals a private
-  fence after the frame's rendering, which the copy queue waits on.
+- The game's queue signals a private fence after the frame's rendering, which
+  the copy queue waits on, and then waits on the GPU for our copy before it
+  executes `Present`. That GPU-side wait is needed: a `FLIP_DISCARD` back
+  buffer's contents are undefined once it has been flipped, and without the
+  wait, under load, the copy engine sometimes ran after the flip and read the
+  frame from three presents earlier (found by the pixel check in
+  `HookTests`, about one run in four with the full suite running beside it).
+  It cannot deadlock, because the copy depends only on work the game had
+  already submitted, and it costs the game's GPU timeline one copy. The CPU
+  present thread still never waits.
 - Slot ownership is a CAS on `slots[i].state` in shared memory
   (`FREE → WRITING` by the hook, `FREE → READING` by the receiver). The hook
   also skips a slot whose previous copy is still in flight (its allocator
@@ -195,6 +204,7 @@ tears its device and swap chain down and recreates them.
 | Hook, present thread | Keyed mutex acquire | 0 ms |
 | Hook, present thread | Its own lock (the watcher may hold it) | Try-lock; busy → drop |
 | Hook, present thread | In-flight copy / allocator check | Non-blocking fence read; busy → next slot or drop |
+| Game's GPU queue (D3D12) | Our copy of this frame, before `Present` | One texture copy; it depends only on work already submitted |
 | Hook, `ResizeBuffers` (D3D12) | Copies reading the old back buffers | 100 ms |
 | Receiver | Frame event | 100 ms |
 | Receiver | D3D11 keyed mutex (key 1) | 50 ms |
@@ -251,13 +261,17 @@ ticker EncodeStats { Captured = 1451, Ticks = 605, Encoded = 605, Repeated = 0, 
 ```
 
 ffprobe on the clip: `h264 640x360`, every tick encoded, and
-`ffmpeg -v error -f null` decodes it with no errors.
+`ffmpeg -v error -f null` decodes it with no errors. The D3D12 test app
+uncapped at 1000 fps is captured at 999 fps with 2 busy drops in 4,219
+presents.
 
 ## Tests
 
 `tests/Lookback.Capture.Tests/HookTests.cs`. The fixture builds `native/`
 with CMake if its output is missing; GPU tests skip without a hardware
-adapter (CI), the rest run everywhere on Windows.
+adapter (CI), the rest run everywhere on Windows. The GPU tests run in a
+non-parallel collection so their 120 fps processes cannot disturb
+timing-sensitive tests beside them.
 
 | Test | Proves |
 |---|---|
@@ -292,6 +306,6 @@ adapter (CI), the rest run everywhere on Windows.
 - **Formats.** BGRA8, RGBA8 (and their sRGB/typeless forms), RGB10A2 and
   RGBA16F. FP16 is delivered as scRGB; 10-bit is treated as SDR, since the
   swap chain's colour space is not read yet.
-- **The game's back buffer is not held.** If a game re-renders into a back
-  buffer before our copy has run (more than `BufferCount` frames ahead of
-  the copy queue), that frame can tear.
+- **D3D12 adds one GPU copy before each present** on the game's queue (see
+  the sync model). It is small (a 640x360 copy is microseconds) but grows
+  with resolution.

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lookback.Detection.Windows\Lookback.Detection.Windows.csproj" />
+    <!-- The stand-in game: built and copied beside the tests (apphost included), not referenced as a library. -->
+    <ProjectReference Include="..\Lookback.Detection.TestWindow\Lookback.Detection.TestWindow.csproj" ReferenceOutputAssembly="false" OutputItemType="TestWindow" />
+  </ItemGroup>
+  <Target Name="CopyTestWindow" AfterTargets="Build">
+    <ItemGroup>
+      <_TestWindowFiles Include="$(MSBuildThisFileDirectory)..\Lookback.Detection.TestWindow\bin\$(Configuration)\$(TargetFramework)\lookback-testwindow.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_TestWindowFiles)" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

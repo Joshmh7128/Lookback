@@ -4,8 +4,11 @@
 //
 //   game queue  ── Signal(sync, n) ──▶ copy queue Wait(sync, n) → CopyResource(slot ← back buffer)
 //                                       → Signal(shared fence, v)
+//   game queue  ── Wait(shared fence, v) → Present
 //
-// The game's queue is never made to wait on ours. Slot ownership is a CAS on
+// The game's queue waits on the GPU for our copy (which depends only on work
+// it already submitted) so the copy reads the back buffer before the flip;
+// the CPU present thread never waits. Slot ownership is a CAS on
 // slots[i].state in shared memory (FREE → WRITING by us, FREE → READING by the
 // receiver); a slot whose previous copy is still in flight, or that the reader
 // owns, is skipped, and when none is left the frame is dropped. Everything on
@@ -383,8 +386,25 @@ bool D3D12Capture::OnPresent(IDXGISwapChain* swap, int64_t qpc)
     ID3D12CommandList* lists[] = {slot.list.Get()};
     s_->copyQueue->ExecuteCommandLists(1, lists);
     UINT64 value = ++s_->fenceValue;
-    s_->copyQueue->Signal(s_->sharedFence.Get(), value);
+    hr = s_->copyQueue->Signal(s_->sharedFence.Get(), value);
     slot.lastValue = value;
+    if (SUCCEEDED(hr))
+    {
+        // The game's queue waits (on the GPU) for our copy before it executes
+        // Present: a FLIP_DISCARD back buffer's contents are undefined once
+        // presented, and under load the copy engine otherwise ran after the
+        // flip and read the previous frame. The copy depends only on work the
+        // game has already submitted, so this cannot deadlock; it costs the
+        // game's GPU timeline one copy. The CPU present thread does not wait.
+        hr = s_->gameQueue->Wait(s_->sharedFence.Get(), value);
+    }
+    if (FAILED(hr))
+    {
+        InterlockedExchange(reinterpret_cast<volatile LONG*>(&meta.state), LBH_SLOT_FREE);
+        ReportError("queueing the D3D12 copy hand-over", hr);
+        ch.Drop(DropKind::Device);
+        return true;
+    }
 
     int64_t record = ch.NextRecord();
     int64_t dropped = ch.Dropped();

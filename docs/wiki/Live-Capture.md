@@ -53,6 +53,21 @@ without leaving the GPU. If no hardware MFT accepts the settings, H.264 falls
 back to the Microsoft software MFT, which reads the same surface buffers.
 HEVC has no software fallback. AV1 is not offered until the muxer writes `av1C`.
 
+### Machine probe and the governor
+
+Before a session, the [resource governor](Resource-Governor) plans the
+recording from a probe of the PC: `WindowsMachineProbe.Run(storePath)` reads
+RAM, the store volume's free space and SSD/HDD, every DXGI adapter with the
+monitors it drives, and `MfVideoEncoder.List` per adapter LUID. Then
+`MachineProfileMapper.Map(probe, target.ToProbeTarget())` picks the adapter
+that owns the captured monitor (the same one the pipeline runs on), and
+`GovernorPolicy.Decide` returns the tier, ring size and disk budget. It reads
+only what a normal user can, never throws, and takes about 80 ms cold, under
+5 ms warm. `lookback-capture probe [--store <path>] [--monitor <n> | --window
+<title part>]` prints all of it; on AETHER the 4K144 primary gets
+`2160p60-hevc` on NVENC and the iGPU's monitor `1440p60-hevc` on AMF. The full
+output and the rules for unknowns are on the [Resource Governor](Resource-Governor) page.
+
 ### Ephemeral sessions
 
 An official-player session never creates the converter, ticker, encoder,
@@ -147,7 +162,7 @@ design, sync model and allowlist are on [Present Hook](Present-Hook).
 
 ## Not yet
 
-- WASAPI loopback, mic and the AAC encoder; the governor's Windows probe;
+- WASAPI loopback, mic and the AAC encoder;
   wiring into the recorder with control commands on `/events`. See the
   handoff's next steps.
 - HDR sources reach the encoder as if SDR (the analysis tap handles them

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Game detection and lifecycle: notices that a game started, gained or lost focus, or stopped, from what the OS exposes outside the game process, matches it to a profile, and publishes game.lifecycle. Platform-neutral; the Windows probe is in Lookback.Detection.Windows.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lookback.Detection.Tests" />
+  </ItemGroup>
+</Project>

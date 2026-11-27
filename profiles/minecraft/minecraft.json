@@ -9,10 +9,11 @@
   "level": "game",
   "tags": ["sandbox", "survival", "building"],
   // javaw.exe is the Java runtime, shared by every Java desktop app. It is
-  // listed because Java Edition has no executable of its own; until game
-  // detection can also check the window title, another Java app in the
-  // foreground is treated as Minecraft (its events simply rarely fire).
+  // listed because Java Edition has no executable of its own, so game
+  // detection also requires its window title ("Minecraft 1.21.4",
+  // "Minecraft* 1.21.4 - Multiplayer", or a launcher-modded "Minecraft ...").
   "executables": ["Minecraft.Windows.exe", "javaw.exe"],
+  "executableTitles": { "javaw.exe": "^Minecraft\\b" },
   "capturePolicy": {
     "allowPresentHook": false,
     "allowMemoryReading": false,

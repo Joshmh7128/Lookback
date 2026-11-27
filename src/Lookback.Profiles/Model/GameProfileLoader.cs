@@ -165,6 +165,28 @@ public static class GameProfileLoader
             problems.Add("only a game lists executables; children are detected beneath it.");
         }
 
+        if (!root && p.ExecutableTitles.Count > 0)
+        {
+            problems.Add("only a game lists executableTitles.");
+        }
+
+        foreach ((string exe, string title) in p.ExecutableTitles)
+        {
+            if (!p.Executables.Contains(exe, StringComparer.OrdinalIgnoreCase))
+            {
+                problems.Add($"executableTitles: '{exe}' is not one of the executables.");
+            }
+
+            try
+            {
+                _ = new System.Text.RegularExpressions.Regex(title, System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(100));
+            }
+            catch (ArgumentException ex)
+            {
+                problems.Add($"executableTitles: '{title}' is not a valid regular expression: {ex.Message}");
+            }
+        }
+
         if (root && (p.Detect.Hints.Count > 0 || p.Detect.Visual.Count > 0))
         {
             problems.Add("a game is detected by its executables; detect hints and fingerprints are for subgames and modes.");

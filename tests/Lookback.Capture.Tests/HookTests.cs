@@ -167,7 +167,17 @@ public class HookAllowlistTests
     }
 }
 
+/// <summary>
+/// The GPU hook tests run alone: they drive two processes at 120 fps, which
+/// would disturb timing-sensitive tests (EncodeTicker) running beside them.
+/// </summary>
+[CollectionDefinition(nameof(HookCaptureCollection), DisableParallelization = true)]
+public sealed class HookCaptureCollection
+{
+}
+
 /// <summary>Launches each test app with the hook and checks what arrives. Needs a GPU (skips without one).</summary>
+[Collection(nameof(HookCaptureCollection))]
 public class HookCaptureTests
 {
     private sealed record Received(HookFrameInfo Info, uint Pixels, long Qpc, TransferFunction Transfer);
@@ -361,13 +371,15 @@ public class HookCaptureTests
         // copy, so up to one per slot right before the device change may show
         // an older image. Nothing else may.
         List<int> bad = AssertFrames(got);
-        Assert.True(bad.Count <= 3, $"{bad.Count} frames do not match their pixels: {string.Join(", ", bad)}");
+        Assert.True(bad.Count <= 3, $"{bad.Count} frames do not match their pixels (status \"{p.Channel.Status}\"): {string.Join(", ", bad.Select(i => $"{i}:{(long)got[i].Pixels - got[i].Info.Frame - ((long)got[0].Pixels - got[0].Info.Frame)}"))}");
         foreach (int i in bad)
         {
             Assert.True(app == TestApp.D3D12 && got.Skip(i).Take(4).Any(r => r.Info.Generation != got[i].Info.Generation),
                 $"frame {i} (hook frame {got[i].Info.Frame}, pixels {got[i].Pixels}) does not match and is not just before a device removal");
         }
-        Assert.True(source.Stats.Opens >= 3, $"expected the textures to be reopened after the resize and the new device: {source.Stats}");
+        // The hook installs once the window is up, which under load can be after the resize frame.
+        bool sawResize = got[0].Pixels < 60;
+        Assert.True(source.Stats.Opens >= (sawResize ? 3 : 2), $"expected the textures to be reopened after the resize and the new device (first app frame {got[0].Pixels}): {source.Stats}");
         Assert.True(got[0].Info.Generation < got[^1].Info.Generation);
     }
 

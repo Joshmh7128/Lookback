@@ -13,7 +13,8 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Clip writer (ring → fMP4 clip, starts on a keyframe, no re-encode) | `Lookback.Replay` | **Done**, tested |
 | Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins, clip read-back from disk) | `Lookback.Replay` | **Done**, tested |
 | Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | **Done**, tested |
-| Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is in progress in a parallel session (branch `claude/governor-probe`) |
+| Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested |
+| Windows machine probe (RAM, store volume free space + seek penalty, DXGI adapters/outputs, hardware encoder MFTs per LUID), mapping to `MachineProfile` by the captured output, `lookback-capture probe` | `Lookback.Governor.Windows`, `Lookback.Governor` (mapping) | **Done**, tested on AETHER (~80 ms cold, <5 ms warm; RTX → `2160p60-hevc`) |
 | Audio sample clock (WASAPI device position → QPC, weighted least-squares drift fit) and live assembler (downmix, resample to 48 kHz, silence for gaps) | `Lookback.Media` (`Live/`) | **Done**, tested |
 | Live analyzer (capture threads hand frames/hops through pools + SPSC rings, below-normal worker publishes signals with capture QPC, thins to 30 fps, drops when behind) | `Lookback.Signals` | **Done**, tested |
 | WGC capture (raw WinRT interop), DXGI duplication fallback, live session, bench CLI (`lookback-capture`) | `Lookback.Capture`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (DXGI ~57 fps, WGC ~140 fps, analysis 29.4 fps, 0 dropped; `--official-player` persists nothing) |
@@ -111,7 +112,7 @@ and skips (counts) ticks that are a full period late instead of bursting.
 wiki page `Live-Capture.md` for the path, measurements and tests.
 
 Steps 3–5 are running in parallel sessions on their own branches
-(`claude/capture-audio`: steps 3 and 4; `claude/governor-probe`: step 5).
+(`claude/capture-audio`: steps 3 and 4; step 5 landed from `claude/governor-probe`).
 Rebase on main before merging; they touch this file's rows too.
 
 1. ~~Encoder test on Windows~~ **done** (`tests/Lookback.Capture.Tests/EncoderTests.cs`,
@@ -126,9 +127,10 @@ Rebase on main before merging; they touch this file's rows too.
 3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
 4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
    `SampleClock` and `LiveAudioAssembler`.
-5. Windows probe for the governor: `GlobalMemoryStatusEx`,
-   `IOCTL_STORAGE_QUERY_PROPERTY` (seek penalty), DXGI adapters, and
-   `MfVideoEncoder.List` per adapter LUID.
+5. ~~Windows probe for the governor~~ **Done.** `WindowsMachineProbe.Run(storePath)`
+   then `MachineProfileMapper.Map(probe, captureTarget.ToProbeTarget())` gives
+   the `MachineProfile` for `GovernorPolicy.Decide`. The recorder should probe
+   once per capture target at session start. See the wiki's Resource Governor page.
 6. Recorder wiring (`CaptureService`, control commands on `/events`).
    Message the Electron thread before touching the contract. Ephemeral
    sessions never create the encoder, ring or store.

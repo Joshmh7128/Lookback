@@ -192,6 +192,7 @@ public sealed class ProfileCatalog
         GameProfile resolved = own with
         {
             Executables = parent.Executables,
+            ExecutableTitles = parent.ExecutableTitles,
             CapturePolicy = new CapturePolicy
             {
                 AllowPresentHook = parent.CapturePolicy.AllowPresentHook && own.CapturePolicy.AllowPresentHook,

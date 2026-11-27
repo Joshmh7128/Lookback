@@ -24,10 +24,14 @@ src/
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
-  Lookback.Governor/          budget policy and runtime controller
+  Lookback.Governor/          resource governor: probe mapping, budget policy, runtime controller
+  Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
+  Lookback.Detection/         game detection: matcher, debounced lifecycle, bus runner
+  Lookback.Detection.Windows/ process + window probe, capture target for a game (Windows)
+  Lookback.Detection.Cli/     lookback-detect bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 native/                       C++20, CMake, MSVC (Windows): build with native/build.ps1
@@ -42,7 +46,11 @@ tests/
   Lookback.Calibration.Tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
+  Lookback.Governor.Windows.Tests/  runs the probe on the machine (Windows only)
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock, present hook (skip elsewhere)
+  Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
+  Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
+  Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
   Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
@@ -91,20 +99,25 @@ flowchart TB
 | `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*`, `Candidates/*` | Game profiles as data: the profile tree, HUD regions, event rules, sub-game and mode detection, the detector and its bus runner, clip candidates |
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
+| `app/` (Electron) | `src/main/*`, `src/preload/*`, `src/renderer/*`, `src/viewer/*`, `src/test/*` | The [desktop shell](Desktop-Shell): recorder process, `/events` library, timeline, ratings, official-player viewer and its `/ingest` sender |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
-| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |
+| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
+| `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Hook/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion; `Hook/` is the [present hook](Present-Hook)'s receiver, channel and allowlisted injector |
 | `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
 | `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `HookBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `--hook-testapp` runs the present hook on a test app |
+| `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
+| `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
+| `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
 | `native/hook` | `hook.cpp`, `capture_d3d11.cpp`, `capture_d3d12.cpp` | The [present hook](Present-Hook): vtable patch, keyed-mutex (D3D11) and fence + copy-queue (D3D12) hand-over, device-loss watcher |
 | `native/testapps` | `common/testapp.h`, `d3d11/main.cpp`, `d3d12/main.cpp` | Frame-numbered test pattern at a set rate, resize and device-recreation switches, the `LookbackTestAppMarker` export |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Detection`, `Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
 `Lookback.Memory`, `app/`, `ml/`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`.)
 

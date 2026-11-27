@@ -32,7 +32,8 @@ sees and hears. The profile's capture policy says so explicitly:
 Live capture (M3) reads this policy. For a title like this it will use
 Windows.Graphics.Capture from outside the process: no injected present hook,
 no reading the game's memory. Executable names in the profile are used only
-to recognise that the game is running.
+to recognise that the game is running ([Game Detection](Game-Detection)), and
+the detector hands this policy to the recorder unchanged.
 
 ## The profile tree
 
@@ -61,7 +62,7 @@ starts with the parent's id and a dot. It **inherits everything** and adds to it
 | Regions | Added. A region name means one rectangle across the whole tree, because one `RegionSignal` measures them all; a child names new regions instead of moving the parent's. |
 | Events and composites | Added, or replaced by giving the same name. `disable` removes inherited ones (and composites built on them). |
 | Capture policy | Can only get **stricter**. A Roblox experience can never allow the hook or memory reading its game forbids. |
-| Executables | Games only; children are detected beneath their game. |
+| Executables | Games only (with `executableTitles`); children are detected beneath their game. See [Game Detection](Game-Detection). |
 
 The detector loads the whole tree under the game at once, so the rule-margin
 schema never changes mid-session, and evaluates only the rules of the
@@ -228,7 +229,8 @@ a rule did or did not fire.
   "id": "overwatch",                       // lower case; used in events and file names
   "displayName": "Overwatch",
   "version": 1,
-  "executables": ["Overwatch.exe"],        // detection only
+  "executables": ["Overwatch.exe"],        // detection only (Game Detection)
+  "executableTitles": {},                  // for a shared executable: { "javaw.exe": "^Minecraft\b" }, the window title must match
   "capturePolicy": { "allowPresentHook": false, "allowMemoryReading": false, "notes": "…" },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "…" },
   "regions": [

@@ -54,8 +54,8 @@ every push to `main` that changes it.
 
 ## Runtime launch and handshake
 
-Electron (from M2) launches the recorder and learns where to connect from its
-first line of stdout. Logs go to stderr so stdout carries only the handshake.
+The Electron shell launches the recorder and learns where to connect from its
+first line of stdout (see [Desktop Shell](Desktop-Shell)). Logs go to stderr so stdout carries only the handshake.
 
 ```mermaid
 sequenceDiagram
@@ -66,9 +66,10 @@ sequenceDiagram
     R->>B: create InProcessEventBus
     R->>R: start PipeEventServer("lookback.events")
     R->>R: start WebSocketBridge on 127.0.0.1:random
-    R-->>E: stdout: LOOKBACK_READY {"pipe","ws","token"}
-    E->>R: ws://127.0.0.1:port/events?token=…  (Origin: app://lookback)
+    R-->>E: stdout: LOOKBACK_READY {"pipe","ws","token","ingest","calibrate"}
+    E->>R: ws://127.0.0.1:port/events?token=…  (from the main process: no Origin)
     R-->>E: JSON envelopes
+    E->>R: ws://127.0.0.1:port/ingest?token=…  (viewer frames, while a video plays)
 ```
 
 ## Security boundaries

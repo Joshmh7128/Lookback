@@ -68,3 +68,56 @@ jobs:
           name: native-bin
           path: native/out/bin/Release/
           retention-days: 7
+
+  # The Electron shell in app/. Unit tests run everywhere; on Windows the
+  # suite also drives the real recorder over /events and /ingest, and the
+  # smoke runs start the whole app (recorder, stream, main window, and the
+  # viewer's capture -> crop -> scale -> /ingest path on a synthetic player).
+  app:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - uses: actions/setup-dotnet@v4
+        if: runner.os == 'Windows'
+        with:
+          global-json-file: global.json
+      - name: Build the recorder
+        if: runner.os == 'Windows'
+        working-directory: .
+        run: dotnet build src/Lookback.Recorder/Lookback.Recorder.csproj -c Release
+      - name: Install (Linux, no Electron binary needed)
+        if: runner.os == 'Linux'
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Smoke (app starts, recorder ready, stream open)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:LOOKBACK_USER_DATA = Join-Path $env:RUNNER_TEMP "lookback-smoke"
+          npx electron . --smoke | Tee-Object -Variable out
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match "LOOKBACK_SMOKE ok")) { exit 1 }
+      - name: Smoke (viewer frames reach the recorder)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:LOOKBACK_USER_DATA = Join-Path $env:RUNNER_TEMP "lookback-smoke-viewer"
+          npx electron . --smoke-viewer | Tee-Object -Variable out
+          if ($LASTEXITCODE -ne 0 -or -not ($out -match "LOOKBACK_SMOKE ok")) { exit 1 }

@@ -15,12 +15,18 @@ using Lookback.Stream.WebSockets;
 //   lookback-capture --window "Lookback Viewer" [--seconds 20] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
 //   lookback-capture --pid 1234 | --monitor 0
 //   lookback-capture --monitor 0 --seconds 20 --encode 10 --out clip.mp4 [--codec hevc] [--fps 60] [--size 1920x1080] [--mbps 20]
+//   lookback-capture probe [--store <path>] [--monitor 0 | --window <title part>]
 
 static string? Arg(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
 if (await HookBench.TryRunAsync(args) is int hookExit)
 {
     return hookExit; // the present hook on our own test apps (HookBench.cs)
+}
+
+if (args.Length > 0 && args[0] == "probe")
+{
+    return ProbeCommand.Run(args[1..]);
 }
 
 if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
@@ -32,6 +38,8 @@ if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
         {HookBench.Usage}
         Captures live and runs the signal pipeline. Nothing is written to disk unless
         --encode asks for a clip of the last N seconds (refused with --official-player).
+        lookback-capture probe [--store <path>] [--monitor <n> | --window <title part>]
+        Prints the governor's machine profile and the plan it picks.
         """);
     return 0;
 }

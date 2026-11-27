@@ -1,7 +1,9 @@
 # Architecture
 
 This page shows the whole system, including the parts that later milestones
-build. Parts that exist today are marked **M0** or **M1**.
+build. Parts that exist today are marked **M0** or **M1**. For the current
+state of every component (built, in progress, planned), see the
+[System Map](System-Map).
 
 ## Processes
 
@@ -21,7 +23,7 @@ flowchart LR
     end
 
     subgraph Recorder["Lookback.Recorder (C#)"]
-        DET[Detection<br/>M3]
+        DET[Detection<br/>M2]
         CAP[Capture backends<br/>WGC · DXGI dup · hook · FileSource]
         GPU[GPU downscale + convert<br/>M3]
         ENC[Hardware encode<br/>M3]
@@ -70,7 +72,7 @@ flowchart LR
 | `Lookback.Clipper` | C# | Normalisation, excitement curve, candidates, scoring, QA |
 | `Lookback.Testbench` | C# CLI | Runs footage files through Signals and Clipper |
 | `native/hook`, `native/testapps` | C++ | Present hook for D3D11/D3D12, the only native code because it lives inside the rendering process; and the two test apps that are its only permitted targets. Games are captured with WGC. See [Present Hook](Present-Hook) |
-| `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer |
+| `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer ([Desktop Shell](Desktop-Shell)) |
 | `ml/` | Python | Offline training and ONNX export |
 
 ## One clock
@@ -111,6 +113,31 @@ sequenceDiagram
     Q-->>L: append to .lbklog if retention allows
 ```
 
+## From a game starting to capture (M2)
+
+```mermaid
+sequenceDiagram
+    participant OS as Windows (process list, windows)
+    participant D as DetectionRunner (1 s poll)
+    participant B as Event bus
+    participant R as Recorder
+    participant C as Capture
+    OS-->>D: Overwatch.exe pid 4242 with a 2560×1440 borderless window
+    Note over D: matched by executable,<br/>window held 3 s
+    D->>B: game.lifecycle DETECTED (profile, hwnd, policy)
+    D->>R: Changed(DETECTED, GameInstance)
+    R->>C: CaptureTarget for the window, external capture (policy)
+    D->>B: FOCUSED / UNFOCUSED / WINDOW_CHANGED
+    OS-->>D: process gone for 5 s
+    D->>B: game.lifecycle EXITED
+    D->>R: Changed(EXITED)
+    R->>C: stop, end the session
+```
+
+Detection reads only what the OS shows about other programs: no memory
+reads, no injection, no hooks. Its profile match carries the capture policy
+the recorder must honour. See [Game Detection](Game-Detection).
+
 ## Recording tiers (M3)
 
 | Tier | Contents | Default retention | Size at 1080p60 HEVC 20 Mbps |
@@ -120,6 +147,13 @@ sequenceDiagram
 | Feature log | Signals and embeddings | Outlives the video | ~80 MB per hour |
 
 Clips are cut by remuxing packets from a keyframe, with no re-encode.
+
+The [resource governor](Resource-Governor) sizes the ring, the disk budget
+and the quality tier from a probe of the PC (RAM, the store volume's free
+space and SSD/HDD, the GPU that scans out the captured monitor and its
+hardware encoders), then steps quality down under pressure. The probe is in
+`Lookback.Governor.Windows`; the mapping and policy in `Lookback.Governor`
+are platform-neutral and tested without the hardware.
 
 ## Auto-clipping pipeline (M2 to M4)
 
