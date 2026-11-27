@@ -104,8 +104,13 @@ const pct = v => v === null || v === undefined ? '—' : `${Math.round(v * 100)}
 const num = (v, d = 1) => v === null || v === undefined ? '—' : v.toFixed(d);
 const mmss = t => { const s = Math.max(0, Math.round(t)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
+let checkSig = null;
 function renderCheck() {
   const c = state.check;
+  // State arrives every 500 ms; rebuild only on change, or a star button replaced between mousedown and mouseup loses the click.
+  const sig = c ? JSON.stringify(c) : '';
+  if (sig === checkSig) return;
+  checkSig = sig;
   if (!c) { $('checkRows').replaceChildren(); $('checkTiles').replaceChildren(); return; }
   const st = c.stats;
   const tile = (label, value, sub) => { const d = el('div'); d.append(el('span', {}, label), el('div', { class: 'score' }, value)); if (sub) d.appendChild(el('span', {}, sub)); return d; };
