@@ -19,7 +19,7 @@ flowchart LR
     end
 
     subgraph Recorder["Lookback.Recorder (C#)"]
-        DET[Detection<br/>M3]
+        DET[Detection<br/>M2]
         CAP[Capture backends<br/>WGC · DXGI dup · hook · FileSource]
         GPU[GPU downscale + convert<br/>M3]
         ENC[Hardware encode<br/>M3]
@@ -108,6 +108,31 @@ sequenceDiagram
     Q-->>W: JSON text frame to Electron
     Q-->>L: append to .lbklog if retention allows
 ```
+
+## From a game starting to capture (M2)
+
+```mermaid
+sequenceDiagram
+    participant OS as Windows (process list, windows)
+    participant D as DetectionRunner (1 s poll)
+    participant B as Event bus
+    participant R as Recorder
+    participant C as Capture
+    OS-->>D: Overwatch.exe pid 4242 with a 2560×1440 borderless window
+    Note over D: matched by executable,<br/>window held 3 s
+    D->>B: game.lifecycle DETECTED (profile, hwnd, policy)
+    D->>R: Changed(DETECTED, GameInstance)
+    R->>C: CaptureTarget for the window, external capture (policy)
+    D->>B: FOCUSED / UNFOCUSED / WINDOW_CHANGED
+    OS-->>D: process gone for 5 s
+    D->>B: game.lifecycle EXITED
+    D->>R: Changed(EXITED)
+    R->>C: stop, end the session
+```
+
+Detection reads only what the OS shows about other programs: no memory
+reads, no injection, no hooks. Its profile match carries the capture policy
+the recorder must honour. See [Game Detection](Game-Detection).
 
 ## Recording tiers (M3)
 

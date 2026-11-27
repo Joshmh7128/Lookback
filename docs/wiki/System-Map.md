@@ -70,7 +70,7 @@ the shell's memory.
 | WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
 | Governor Windows probe | Governor.Windows | In progress |
 | Clipper v1: normalisation, excitement curve, peaks, windows, merge, QA gates | Clipper | In progress (M2) |
-| Game detection: process and window watcher, profile matching, `GameLifecycle` | Detection | In progress (M2) |
+| Game detection: process and window watcher, profile matching, allow/deny lists, debounced `GameLifecycle`, `lookback-detect` bench ([Game Detection](Game-Detection)) | Detection · Detection.Windows | Done (#20); the recorder wiring hosts it |
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference | Scoring · `ml/` | In progress (M4) |
 | Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
 | Encoder on its own D3D11 device, stall watchdog, fallback chain, fail-fast | Encode · Capture | In progress |

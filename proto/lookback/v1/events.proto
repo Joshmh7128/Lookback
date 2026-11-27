@@ -85,6 +85,12 @@ enum GraphicsApi {
   GRAPHICS_API_OPENGL = 4;
 }
 
+// A game started, gained or lost focus, moved window, or stopped on this
+// machine. Published on "game.lifecycle" by Lookback.Detection from what the
+// OS exposes outside the game process (process list, executable path, its
+// top-level window); never from the game's memory. The envelope's qpc is when
+// the change was confirmed (after debouncing). Every envelope about one run
+// of a game carries the same session_id.
 message GameLifecycle {
   enum Kind {
     KIND_UNSPECIFIED = 0;
@@ -92,16 +98,43 @@ message GameLifecycle {
     KIND_FOCUSED = 2;
     KIND_UNFOCUSED = 3;
     KIND_EXITED = 4;
+    // The window to capture changed: a new window (splash to game, a
+    // relaunch with a new pid), another monitor, or another window mode.
+    KIND_WINDOW_CHANGED = 5;
   }
   Kind kind = 1;
   uint32 pid = 2;
+  // Executable file name, for example "Overwatch.exe".
   string exe = 3;
   GraphicsApi api = 4;
+  // Guessed from files beside the executable ("unity", "unreal"), or empty.
   string engine = 5;
   uint64 hwnd = 6;
   uint64 adapter_luid = 7;
   float confidence = 8;
   string game_profile = 9;
+  string window_title = 10;
+  WindowMode window_mode = 11;
+  // HMONITOR of the monitor the window is on.
+  uint64 monitor = 12;
+  // Full path of the executable, when the OS reports it.
+  string exe_path = 13;
+  // The profile's capture policy, resolved down the tree. The recorder must
+  // honour it: false means external capture only.
+  bool allow_present_hook = 14;
+  bool allow_memory_reading = 15;
+  // EXECUTABLE when a profile lists the executable; MANUAL when the user
+  // opted an unknown or ambiguous executable in.
+  DetectionMethod method = 16;
+}
+
+enum WindowMode {
+  WINDOW_MODE_UNSPECIFIED = 0;
+  WINDOW_MODE_WINDOWED = 1;
+  // A window without a frame that covers its whole monitor.
+  WINDOW_MODE_BORDERLESS = 2;
+  // Exclusive fullscreen (only known while the game is in the foreground).
+  WINDOW_MODE_FULLSCREEN = 3;
 }
 
 // ---------------------------------------------------------------- signals
