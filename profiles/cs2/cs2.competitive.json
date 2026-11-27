@@ -1,0 +1,12 @@
+{
+  // Premier, Competitive and Casual: 5v5 bomb defusal. Uses the round rules of the game profile unchanged.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile cs2.competitive.
+  "id": "cs2.competitive",
+  "displayName": "Counter-Strike 2: Premier and Competitive",
+  "version": 1,
+  "parent": "cs2",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." }
+}

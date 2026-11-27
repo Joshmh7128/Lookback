@@ -1,0 +1,15 @@
+{
+  // Conquest (Arcade): team deathmatch for collected orbs, with respawns. Kill streaks matter more here.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile marvel-rivals.conquest.
+  "id": "marvel-rivals.conquest",
+  "displayName": "Marvel Rivals: Conquest",
+  "version": 1,
+  "parent": "marvel-rivals",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "composites": [
+    { "name": "killstreak", "of": "elimination", "atLeast": 5, "withinMs": 25000, "weight": 4.0, "clip": { "preMs": 10000, "postMs": 3000 } }
+  ]
+}

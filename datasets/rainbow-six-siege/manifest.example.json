@@ -1,0 +1,32 @@
+{
+  // Copy to manifest.json next to your footage. File paths are relative to this file.
+  // Media is never committed (see .gitignore): only manifests are.
+  //
+  // retention:
+  //   owned         your own recordings (default)
+  //   permissioned  someone else's footage used with their permission; permissionRef says where it is recorded
+  //   open-license  footage under a licence that allows this use; permissionRef names the licence and source
+  //
+  // profile: the deepest profile the footage shows (rainbow-six-siege.bomb...).
+  //   Scores detection and teaches mode fingerprints (lookback-testbench fingerprint).
+  // labels: hand-marked moments, in seconds from the start of the file. Event names
+  // match the profile (elimination, multikill, ace, explosion, breach, defuser_planted, death, round_result...).
+  // clips: stretches you would clip, in seconds; candidates are scored against them.
+  "game": "rainbow-six-siege",
+  "entries": [
+    {
+      "file": "media/my-session-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "rainbow-six-siege.bomb",
+      "clips": [ { "start": 44, "end": 58 } ],
+      "labels": [
+        { "event": "explosion", "at": 52.0 },
+        { "event": "breach", "at": 53.1 },
+        { "event": "elimination", "at": 60.2 },
+        { "event": "defuser_planted", "at": 140.0 },
+        { "event": "round_result", "at": 171.5 }
+      ]
+    }
+  ]
+}

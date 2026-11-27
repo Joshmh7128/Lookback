@@ -1,0 +1,33 @@
+{
+  // Copy to manifest.json next to your footage. File paths are relative to this file.
+  // Media is never committed (see .gitignore): only manifests are.
+  //
+  // retention:
+  //   owned         your own recordings (default)
+  //   permissioned  someone else's footage used with their permission; permissionRef says where it is recorded
+  //   open-license  footage under a licence that allows this use; permissionRef names the licence and source
+  //
+  // profile: the deepest profile the footage shows (cs2.competitive...).
+  //   Scores detection and teaches mode fingerprints (lookback-testbench fingerprint).
+  // labels: hand-marked moments, in seconds from the start of the file. Event names
+  // match the profile (elimination, multikill, ace, bomb_planted, flashed, death, round_result...).
+  // clips: stretches you would clip, in seconds; candidates are scored against them.
+  "game": "cs2",
+  "entries": [
+    {
+      "file": "media/my-session-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "cs2.competitive",
+      "clips": [ { "start": 23, "end": 37 } ],
+      "labels": [
+        { "event": "elimination", "at": 31.2 },
+        { "event": "elimination", "at": 33.0 },
+        { "event": "multikill", "at": 33.0 },
+        { "event": "bomb_planted", "at": 58.4 },
+        { "event": "flashed", "at": 64.1 },
+        { "event": "round_result", "at": 95.0 }
+      ]
+    }
+  ]
+}

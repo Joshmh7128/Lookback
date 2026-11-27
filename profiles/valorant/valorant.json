@@ -1,0 +1,117 @@
+{
+  // VALORANT: a round-based tactical shooter with kernel anti-cheat (Vanguard)
+  // and no public live game-state API. Everything here comes from the screen
+  // and the sound. The game level carries the round-based rules shared by
+  // Unrated, Competitive, Swiftplay and Spike Rush; Deathmatch and Team
+  // Deathmatch turn the round rules off.
+  "id": "valorant",
+  "displayName": "VALORANT",
+  "version": 1,
+  "level": "game",
+  "tags": ["shooter", "tactical", "hero", "anti-cheat"],
+  "executables": ["VALORANT-Win64-Shipping.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Kernel anti-cheat (Vanguard): external capture (Windows.Graphics.Capture) only. No injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9. Not yet checked against footage: calibrate with testbench analyze --profile valorant and adjust."
+  },
+  "regions": [
+    { "name": "minimap",     "x": 0.00, "y": 0.00, "w": 0.22, "h": 0.38, "purpose": "Minimap, top left. Mostly for learning mode fingerprints." },
+    { "name": "round_timer", "x": 0.40, "y": 0.00, "w": 0.20, "h": 0.09, "purpose": "Round timer, score and team portraits. The timer turns into a red spike icon once the spike is planted." },
+    { "name": "kill_feed",   "x": 0.74, "y": 0.08, "w": 0.25, "h": 0.22, "purpose": "Every elimination in the match, newest at the top. Your own entries have a highlighted border." },
+    { "name": "banner",      "x": 0.25, "y": 0.16, "w": 0.50, "h": 0.22, "purpose": "Large text: ROUND WON, ROUND LOST, ACE, CLUTCH, match result." },
+    { "name": "kill_banner", "x": 0.42, "y": 0.68, "w": 0.16, "h": 0.12, "purpose": "Your kill icon and count, above the abilities bar." },
+    { "name": "health",      "x": 0.25, "y": 0.89, "w": 0.15, "h": 0.10, "purpose": "Health and shields, bottom left of centre." },
+    { "name": "abilities",   "x": 0.40, "y": 0.89, "w": 0.15, "h": 0.10, "purpose": "Ability icons and charges." },
+    { "name": "ultimate",    "x": 0.55, "y": 0.89, "w": 0.06, "h": 0.10, "purpose": "Ultimate icon and points; it changes sharply when the ultimate is used." }
+  ],
+  "events": [
+    {
+      // Your elimination: the kill banner above the abilities changes, with the kill sound.
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.55,
+      "cooldownMs": 250,
+      "whenAny": [ { "signal": "region.kill_banner.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.25 },
+        { "signal": "region.kill_feed.activity", "above": 0.02, "withinMs": 600, "add": 0.15 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    },
+    {
+      // Anyone's elimination. Low weight: a measure of how hot the round is.
+      "name": "kill_feed_activity",
+      "weight": 0.3,
+      "baseConfidence": 0.6,
+      "cooldownMs": 400,
+      "when": [ { "signal": "region.kill_feed.activity", "rise": 0.03 } ],
+      "clip": { "preMs": 4000, "postMs": 2000 }
+    },
+    {
+      "name": "ultimate_used",
+      "weight": 1.1,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.ultimate.activity", "rise": 0.08 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.05, "withinMs": 500, "add": 0.2 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.1 }
+      ],
+      "clip": { "preMs": 3000, "postMs": 8000 }
+    },
+    {
+      // The round timer turns red when the spike is planted.
+      "name": "spike_planted",
+      "weight": 0.7,
+      "baseConfidence": 0.5,
+      "cooldownMs": 30000,
+      "when": [ { "signal": "region.round_timer.red", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.15 } ],
+      "clip": { "preMs": 8000, "postMs": 4000 }
+    },
+    {
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.6,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    },
+    {
+      // Death: the view cuts to the spectator camera and your health bar changes.
+      "name": "death",
+      "weight": 0.2,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.health.activity", "rise": 0.04 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 1000 }
+    },
+    {
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.15 },
+        { "signal": "region.banner.luma", "above": 0.45 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill",   "of": "elimination", "atLeast": 2, "withinMs": 4000,   "weight": 2.5, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "triple_kill", "of": "elimination", "atLeast": 3, "withinMs": 8000,   "weight": 4.0, "clip": { "preMs": 8000, "postMs": 4000 } },
+    // A round lasts at most about 100 s plus the spike timer, so five eliminations inside that is an ace.
+    { "name": "ace",         "of": "elimination", "atLeast": 5, "withinMs": 145000, "weight": 6.0, "clip": { "preMs": 20000, "postMs": 5000 } },
+    { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

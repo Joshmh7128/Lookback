@@ -1,0 +1,16 @@
+{
+  // Deathmatch: respawns and no bomb, so the round rules are off and a kill streak replaces the ace.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile cs2.deathmatch.
+  "id": "cs2.deathmatch",
+  "displayName": "Counter-Strike 2: Deathmatch",
+  "version": 1,
+  "parent": "cs2",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "disable": ["bomb_planted", "round_result", "ace"],
+  "composites": [
+    { "name": "killstreak", "of": "elimination", "atLeast": 5, "withinMs": 20000, "weight": 4.0, "clip": { "preMs": 10000, "postMs": 3000 } }
+  ]
+}

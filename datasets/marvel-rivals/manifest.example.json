@@ -1,0 +1,32 @@
+{
+  // Copy to manifest.json next to your footage. File paths are relative to this file.
+  // Media is never committed (see .gitignore): only manifests are.
+  //
+  // retention:
+  //   owned         your own recordings (default)
+  //   permissioned  someone else's footage used with their permission; permissionRef says where it is recorded
+  //   open-license  footage under a licence that allows this use; permissionRef names the licence and source
+  //
+  // profile: the deepest profile the footage shows (marvel-rivals.convoy...).
+  //   Scores detection and teaches mode fingerprints (lookback-testbench fingerprint).
+  // labels: hand-marked moments, in seconds from the start of the file. Event names
+  // match the profile (elimination, multikill, team_wipe, ultimate_used, death, round_result...).
+  // clips: stretches you would clip, in seconds; candidates are scored against them.
+  "game": "marvel-rivals",
+  "entries": [
+    {
+      "file": "media/my-session-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "marvel-rivals.convoy",
+      "clips": [ { "start": 72, "end": 86 } ],
+      "labels": [
+        { "event": "ultimate_used", "at": 80.0 },
+        { "event": "elimination", "at": 81.5 },
+        { "event": "elimination", "at": 82.7 },
+        { "event": "multikill", "at": 82.7 },
+        { "event": "round_result", "at": 300.0 }
+      ]
+    }
+  ]
+}

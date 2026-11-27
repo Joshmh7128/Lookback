@@ -1,0 +1,23 @@
+{
+  // Bomb: attackers plant the defuser on one of two sites. The timer area turns red on a plant.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile rainbow-six-siege.bomb.
+  "id": "rainbow-six-siege.bomb",
+  "displayName": "Rainbow Six Siege: Bomb",
+  "version": 1,
+  "parent": "rainbow-six-siege",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "events": [
+    {
+      "name": "defuser_planted",
+      "weight": 0.8,
+      "baseConfidence": 0.5,
+      "cooldownMs": 30000,
+      "when": [ { "signal": "region.round_timer.red", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.15 } ],
+      "clip": { "preMs": 10000, "postMs": 4000 }
+    }
+  ]
+}

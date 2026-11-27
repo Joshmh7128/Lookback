@@ -1,0 +1,12 @@
+{
+  // Convergence: capture a point, then escort. Uses the game profile's rules unchanged.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile marvel-rivals.convergence.
+  "id": "marvel-rivals.convergence",
+  "displayName": "Marvel Rivals: Convergence",
+  "version": 1,
+  "parent": "marvel-rivals",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." }
+}
