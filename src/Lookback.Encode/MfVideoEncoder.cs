@@ -21,12 +21,14 @@ public sealed record VideoEncoderSettings(CodecKind Codec, int Width, int Height
     public bool PreferHardware { get; init; } = true;
 
     /// <summary>
-    /// Run the encoder on its own D3D11 device on the same adapter and hand
-    /// frames over through a shared keyed-mutex texture, so an MFT that holds
-    /// its device lock can never block capture. Falls back to the capture
-    /// device when the adapter cannot share NV12.
+    /// Experimental, off by default: run the encoder on its own D3D11 device
+    /// on the same adapter and hand frames over through a shared keyed-mutex
+    /// texture. In live WGC capture on AETHER this wedged the capture device
+    /// on both NVIDIA and AMD at the first handoff (the unit tests, without
+    /// WGC, pass), so the shared capture device plus the encode watchdog is
+    /// the default until the handoff is reworked.
     /// </summary>
-    public bool IsolateDevice { get; init; } = true;
+    public bool IsolateDevice { get; init; }
 
     /// <summary>When the requested codec has no working encoder, try hardware H.264, then software H.264.</summary>
     public bool AllowCodecFallback { get; init; } = true;

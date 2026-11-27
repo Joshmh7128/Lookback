@@ -36,7 +36,7 @@ internal sealed class EncodeBench : IDisposable
         _captureWatch = captureWatch;
     }
 
-    public static string Usage => "[--encode <seconds> --out clip.mp4 [--codec h264|hevc] [--fps 60] [--size 1920x1080] [--mbps 20] [--software] [--no-isolate] [--stall-ms 2000] [--no-blocklist]]";
+    public static string Usage => "[--encode <seconds> --out clip.mp4 [--codec h264|hevc] [--fps 60] [--size 1920x1080] [--mbps 20] [--software] [--isolate] [--stall-ms 2000] [--no-blocklist]]";
 
     /// <summary>Starts the encode path when <c>--encode</c> is given; null otherwise. Throws on a refused or bad request.</summary>
     public static EncodeBench? TryStart(string[] args, LiveCaptureSession session)
@@ -71,7 +71,7 @@ internal sealed class EncodeBench : IDisposable
         var watchdog = new StallWatchdog(SystemClock.Instance, TimeSpan.FromMilliseconds(250));
         try
         {
-            var settings = new VideoEncoderSettings(codec, w, h, fps, bitrate) { PreferHardware = !args.Contains("--software"), IsolateDevice = !args.Contains("--no-isolate") };
+            var settings = new VideoEncoderSettings(codec, w, h, fps, bitrate) { PreferHardware = !args.Contains("--software"), IsolateDevice = args.Contains("--isolate") };
             var options = new EncodeTickerOptions
             {
                 Watchdog = watchdog,
