@@ -9,6 +9,8 @@ using Lookback.Testbench.Live;
 
 namespace Lookback.Testbench.Tests;
 
+// Real-time playback is timing-sensitive; it does not share the CPU with the clipper's ffmpeg-heavy footage tests.
+[Collection(RealTime.Name)]
 public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
 {
     private const long F = 10_000_000;
@@ -80,7 +82,18 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
         byte[] buffer = new byte[1 << 16];
         while (!kinds.Contains("sessionEnded"))
         {
-            WebSocketReceiveResult r = await ws.ReceiveAsync(buffer, ct);
+            WebSocketReceiveResult r;
+            try
+            {
+                r = await ws.ReceiveAsync(buffer, ct);
+            }
+            catch (WebSocketException ex)
+            {
+                // The server hung up early: say why, from its side, rather than only that the socket closed.
+                string server = run.IsFaulted ? run.Exception!.GetBaseException().ToString() : run.IsCompleted ? "live run finished normally" : "live run still running";
+                throw new InvalidOperationException($"Socket closed after {kinds.Count} messages ({sw.Elapsed.TotalSeconds:0.0} s); {server}", ex);
+            }
+
             using JsonDocument doc = JsonDocument.Parse(Encoding.UTF8.GetString(buffer, 0, r.Count));
             if (doc.RootElement.TryGetProperty("sessionStarted", out JsonElement started))
             {

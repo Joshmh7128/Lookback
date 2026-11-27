@@ -11,6 +11,7 @@ namespace Lookback.Testbench.Tests;
 /// pattern with a quiet tone, plus flashes, white-noise bursts, and black,
 /// frozen or silent stretches where each test needs them.
 /// </summary>
+[Collection(RealTime.Name)]
 public sealed class ClipperFootageTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "lookback-clipper", Guid.NewGuid().ToString("N"));
@@ -167,4 +168,11 @@ public sealed class ClipperFootageTests : IDisposable
         {
         }
     }
+}
+
+/// <summary>Tests in this collection run one at a time: the live tests pace against the wall clock.</summary>
+[CollectionDefinition(Name)]
+public sealed class RealTime
+{
+    public const string Name = "real time";
 }
