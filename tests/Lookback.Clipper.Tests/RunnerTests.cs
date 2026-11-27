@@ -100,6 +100,66 @@ public class RunnerTests
         Assert.Equal(0f, o.Features["source.events"]);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TheHostCanAnnotateACandidateBeforeItIsPublished(bool fails)
+    {
+        using var bus = new InProcessEventBus();
+        using IEventSubscription tap = bus.Subscribe("*", capacity: 1 << 16);
+        var options = new ClipperOptions
+        {
+            CurvePublishIntervalMs = 0,
+            Annotate = (candidate, qa, features) =>
+            {
+                // What a learned scorer would do: a score from the features, and a QA line.
+                candidate.ModelScore = features["score.heuristic"] / 2;
+                candidate.HighlightProbability = 0.42f;
+                qa.Checks.Add(new QaCheck { Name = "model", Passed = true, Value = 0.42f });
+                if (fails)
+                {
+                    throw new InvalidOperationException("scorer broke halfway");
+                }
+            },
+        };
+        var clipper = new ClipperRunner(bus, "s", F, options);
+        var signals = new EnvelopeFactory(new ManualClock(F), "s", "test");
+        Publish(bus, signals, Topics.SignalsVideo, 0, e => e.SignalSchema = Video);
+        Publish(bus, signals, Topics.SignalsAudio, 0, e => e.SignalSchema = Audio);
+        foreach (SignalFrame f in Session(30, t => Between(t, 15, 15.3)))
+        {
+            Publish(bus, signals, f.SchemaId == 1 ? Topics.SignalsVideo : Topics.SignalsAudio, (long)f.WindowStartQpc, e => e.SignalFrame = f);
+        }
+
+        await clipper.DisposeAsync();
+        var seen = new List<Envelope>();
+        while (tap.TryRead(out Envelope? e))
+        {
+            seen.Add(e!);
+        }
+
+        ClipCandidate c = seen.Single(e => e.Topic == Topics.ClipCandidate).ClipCandidate;
+        QaReport q = seen.Single(e => e.Topic == Topics.QaReport).QaReport;
+        if (fails)
+        {
+            // Published exactly as the clipper made it; the failure is counted.
+            Assert.False(c.HasModelScore);
+            Assert.Equal(c.HeuristicScore, c.HighlightProbability);
+            Assert.Equal(["length", "black", "frozen", "silence"], q.Checks.Select(k => k.Name));
+            Assert.Equal(1, clipper.AnnotationFailures);
+            Assert.IsType<InvalidOperationException>(clipper.LastAnnotationError);
+        }
+        else
+        {
+            Assert.Equal(c.HeuristicScore / 2, c.ModelScore);
+            Assert.Equal(0.42f, c.HighlightProbability);
+            Assert.Contains(q.Checks, k => k.Name == "model");
+            Assert.Equal(0, clipper.AnnotationFailures);
+        }
+
+        Assert.Equal(1, clipper.CandidatesPublished);
+    }
+
     private static void Publish(InProcessEventBus bus, EnvelopeFactory factory, string topic, long qpc, Action<Envelope> fill)
     {
         Envelope e = factory.Create(topic, qpc);

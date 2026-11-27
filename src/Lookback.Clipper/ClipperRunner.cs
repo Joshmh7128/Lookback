@@ -47,6 +47,8 @@ public sealed class ClipperRunner : IAsyncDisposable
     private readonly List<Envelope> _released = [];
     private readonly List<ClipperOutput> _outputs = [];
     private readonly long _curveInterval;
+    private readonly CandidateAnnotator? _annotate;
+    private long _annotationFailures;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
     private readonly Lock _gate = new();
@@ -76,6 +78,7 @@ public sealed class ClipperRunner : IAsyncDisposable
         _engine = engine;
         SessionId = sessionId;
         _curveInterval = QpcTime.Rescale((options ?? new ClipperOptions()).CurvePublishIntervalMs, 1000, frequency);
+        _annotate = options?.Annotate;
 
         // Longer than the profile runner's own 2 s, so when a stream is missing (no audio)
         // the profile runner gives up on it first and its rules frames keep gating this one.
@@ -121,6 +124,12 @@ public sealed class ClipperRunner : IAsyncDisposable
 
     /// <summary>Names of every candidate's features, in order.</summary>
     public IReadOnlyList<string> FeatureNames => _engine.FeatureNames;
+
+    /// <summary>Times <see cref="ClipperOptions.Annotate"/> threw; those candidates were published unannotated.</summary>
+    public long AnnotationFailures => Interlocked.Read(ref _annotationFailures);
+
+    /// <summary>The last exception <see cref="ClipperOptions.Annotate"/> threw, if any.</summary>
+    public Exception? LastAnnotationError { get; private set; }
 
     /// <summary>Candidates published so far (each followed by its QA report).</summary>
     public long CandidatesPublished => Interlocked.Read(ref _published);
@@ -257,7 +266,8 @@ public sealed class ClipperRunner : IAsyncDisposable
     {
         foreach (ClipperOutput output in _outputs)
         {
-            (ClipCandidate candidate, QaReport qa, _) = output;
+            (ClipCandidate candidate, QaReport qa, CandidateFeatures features) = output;
+            Annotate(candidate, qa, features);
             Envelope c = _out.Create(Topics.ClipCandidate, (long)candidate.PeakQpc);
             c.ClipCandidate = candidate;
             _bus.Publish(c);
@@ -269,6 +279,42 @@ public sealed class ClipperRunner : IAsyncDisposable
         }
 
         _outputs.Clear();
+    }
+
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1031", Justification = "Host code must never stop the pump or lose a candidate; failures are counted and the last one kept.")]
+    private void Annotate(ClipCandidate candidate, QaReport qa, CandidateFeatures features)
+    {
+        if (_annotate is null)
+        {
+            return;
+        }
+
+        ClipCandidate before = candidate.Clone();
+        QaReport qaBefore = qa.Clone();
+        try
+        {
+            _annotate(candidate, qa, features);
+        }
+        catch (Exception ex)
+        {
+            // Publish what the clipper produced, not a half-annotated candidate.
+            RestoreExactly(candidate, before);
+            RestoreExactly(qa, qaBefore);
+            LastAnnotationError = ex;
+            Interlocked.Increment(ref _annotationFailures);
+        }
+    }
+
+    private static void RestoreExactly<T>(T target, T snapshot)
+        where T : Google.Protobuf.IMessage<T>
+    {
+        // MergeFrom appends repeated fields and keeps fields the snapshot left unset, so start clean.
+        foreach (Google.Protobuf.Reflection.FieldDescriptor f in target.Descriptor.Fields.InFieldNumberOrder())
+        {
+            f.Accessor.Clear(target);
+        }
+
+        target.MergeFrom(snapshot);
     }
 
     /// <summary>Processes everything queued, flushes the merger and the engine, then stops.</summary>

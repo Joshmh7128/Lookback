@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Diagnostics.CodeAnalysis;
+using Lookback.Contracts.V1;
 
 namespace Lookback.Clipper;
 
@@ -79,6 +80,9 @@ public sealed class CandidateFeatures : IReadOnlyDictionary<string, float>
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }
+
+/// <summary>Adds to a finished candidate and its QA report before they are published (see <see cref="ClipperOptions.Annotate"/>).</summary>
+public delegate void CandidateAnnotator(ClipCandidate candidate, QaReport qa, CandidateFeatures features);
 
 /// <summary>A finished candidate with its QA report and features (see <see cref="ClipperRunner.CandidateFinished"/>).</summary>
 public sealed class CandidateFinishedEventArgs(ClipperOutput output) : EventArgs

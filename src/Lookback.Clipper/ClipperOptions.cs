@@ -42,6 +42,17 @@ public sealed record ClipperOptions
 
     public QaOptions Qa { get; init; } = new();
 
+    /// <summary>
+    /// Called by <see cref="ClipperRunner"/> for every finished candidate just
+    /// <b>before</b> its <c>clip.candidate</c> and <c>qa.report</c> are
+    /// published, so the host can put more on them, for example the learned
+    /// scorer's features and score (M4), without this project referencing
+    /// the scorer. Runs on the runner's pump thread under its lock: keep it
+    /// quick. If it throws, the candidate is published as it was and
+    /// <see cref="ClipperRunner.AnnotationFailures"/> counts it.
+    /// </summary>
+    public CandidateAnnotator? Annotate { get; init; }
+
     /// <summary>Checks that the options make sense.</summary>
     public void Validate()
     {

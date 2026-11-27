@@ -136,6 +136,7 @@ loud bursts where a test puts them. No ffmpeg needed.
 | | `ProfileClipperBlocksInheritAndAreValidated` | A child's components replace the parent's by signal and inherit unset values; bad blocks and typos are rejected; `low ≥ high` is caught after inheritance; unknown signals are reported |
 | | `DefaultsAreCompleteAndGameAgnostic` | The defaults set everything, use no region signals, and keep more pre-roll than post-roll |
 | `RunnerTests.cs` | `FollowsTheProfileRunnerAndPublishesOneCandidateSetWithQa` | On a real bus beside a `ProfileRunner` with `publishCandidates: false`: one candidate from the clipper with both the event and the curve as reasons, stamped with its peak, followed by its QA report; the curve at 10 Hz on `signals.clipper`; another session's events ignored |
+| | `TheHostCanAnnotateACandidateBeforeItIsPublished` (2 cases) | An annotator's model score, probability and QA line are on the published candidate and report; one that throws halfway leaves them exactly as the clipper made them, counted in `AnnotationFailures` |
 | | `WithoutAProfileTheCurveAloneMakesCandidates` | The curve-only runner publishes a candidate and its QA report, and raises `CandidateFinished` with the same candidate and its features |
 
 ## `Lookback.Testbench.Tests`

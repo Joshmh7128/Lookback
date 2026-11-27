@@ -209,6 +209,29 @@ The curve and its z-scores come from a preallocated history of the last
 `CandidateFinished` with them right after publishing the candidate and its
 QA report; the testbench keeps them in `AnalyzeResult.Features`.
 
+Anything that has to travel **with** the candidate (stored ratings join on
+the candidate seen on the bus) goes in through `ClipperOptions.Annotate`, a
+`CandidateAnnotator` the runner calls just **before** it publishes each
+candidate and its QA report. The host wires the M4 scorer in there, so
+neither `Lookback.Clipper` nor `Lookback.Scoring` references the other:
+
+```csharp
+var options = new ClipperOptions
+{
+    Annotate = (candidate, qa, features) =>
+    {
+        ClipFeatureSchema.Attach(candidate, ClipperFeatureMap.FromClipper(features)); // M4's wire features
+        scorer.Score(candidate, frequency);       // model score and calibrated probability, if a model covers the game
+        LearnedClipScorer.Annotate(qa, candidate);
+    },
+};
+var clipper = new ClipperRunner(bus, catalog, gameId, sessionId, frequency, options);
+```
+
+It runs on the runner's pump thread, so it should be quick. If it throws,
+the candidate and report are published exactly as the clipper made them,
+`AnnotationFailures` counts it, and `LastAnnotationError` keeps the exception.
+
 ## Determinism and latency
 
 The clipper must give the same candidates for the same footage at any replay
