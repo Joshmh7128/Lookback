@@ -13,13 +13,15 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Clip writer (ring → fMP4 clip, starts on a keyframe, no re-encode) | `Lookback.Replay` | **Done**, tested |
 | Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins, clip read-back from disk) | `Lookback.Replay` | **Done**, tested |
 | Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | **Done**, tested |
-| Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is still to come |
+| Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is in progress in a parallel session (branch `claude/governor-probe`) |
 | Audio sample clock (WASAPI device position → QPC, weighted least-squares drift fit) and live assembler (downmix, resample to 48 kHz, silence for gaps) | `Lookback.Media` (`Live/`) | **Done**, tested |
 | Live analyzer (capture threads hand frames/hops through pools + SPSC rings, below-normal worker publishes signals with capture QPC, thins to 30 fps, drops when behind) | `Lookback.Signals` | **Done**, tested |
 | WGC capture (raw WinRT interop), DXGI duplication fallback, live session, bench CLI (`lookback-capture`) | `Lookback.Capture`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (DXGI ~57 fps, WGC ~140 fps, analysis 29.4 fps, 0 dropped; `--official-player` persists nothing) |
-| GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource; SDR/scRGB/PQ) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Downscale **done**, WARP-tested. `Nv12Converter` written, builds, not yet run |
-| Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback), AAC MFT | `Lookback.Encode` (Windows) | `MfVideoEncoder` **written, builds, never run**. AAC, CFR ticker and tests still to do |
-| WASAPI loopback, process loopback (Win10 20348+ only), mic track | `Lookback.Audio` (Windows) | Planned |
+| GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource; SDR/scRGB/PQ) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Downscale **done**, WARP-tested. `Nv12Converter` **done**, tested on AETHER through the encoder and ticker tests (WARP has no video processor) |
+| Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback) | `Lookback.Encode` (Windows) | `MfVideoEncoder` **done**, verified on AETHER: NVENC H.264 and HEVC, software H.264 on the RTX and on WARP, all round-trip through the ring and muxer (ffprobe: every frame, keyframe every 2 s, no B-frames, no decode errors) |
+| CFR encode clock and bench | `Lookback.Encode` (`EncodeTicker`), `Lookback.Capture.Cli` | **Done**, tested. Live on AETHER: WGC 144 fps in, HEVC 1080p60 out at 60.0 fps, 0 skipped, 0 busy (`lookback-capture --encode 8 --out clip.mp4`) |
+| AAC encoder MFT | `Lookback.Encode` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
+| WASAPI loopback, process loopback (Win10 20348+ only), mic track | `Lookback.Audio` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
 | Recorder wiring, control commands on `/events` | `Lookback.Recorder` | Planned; contract additions to be agreed with the Electron thread first |
 | Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
 
@@ -28,7 +30,7 @@ design, what has landed and what's next. Update it with every PR on this work.
 ```
 capture backend (WGC | DXGI dup | hook) ── ID3D11Texture2D + QPC
    ├─ analysis tap: compute downscale 384x216 → staging (3-deep, no stall) → VideoFrame → LiveAnalyzer → signals.video
-   └─ encode path:  video processor → NV12 (CFR ticker at tier fps) → MF encoder MFT ── packets
+   └─ encode path:  video processor → NV12 (latest) ── EncodeTicker (CFR at tier fps) → MF encoder MFT ── packets
 WASAPI loopback ── float PCM + device QPC ── SampleClock ─┬─ mono 48 kHz hops → LiveAnalyzer → signals.audio
                                                          └─ AAC MFT ── packets
 packets ──▶ ReplayRing (RAM, ~2 min) ──▶ SegmentWriter (reads ring by sequence) ──▶ 2 s fMP4 segments on disk
@@ -97,25 +99,30 @@ skips pinned ranges and the newest segment of an open session.
 
 ## Next steps, in order
 
-Where it stopped: `MfVideoEncoder` compiles but has not been run anywhere. It
-enumerates encoder MFTs with `MFTEnum2` filtered by the capture adapter's LUID,
-unlocks async hardware MFTs and gives them the D3D11 device manager, sets
-ICodecAPI (CBR, 2 s GOP, 0 B-frames, low latency), copies each NV12 frame into
-an 8-slot texture pool wrapped once in DXGI surface buffers, and emits
-length-prefixed packets to an `IPacketSink`, announcing the track on the first
-keyframe (falling back to `MF_MT_MPEG_SEQUENCE_HEADER` for the parameter sets).
-Software H.264 runs synchronously on the same DXGI buffers. Things to verify
-first on AETHER: that the MS software MFT accepts DXGI surface buffers (if not,
-map a staging copy into a memory buffer), that NVENC really raises NeedInput
-before the first `Encode` call, and that `Dispose` drains without hanging.
+Where it stopped: the video encode path runs end to end on AETHER. The
+three things flagged to verify all hold: the MS software MFT accepts DXGI
+surface buffers (on the RTX and on WARP), NVENC raises NeedInput before the
+first `Encode` call, and `Dispose` drains without hanging (well under 3 s).
+`EncodeTicker` is the CFR clock: `Nv12Converter` runs on the capture thread for
+every frame, a high-resolution waitable timer encodes the latest NV12 frame at
+each tick with PTS = scheduled tick time, repeats when nothing new arrived,
+and skips (counts) ticks that are a full period late instead of bursting.
+`lookback-capture --encode <s> --out clip.mp4` exercises it live. See the
+wiki page `Live-Capture.md` for the path, measurements and tests.
 
-1. Encoder test on Windows: software H.264 on WARP (CI) and NVENC/AMF on
-   AETHER. Encode ~120 frames into a `ReplayRing`, `ClipWriter.Mux`, and
-   check with ffprobe (frame count, keyframe every 2 s, no B-frames).
-2. CFR ticker: a thread at tier fps that runs `Nv12Converter` on the
-   latest captured texture (repeating it when WGC sends nothing) and calls
-   `Encode`. Hook it through `LiveCaptureSession.FrameTap`. Add
-   `--encode <seconds> --out clip.mp4` to `lookback-capture`.
+Steps 3–5 are running in parallel sessions on their own branches
+(`claude/capture-audio`: steps 3 and 4; `claude/governor-probe`: step 5).
+Rebase on main before merging; they touch this file's rows too.
+
+1. ~~Encoder test on Windows~~ **done** (`tests/Lookback.Capture.Tests/EncoderTests.cs`,
+   every display adapter: NVENC and AMF on AETHER).
+   **Next here:** AMF HEVC can deadlock with live WGC capture on the iGPU
+   (see the wiki's Live-Capture known issues). Give the encoder its own D3D11
+   device on the same adapter, hand frames over through a shared keyed-mutex
+   NV12 texture, and add a stall watchdog that recreates the encoder. Also:
+   AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per busy tick
+   (force IDRs at GOP-aligned ticks).
+2. ~~CFR ticker and `--encode`~~ **done** (`EncodeTicker`, `EncodeBench`).
 3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
 4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
    `SampleClock` and `LiveAudioAssembler`.
@@ -125,6 +132,23 @@ before the first `Encode` call, and that `Dispose` drains without hanging.
 6. Recorder wiring (`CaptureService`, control commands on `/events`).
    Message the Electron thread before touching the contract. Ephemeral
    sessions never create the encoder, ring or store.
+   Agreed with the shell session (2026-11-27), recorder side not built yet.
+   Additive: `LOOKBACK_READY` and the existing `/events` and `/ingest`
+   traffic do not change. Inbound text JSON on `/events`, same token and
+   Origin checks:
+   `{"type":"rate","id":"<client request id>","sessionId":"…","candidateId":"…","stars":1..5}`
+   (`stars` 0 clears) and, once clips can be cut,
+   `{"type":"save","id":"…","sessionId":"…","candidateId":"…"}`. The
+   recorder answers that client only with
+   `{"type":"ack","id":"…","ok":true}` or `ok:false` plus
+   `"error":"ephemeral|unknown-session|unknown-candidate|bad-request"`.
+   On success it publishes `ClipRating` (new Envelope field 20, topic
+   `clip.rating`: `candidate_id`=1, `session_id`=2, `stars`=3; the field
+   number the M4 scorer design reserved) or the existing `ClipSaved` on
+   `clip.saved`. Ratings persist through the M4 `RatingStore` only when
+   `RetentionRules.CanPersist` allows; official-player sessions get
+   `ephemeral` and nothing is written. The shell keeps ratings in memory
+   when there is no ack within ~2 s or the ack is `ok:false`.
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with

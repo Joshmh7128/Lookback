@@ -19,6 +19,7 @@ public sealed class Nv12Converter : IDisposable
     private readonly ID3D11VideoContext _videoContext;
     private readonly Dictionary<nint, ID3D11VideoProcessorInputView> _inputViews = [];
     private readonly ID3D11VideoProcessorOutputView _outputView;
+    private readonly VideoProcessorStream[] _stream = new VideoProcessorStream[1]; // reused: no per-frame allocation
     private ID3D11VideoProcessorEnumerator? _enumerator;
     private ID3D11VideoProcessor? _processor;
     private uint _inW, _inH;
@@ -89,7 +90,8 @@ public sealed class Nv12Converter : IDisposable
         int w = Math.Min(Width, (int)MathF.Round(d.Width * s / 2) * 2), h = Math.Min(Height, (int)MathF.Round(d.Height * s / 2) * 2);
         int x = (Width - w) / 2, y = (Height - h) / 2;
         _videoContext.VideoProcessorSetStreamDestRect(_processor!, 0, true, new Vortice.RawRect(x, y, x + w, y + h));
-        _videoContext.VideoProcessorBlt(_processor!, _outputView, 0, 1, [new VideoProcessorStream { Enable = true, InputSurface = input }]).CheckError();
+        _stream[0] = new VideoProcessorStream { Enable = true, InputSurface = input };
+        _videoContext.VideoProcessorBlt(_processor!, _outputView, 0, 1, _stream).CheckError();
         HasFrame = true;
     }
 

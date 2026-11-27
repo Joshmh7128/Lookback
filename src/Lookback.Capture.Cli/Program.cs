@@ -8,20 +8,24 @@ using Lookback.Profiler;
 using Lookback.Stream.WebSockets;
 
 // lookback-capture: capture a window or monitor live and run the signal
-// pipeline on it. Nothing is written to disk.
+// pipeline on it. Nothing is written to disk unless --encode/--out asks for a
+// clip, and never for an official-player session.
 //
 //   lookback-capture --list
 //   lookback-capture --window "Lookback Viewer" [--seconds 20] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
 //   lookback-capture --pid 1234 | --monitor 0
+//   lookback-capture --monitor 0 --seconds 20 --encode 10 --out clip.mp4 [--codec hevc] [--fps 60] [--size 1920x1080] [--mbps 20]
 
 static string? Arg(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
 if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
 {
-    Console.WriteLine("""
+    Console.WriteLine($"""
         lookback-capture --list
         lookback-capture (--window <title part> | --pid <pid> | --monitor <n>) [--seconds 15] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
-        Captures live and runs the signal pipeline. Nothing is written to disk.
+                         {EncodeBench.Usage}
+        Captures live and runs the signal pipeline. Nothing is written to disk unless
+        --encode asks for a clip of the last N seconds (refused with --official-player).
         """);
     return 0;
 }
@@ -48,6 +52,12 @@ if (target is null)
 }
 
 bool official = args.Contains("--official-player");
+if (official && args.Contains("--encode"))
+{
+    Console.Error.WriteLine("--encode is refused for --official-player: official-player sessions are ephemeral and nothing is encoded or written.");
+    return 2;
+}
+
 double seconds = double.Parse(Arg(args, "--seconds") ?? "15", CultureInfo.InvariantCulture);
 CaptureBackend backend = Enum.Parse<CaptureBackend>(Arg(args, "--backend") ?? "auto", ignoreCase: true);
 
@@ -73,6 +83,7 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
 }))
 {
     Console.WriteLine($"capturing {target.Description} with {session.Backend} on {session.AdapterName}; persist: {session.CanPersist}");
+    using EncodeBench? encode = EncodeBench.TryStart(args, session);
     var until = DateTime.UtcNow.AddSeconds(seconds);
     SessionStats last = session.Stats;
     while (DateTime.UtcNow < until && session.StoppedReason is null)
@@ -92,9 +103,11 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
 
         SessionStats st = session.Stats;
         double dt = (st.Elapsed - last.Elapsed).TotalSeconds;
-        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {(st.Captured - last.Captured) / dt,6:F1} fps  analysis {(st.Analysed - last.Analysed) / dt,5:F1} fps  dropped {st.AnalysisDropped}");
+        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {(st.Captured - last.Captured) / dt,6:F1} fps  analysis {(st.Analysed - last.Analysed) / dt,5:F1} fps  dropped {st.AnalysisDropped}{encode?.Tick(dt)}");
         last = st;
     }
+
+    encode?.Finish();
 }
 
 var summary = names.Select((n, i) => new
