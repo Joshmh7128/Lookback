@@ -25,6 +25,7 @@ src/
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
+  Lookback.Scoring/           clip ratings, feature schema, ONNX scorer + per-game calibration
   Lookback.Governor/          resource governor: probe mapping, budget policy, runtime controller
   Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
@@ -50,11 +51,13 @@ tests/
   Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
   Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
   Lookback.Testbench.Tests/
+  Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
+ml/                           Python: train, calibrate, evaluate, export the learned scorer
 docs/
   architecture.md             repository summary
   wiki/                       source of this wiki
 .github/workflows/
-  ci.yml                      build + test on Windows and Linux
+  ci.yml                      build + test on Windows and Linux; ml job (pytest) on Linux
   wiki.yml                    publishes docs/wiki to the GitHub wiki
 ```
 
@@ -69,6 +72,8 @@ flowchart TB
     TB[Lookback.Testbench<br/>exe] --> PF & S & CL[Lookback.Clipper]
     CL --> PR[Lookback.Profiles]
     CL -. embeds .-> CJ[(clipper.defaults.json)]
+    TB --> SC[Lookback.Scoring] --> C
+    SC --> ORT[Microsoft.ML.OnnxRuntime<br/>CPU]
     PR --> SG[Lookback.Signals]
     PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
@@ -103,6 +108,7 @@ flowchart TB
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `app/` (Electron) | `src/main/*`, `src/preload/*`, `src/renderer/*`, `src/viewer/*`, `src/test/*` | The [desktop shell](Desktop-Shell): recorder process, `/events` library, timeline, ratings, official-player viewer and its `/ingest` sender |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
+| `Lookback.Scoring` | `Ratings/*`, `Features/ClipFeatureSchema.cs`, `Model/*`, `LearnedClipScorer.cs` | [Clip scoring](Clip-Scoring): ratings on disk behind `RetentionRules`, the bus sink, the feature schema, ONNX inference and per-game calibration |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |

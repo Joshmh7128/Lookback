@@ -17,6 +17,7 @@ public static class Topics
     public const string ClipCandidate = "clip.candidate";
     public const string ClipSaved = "clip.saved";
     public const string QaReport = "qa.report";
+    public const string ClipRating = "clip.rating";
 
     /// <summary>
     /// True when <paramref name="topic"/> matches <paramref name="pattern"/>.

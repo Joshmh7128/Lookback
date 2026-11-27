@@ -1,7 +1,7 @@
 namespace Lookback.Media.Ffmpeg;
 
 /// <summary>
-/// Finds the ffmpeg and ffprobe executables: <c>LOOKBACK_FFMPEG_DIR</c> first,
+/// Finds the ffmpeg, ffprobe and ffplay executables: <c>LOOKBACK_FFMPEG_DIR</c> first,
 /// then PATH. Lookback runs them as separate processes and never links them.
 /// </summary>
 public static class FfmpegLocator
@@ -9,6 +9,9 @@ public static class FfmpegLocator
     public static string? FindFfmpeg() => Find("ffmpeg");
 
     public static string? FindFfprobe() => Find("ffprobe");
+
+    /// <summary>ffmpeg's player, used only to show a clip to someone rating it.</summary>
+    public static string? FindFfplay() => Find("ffplay");
 
     public static string RequireFfmpeg() =>
         FindFfmpeg() ?? throw new FileNotFoundException("ffmpeg was not found. Install it or set LOOKBACK_FFMPEG_DIR.");

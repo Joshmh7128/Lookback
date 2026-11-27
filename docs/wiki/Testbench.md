@@ -13,6 +13,8 @@ lookback-testbench report <session-path-without-extension> [--video <file>]
 lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
                                [--port <n>] [--no-wait] [--pipe <name>] [--retention ...]
 lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
+lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
+                                        [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
 ```
 
 `live` plays the footage in real time into the [live profiler](Live-Profiler)
@@ -27,6 +29,13 @@ each followed by its QA report. `analyze` prints the top ten:
 clips    1 candidates, 1 pass QA
              4.0-15.2    s  score 0.86  QA ok    hud_change ×1 (best confidence 0.60); impact ×1 (best confidence 0.70); loud_moment ×1 (best confidence 0.40); excitement ×1 (peak 3.42: audio.rms_db 6.0σ, motion.energy 6.0σ, hud.activity 6.0σ)
 ```
+
+`rate` is the terminal fallback to the shell's rating UI: it analyses each
+manifest entry, then asks for 1 to 5 stars per candidate on its content
+(5 = a highlight). `p` plays the candidate with ffplay, Enter skips, `0`
+clears, `q` stops. Ratings go to `datasets/<game>/ratings.jsonl` through
+`RatingStore`, so the entry's retention is checked first; a second pass skips
+what is rated unless `--again`. See [Clip Scoring](Clip-Scoring).
 
 `browse` writes the [Dataset Browser](Dataset-Browser): one page for sifting profiles, datasets and their scores. It needs no ffmpeg.
 

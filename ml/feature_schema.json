@@ -1,0 +1,126 @@
+{
+  "id": "clip-features/1",
+  "description": "Game-agnostic features of one clip candidate, in this order. ClipCandidate.features is positional against this list and ClipCandidate.feature_schema names it. A value the producer cannot compute is NaN; the scorer replaces it with the training mean. Never reorder or reuse a name: add a new schema id instead.",
+  "features": [
+    {
+      "name": "heuristic_score",
+      "description": "The clipper's heuristic score (0..1), so the model starts from today's ranking."
+    },
+    {
+      "name": "duration_s",
+      "description": "Candidate length in seconds."
+    },
+    {
+      "name": "event_count",
+      "description": "Game events merged into the candidate."
+    },
+    {
+      "name": "event_kinds",
+      "description": "Distinct event names among them."
+    },
+    {
+      "name": "max_contribution",
+      "description": "Largest weight x confidence of one event."
+    },
+    {
+      "name": "mean_contribution",
+      "description": "Mean weight x confidence over the events."
+    },
+    {
+      "name": "event_density",
+      "description": "Events per second of candidate."
+    },
+    {
+      "name": "peak_position",
+      "description": "Where the peak sits in the candidate, 0 (start) to 1 (end)."
+    },
+    {
+      "name": "motion_z",
+      "description": "Mean whole-frame motion, z-scored against the session so far."
+    },
+    {
+      "name": "flash_z",
+      "description": "Mean flash (luma jump) signal, session z-score."
+    },
+    {
+      "name": "red_edge_z",
+      "description": "Mean red-edge (damage vignette) signal, session z-score."
+    },
+    {
+      "name": "hud_activity_z",
+      "description": "Mean HUD-region activity, session z-score."
+    },
+    {
+      "name": "loudness_z",
+      "description": "Mean loudness, session z-score."
+    },
+    {
+      "name": "onset_rate",
+      "description": "Audio onsets per second."
+    },
+    {
+      "name": "scene_cuts",
+      "description": "Scene cuts per second."
+    },
+    {
+      "name": "black_fraction",
+      "description": "Share of frames that are black."
+    },
+    {
+      "name": "frozen_fraction",
+      "description": "Share of frames that are frozen."
+    },
+    {
+      "name": "silent_fraction",
+      "description": "Share of audio hops that are silent."
+    },
+    {
+      "name": "video_coverage",
+      "description": "Share of the candidate with video signal frames."
+    },
+    {
+      "name": "audio_coverage",
+      "description": "Share of the candidate with audio signal frames."
+    },
+    {
+      "name": "curve_mean",
+      "description": "Mean of the clipper's excitement curve over the candidate."
+    },
+    {
+      "name": "curve_max",
+      "description": "Maximum of the excitement curve over the candidate."
+    },
+    {
+      "name": "curve_above_high",
+      "description": "Share of frames at or above the curve's active high threshold."
+    },
+    {
+      "name": "curve_peaks",
+      "description": "Excitement-curve peaks inside the candidate."
+    },
+    {
+      "name": "curve_peak_max",
+      "description": "Strength of the strongest curve peak."
+    },
+    {
+      "name": "event_confidence_mean",
+      "description": "Mean confidence of the game events inside."
+    },
+    {
+      "name": "flux_z",
+      "description": "Mean spectral flux, session z-score."
+    },
+    {
+      "name": "scene_cut_z",
+      "description": "Mean scene-cut signal, session z-score."
+    },
+    {
+      "name": "loudness_z_max",
+      "description": "Maximum loudness z-score over the candidate."
+    },
+    {
+      "name": "motion_z_max",
+      "description": "Maximum motion z-score over the candidate."
+    }
+  ]
+}

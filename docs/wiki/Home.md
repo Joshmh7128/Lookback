@@ -32,6 +32,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
 | [Clipper](Clipper) | Signals and events to clip candidates: normalisation, the excitement curve, peaks, fusion, QA gates |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
+| [Clip Scoring](Clip-Scoring) | Ratings, the clip feature schema, training, per-game calibration and ONNX scoring (M4) |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
 | [Game Detection](Game-Detection) | Which game is running: processes and windows only, the profile match, allow/deny lists, debounced start/focus/stop, the `lookback-detect` bench |
@@ -48,7 +49,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Done: [game identifier](Game-Detection), [Clipper v1](Clipper) (curve, peaks, fusion with profile events, QA gates), desktop shell with library, timeline, 1–5 star rating with previews (in memory until the recorder stores them) and the official-player viewer |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
-| M4 | Training, ONNX scoring, calibration | Planned |
+| M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |
 | M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |
 | M7 | Memory module (secondary) | Planned |

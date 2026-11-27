@@ -1,0 +1,7 @@
+# Pinned so training, export and the fixture are reproducible.
+numpy==2.5.4
+scikit-learn==1.9.1
+onnx==1.23.2
+onnxruntime==1.31.1
+skl2onnx==1.20.0
+pytest==9.2.0

@@ -24,6 +24,7 @@
 - [Clipper](Clipper)
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
+- [Clip Scoring](Clip-Scoring)
 - [Live Profiler](Live-Profiler)
 - [Official-Player Calibration](Official-Player-Calibration)
 - [Game Detection](Game-Detection)

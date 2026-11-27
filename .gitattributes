@@ -1,3 +1,6 @@
 # Profiles and manifests are edited by tools that rewrite single lines; keep them LF everywhere.
 *.json text eol=lf
 *.proto text eol=lf
+*.jsonl text eol=lf
+*.py text eol=lf
+*.onnx binary
