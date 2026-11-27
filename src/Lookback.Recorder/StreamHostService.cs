@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Lookback.Calibration;
 using Lookback.Core.Bus;
 using Lookback.Profiler;
 using Lookback.Stream.Pipes;
@@ -22,6 +23,7 @@ internal sealed partial class StreamHostService(
 {
     private PipeEventServer? _pipes;
     private WebSocketBridge? _bridge;
+    private CalibrationHost? _calibration;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -30,15 +32,26 @@ internal sealed partial class StreamHostService(
         _pipes = new PipeEventServer(bus, o.PipeName);
         _pipes.Start();
 
+        // Official-player sessions are ephemeral: the calibration host keeps
+        // frames and features in memory and writes only numbers the user confirms.
+        _calibration = o.OfficialPlayer ? new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = o.ProfilesDirectory }) : null;
         _bridge = new WebSocketBridge(bus, new WebSocketBridgeOptions
         {
             Port = o.WebSocketPort,
-            Pages = o.Profiler ? [ProfilerPage.Page] : [],
+            Pages = [.. o.Profiler ? [ProfilerPage.Page] : Array.Empty<BridgePage>(), .. _calibration is null ? [] : new[] { CalibrationHost.Page }],
+            Sockets = _calibration?.Sockets ?? [],
         });
         await _bridge.StartAsync(cancellationToken).ConfigureAwait(false);
 
         LogStarted(logger, o.PipeName, _bridge.Endpoint!);
-        string ready = JsonSerializer.Serialize(new { pipe = o.PipeName, ws = _bridge.Endpoint!.ToString(), token = _bridge.Token });
+        string ready = JsonSerializer.Serialize(new
+        {
+            pipe = o.PipeName,
+            ws = _bridge.Endpoint!.ToString(),
+            token = _bridge.Token,
+            ingest = _calibration is null ? null : _bridge.SocketUrl(CalibrationHost.IngestPath).ToString(),
+            calibrate = _calibration is null ? null : $"http://{_bridge.Endpoint.Authority}{CalibrationHost.PanelPath}",
+        });
         await Console.Out.WriteLineAsync($"LOOKBACK_READY {ready}").ConfigureAwait(false);
         if (o.Profiler)
         {
@@ -57,6 +70,12 @@ internal sealed partial class StreamHostService(
         {
             await _bridge.DisposeAsync().ConfigureAwait(false);
             _bridge = null;
+        }
+
+        if (_calibration is not null)
+        {
+            await _calibration.DisposeAsync().ConfigureAwait(false);
+            _calibration = null;
         }
 
         if (_pipes is not null)

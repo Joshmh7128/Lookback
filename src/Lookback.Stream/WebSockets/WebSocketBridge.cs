@@ -130,6 +130,22 @@ public sealed class WebSocketBridge : IAsyncDisposable
     /// <summary>Clients currently connected to <c>/events</c>.</summary>
     public int ConnectedClients => Volatile.Read(ref _clients);
 
+    /// <summary>ws:// URL of an extra socket, without the token. Valid after <see cref="StartAsync"/>.</summary>
+    public Uri SocketUrl(string path)
+    {
+        if (Endpoint is null)
+        {
+            throw new InvalidOperationException("The bridge has not started.");
+        }
+
+        if (!_options.Sockets.Any(s => s.Path == path))
+        {
+            throw new ArgumentException($"No socket is served at '{path}'.", nameof(path));
+        }
+
+        return new Uri($"ws://{Endpoint.Authority}{path}");
+    }
+
     /// <summary>
     /// http:// URL of a served page with the token in the fragment. The
     /// fragment never leaves the browser, so the token is not sent in the

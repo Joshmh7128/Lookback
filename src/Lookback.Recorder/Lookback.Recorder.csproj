@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
     <ProjectReference Include="..\Lookback.Profiler\Lookback.Profiler.csproj" />
+    <ProjectReference Include="..\Lookback.Calibration\Lookback.Calibration.csproj" />
   </ItemGroup>
 </Project>
