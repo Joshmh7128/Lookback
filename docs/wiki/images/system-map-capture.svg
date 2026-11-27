@@ -49,9 +49,9 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <rect x="206" y="180" width="160" height="46" rx="6" class="bx"/>
           <text x="286" y="200" text-anchor="middle" class="t">Event bus</text>
           <text x="286" y="215" text-anchor="middle" class="s">→ pipes · /events</text>
-          <rect x="16" y="300" width="160" height="46" rx="6" class="bx sess"/>
+          <rect x="16" y="300" width="160" height="46" rx="6" class="bx"/>
           <text x="96" y="320" text-anchor="middle" class="t">WASAPI capture</text>
-          <text x="96" y="335" text-anchor="middle" class="s">loopback + mic · in progress</text>
+          <text x="96" y="335" text-anchor="middle" class="s">loopback · mic off by default</text>
           <rect x="206" y="300" width="160" height="46" rx="6" class="bx"/>
           <text x="286" y="320" text-anchor="middle" class="t">SampleClock</text>
           <text x="286" y="335" text-anchor="middle" class="s">device position → QPC</text>
@@ -65,7 +65,7 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <text x="484" y="147" class="m">BGRA frames</text>
           <line x1="396" y1="203" x2="368" y2="203" class="ar" marker-end="url(#f2a)"/>
           <text x="382" y="196" text-anchor="middle" class="m">signals</text>
-          <line x1="176" y1="323" x2="204" y2="323" class="ar sess" marker-end="url(#f2s)"/>
+          <line x1="176" y1="323" x2="204" y2="323" class="ar" marker-end="url(#f2a)"/>
           <line x1="366" y1="323" x2="394" y2="323" class="ar" marker-end="url(#f2a)"/>
           <line x1="476" y1="300" x2="476" y2="228" class="ar" marker-end="url(#f2a)"/>
           <text x="484" y="267" class="m">mono hops</text>
@@ -82,25 +82,25 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <text x="1046" y="95" text-anchor="middle" class="s">NVENC · AMF · QSV · software</text>
           <rect x="616" y="180" width="140" height="46" rx="6" class="bx"/>
           <text x="686" y="200" text-anchor="middle" class="t">Governor</text>
-          <text x="686" y="215" text-anchor="middle" class="s">policy built · probe in progress</text>
+          <text x="686" y="215" text-anchor="middle" class="s">probe → plan at session start</text>
           <rect x="786" y="180" width="140" height="46" rx="6" class="bx"/>
           <text x="856" y="200" text-anchor="middle" class="t">SegmentStore</text>
-          <text x="856" y="215" text-anchor="middle" class="s">2 s fMP4 on disk, budget</text>
+          <text x="856" y="215" text-anchor="middle" class="s">2 s fMP4, 20 GB budget</text>
           <rect x="956" y="180" width="180" height="46" rx="6" class="bx"/>
           <text x="1046" y="200" text-anchor="middle" class="t">ReplayRing</text>
           <text x="1046" y="215" text-anchor="middle" class="s">RAM, keyframe + QPC index</text>
           <rect x="786" y="300" width="140" height="46" rx="6" class="bx"/>
           <text x="856" y="320" text-anchor="middle" class="t">ClipWriter</text>
-          <text x="856" y="335" text-anchor="middle" class="s">→ clips/&lt;id&gt;.mp4, no re-encode</text>
-          <rect x="956" y="300" width="180" height="46" rx="6" class="bx sess"/>
+          <text x="856" y="335" text-anchor="middle" class="s">→ clips/, 10 GB budget</text>
+          <rect x="956" y="300" width="180" height="46" rx="6" class="bx"/>
           <text x="1046" y="320" text-anchor="middle" class="t">AAC encoder MFT</text>
-          <text x="1046" y="335" text-anchor="middle" class="s">48 kHz stereo · in progress</text>
+          <text x="1046" y="335" text-anchor="middle" class="s">48 kHz stereo</text>
 
           <line x1="756" y1="83" x2="784" y2="83" class="ar" marker-end="url(#f2a)"/>
           <line x1="926" y1="83" x2="954" y2="83" class="ar" marker-end="url(#f2a)"/>
           <line x1="1046" y1="106" x2="1046" y2="178" class="ar" marker-end="url(#f2a)"/>
           <text x="1054" y="147" class="m">packets</text>
-          <line x1="1046" y1="300" x2="1046" y2="228" class="ar sess" marker-end="url(#f2s)"/>
+          <line x1="1046" y1="300" x2="1046" y2="228" class="ar" marker-end="url(#f2a)"/>
           <text x="1054" y="267" class="m">AAC frames</text>
           <line x1="956" y1="203" x2="928" y2="203" class="ar" marker-end="url(#f2a)"/>
           <line x1="856" y1="226" x2="856" y2="298" class="ar" marker-end="url(#f2a)"/>
@@ -110,6 +110,6 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <line x1="756" y1="203" x2="784" y2="203" class="ar plan" marker-end="url(#f2p)"/>
           <line x1="686" y1="180" x2="686" y2="108" class="ar plan" marker-end="url(#f2p)"/>
           <text x="694" y="147" class="m">tier</text>
-          <polyline points="96,346 96,372 1046,372 1046,348" class="ar sess" marker-end="url(#f2s)"/>
+          <polyline points="96,346 96,372 1046,372 1046,348" class="ar" marker-end="url(#f2a)"/>
           <text x="700" y="389" text-anchor="middle" class="s">stereo PCM + QPC</text>
 </svg>

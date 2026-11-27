@@ -20,12 +20,14 @@ a component changes state.
 The shell owns the recorder's lifetime and talks to it over three loopback
 endpoints. The bus is the only path out of the recorder: the pipe server is
 for the planned Signals and Clipper hosts, and the WebSocket bridge serves the
-shell. Capture and encode exist as libraries (driven today by
-`lookback-capture`), but the recorder does not create a capture session yet.
-The recorder answers the shell's `rate` and `analyze` commands with an ack:
-ratings are stored behind `RetentionRules` and broadcast as `clip.rating`, and
-footage is analysed in the recorder (profile + clipper on a private bus). `save`
-waits for live capture in the recorder. See [Recorder Host](Recorder-Host#control-commands)
+shell. On Windows the recorder's `CaptureService` records every allowed game
+that game detection sees start: capture, encode, audio, the replay ring, 2 s
+segments on disk, and the profile and clipper for events and candidates.
+The recorder answers the shell's `rate`, `analyze` and `save` commands with an
+ack: ratings are stored behind `RetentionRules` and broadcast as `clip.rating`,
+footage is analysed in the recorder (profile + clipper on a private bus), and
+`save` cuts a live candidate into `clips/`. `recorder.storage` reports the
+20 GB footage and 10 GB clip budgets for the shell's warning banner. See [Recorder Host](Recorder-Host#control-commands)
 and the recorder-wiring step in `docs/capture-handoff.md`.
 
 ## Live capture: what runs inside one session
@@ -86,22 +88,17 @@ refused or unanswered rating stays in the shell's memory.
 
 ## Known gaps
 
-1. **The recorder does not capture yet.** Capture, analysis and encode run end
-   to end only inside `lookback-capture`. The recorder-wiring step creates them
-   in the recorder, behind the same retention check.
-2. **Live play produces no clip candidates.** Candidates come from
-   `ClipperRunner` (profile events fused with the generic excitement curve,
-   each with a QA report), which today runs in the testbench; official-player
-   calibration still uses the profile runner's event-only candidates. Live
-   sessions get them when the recorder wiring hosts the clipper.
-3. **Ratings are stored for footage, not yet for live play.** The recorder
-   stores `rate` for any session it has seen that may persist; live sessions
-   arrive with the capture wiring.
-4. **Live capture deadlock: fixed.** WGC delivers frames while holding the
-   D3D11 device lock, and a second, managed lock taken in the other order
-   deadlocked capture against the encoder. `GpuDevice` now has one lock (D3D11's
-   own), and a watchdog swaps stalled encoders or ends the recorder rather
-   than hanging. See [Live Capture](Live-Capture).
+1. **One game at a time.** A second game that starts while one records is
+   logged, not recorded. A testbench mode that runs several recorders at once
+   (lower tier, larger footage budget) is planned.
+2. **The quality tier is fixed per session.** The governor plans it at session
+   start; its runtime controller (step down under pressure, back up with
+   hysteresis) is built and tested but not wired into live sessions yet.
+3. **The learned scorer is built but not hosted.** Candidates carry the
+   heuristic score until the recorder hosts the ONNX scorer and real ratings
+   have trained a model.
+4. **Every HUD region is an estimate.** Profiles need calibrating against real
+   gameplay (official-player calibration exists for this).
 5. **AV1 is capped.** The muxer has no `av1C` writer, so the governor tops out
    at HEVC; software and H.264 fallbacks cover machines without HEVC.
 6. **The pipe server has no consumers yet.** It is there for out-of-process
