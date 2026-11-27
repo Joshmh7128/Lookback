@@ -34,6 +34,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Clip Scoring](Clip-Scoring) | Ratings, the clip feature schema, training, per-game calibration and ONNX scoring (M4) |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
+| [Game Detection](Game-Detection) | Which game is running: processes and windows only, the profile match, allow/deny lists, debounced start/focus/stop, the `lookback-detect` bench |
 | [Live Capture](Live-Capture) | WGC/DXGI capture, the analysis tap, NV12 + CFR encode clock, Media Foundation encoders, the `lookback-capture` bench |
 | [Testing](Testing) | What each test proves |
 
@@ -45,7 +46,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M1 | FileSource, video and audio signals, testbench and timeline viewer | Done (GPU downscale moves to M3 with live capture) |
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
-| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Desktop shell, library, timeline, 1–5 star rating with previews (in memory until the recorder stores them) and the official-player viewer done; Clipper v1 under way |
+| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Game identifier, desktop shell, library, timeline, 1–5 star rating with previews (in memory until the recorder stores them) and the official-player viewer done; Clipper v1 under way |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |

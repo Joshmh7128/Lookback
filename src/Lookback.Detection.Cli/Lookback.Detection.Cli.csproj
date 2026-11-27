@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>lookback-detect</AssemblyName>
+    <Description>Bench tool for game detection: prints the games it sees start, gain or lose focus, change window and stop, live; lists windows and why each is or is not a game; edits the user's allow and deny lists.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Detection.Windows\Lookback.Detection.Windows.csproj" />
+  </ItemGroup>
+</Project>

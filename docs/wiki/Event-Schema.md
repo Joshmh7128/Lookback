@@ -86,6 +86,14 @@ classDiagram
         uint64 hwnd
         uint64 adapter_luid
         float confidence
+        string game_profile
+        string window_title
+        WindowMode window_mode
+        uint64 monitor
+        string exe_path
+        bool allow_present_hook
+        bool allow_memory_reading
+        DetectionMethod method
     }
     class SignalSchema {
         uint32 schema_id
@@ -126,9 +134,20 @@ session log. `source_kind` and `retention` drive [Data Retention](Data-Retention
 
 **`SessionEnded`** closes a session, with a reason.
 
-**`GameLifecycle`** reports detection: detected, focused, unfocused, exited.
-`api` and `engine` come from the loaded-module probe; `hwnd` and
-`adapter_luid` tell capture which window and GPU to use.
+**`GameLifecycle`** (topic `game.lifecycle`) reports [game detection](Game-Detection):
+`DETECTED`, `FOCUSED`, `UNFOCUSED`, `WINDOW_CHANGED` (a new window, monitor
+or window mode, or a relaunch with a new pid) and `EXITED`. All envelopes
+about one run of a game share its `session_id`, and `qpc` is the raw QPC
+tick of the poll that confirmed the change. `game_profile` is the profile
+matched and `method` how (`EXECUTABLE` from a profile's executables,
+`MANUAL` for an executable the user opted in). `hwnd`, `monitor`,
+`window_mode` (`WINDOWED`, `BORDERLESS`, `FULLSCREEN`) and `adapter_luid`
+tell capture which window and GPU to use. `allow_present_hook` and
+`allow_memory_reading` are the profile's capture policy, which the recorder
+must honour. `engine` is guessed from files beside the executable; `api`
+stays unspecified, because finding it would mean reading the game's loaded
+modules. Fields 10 to 16 and `WINDOW_CHANGED` were added with game
+detection; older readers ignore them.
 
 **`SignalSchema` and `SignalFrame`** carry features. A producer publishes its
 schema once (`schema_id` plus an ordered list of names, such as

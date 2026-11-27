@@ -25,10 +25,14 @@ src/
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
   Lookback.Scoring/           clip ratings, feature schema, ONNX scorer + per-game calibration
-  Lookback.Governor/          budget policy and runtime controller
+  Lookback.Governor/          resource governor: probe mapping, budget policy, runtime controller
+  Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
+  Lookback.Detection/         game detection: matcher, debounced lifecycle, bus runner
+  Lookback.Detection.Windows/ process + window probe, capture target for a game (Windows)
+  Lookback.Detection.Cli/     lookback-detect bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
@@ -39,7 +43,11 @@ tests/
   Lookback.Calibration.Tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
+  Lookback.Governor.Windows.Tests/  runs the probe on the machine (Windows only)
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
+  Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
+  Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
+  Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
   Lookback.Testbench.Tests/
   Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
 ml/                           Python: train, calibrate, evaluate, export the learned scorer
@@ -97,15 +105,19 @@ flowchart TB
 | `Lookback.Scoring` | `Ratings/*`, `Features/ClipFeatureSchema.cs`, `Model/*`, `LearnedClipScorer.cs` | [Clip scoring](Clip-Scoring): ratings on disk behind `RetentionRules`, the bus sink, the feature schema, ONNX inference and per-game calibration |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
-| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |
+| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
+| `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
 | `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
 | `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
+| `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
+| `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
+| `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Detection`, `Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
 `Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`.)
 

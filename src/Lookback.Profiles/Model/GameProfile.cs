@@ -53,6 +53,14 @@ public sealed record GameProfile
     /// <summary>Executable names that identify the game during live detection. Games only.</summary>
     public IReadOnlyList<string> Executables { get; init; } = [];
 
+    /// <summary>
+    /// For an executable other programs share (<c>javaw.exe</c> runs every
+    /// Java desktop app): a regular expression the process's top-level window
+    /// title must match before that executable identifies this game. Keys are
+    /// names from <see cref="Executables"/>. Games only.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ExecutableTitles { get; init; } = new Dictionary<string, string>();
+
     public CapturePolicy CapturePolicy { get; init; } = new();
 
     public ProfileReference Reference { get; init; } = new();
