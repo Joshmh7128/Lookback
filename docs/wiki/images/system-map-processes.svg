@@ -43,14 +43,14 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <rect x="250" y="36" width="440" height="360" rx="10" class="ctr"/>
           <text x="266" y="58" class="t">Lookback.Recorder <tspan class="s">· C# service, headless</tspan></text>
 
-          <rect x="266" y="72" width="274" height="124" rx="8" class="bx plan"/>
-          <text x="278" y="90" class="s">CaptureService · not wired yet (step 6)</text>
+          <rect x="266" y="72" width="274" height="124" rx="8" class="bx"/>
+          <text x="278" y="90" class="s">CaptureService · records detected games</text>
           <rect x="278" y="98" width="250" height="26" rx="5" class="bx"/>
           <text x="403" y="115" text-anchor="middle" class="t">Capture + analysis tap</text>
           <rect x="278" y="130" width="250" height="26" rx="5" class="bx"/>
           <text x="403" y="147" text-anchor="middle" class="t">Video encode · NV12 + CFR</text>
-          <rect x="278" y="162" width="250" height="26" rx="5" class="bx sess"/>
-          <text x="403" y="179" text-anchor="middle" class="t">Audio + AAC · in progress</text>
+          <rect x="278" y="162" width="250" height="26" rx="5" class="bx"/>
+          <text x="403" y="179" text-anchor="middle" class="t">Audio + AAC</text>
 
           <rect x="266" y="216" width="274" height="44" rx="6" class="bx"/>
           <text x="403" y="235" text-anchor="middle" class="t">In-process event bus</text>
@@ -88,7 +88,7 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <!-- left edges -->
           <line x1="206" y1="111" x2="276" y2="111" class="ar" marker-end="url(#f1a)"/>
           <text x="240" y="105" text-anchor="middle" class="m">WGC/DXGI</text>
-          <line x1="206" y1="175" x2="276" y2="175" class="ar sess" marker-end="url(#f1s)"/>
+          <line x1="206" y1="175" x2="276" y2="175" class="ar" marker-end="url(#f1a)"/>
           <text x="240" y="169" text-anchor="middle" class="m">WASAPI</text>
           <line x1="208" y1="304" x2="264" y2="304" class="ar plan" marker-start="url(#f1p)" marker-end="url(#f1p)"/>
 
@@ -103,7 +103,7 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <rect x="866" y="132" width="266" height="64" rx="6" class="bx sess"/>
           <text x="999" y="156" text-anchor="middle" class="t">StreamClient → Library</text>
           <text x="999" y="172" text-anchor="middle" class="s">candidates · QA · saved clips</text>
-          <text x="999" y="187" text-anchor="middle" class="s">ratings held in memory for now</text>
+          <text x="999" y="187" text-anchor="middle" class="s">ratings stored by the recorder</text>
 
           <rect x="866" y="218" width="266" height="44" rx="6" class="bx sess"/>
           <text x="999" y="237" text-anchor="middle" class="t">Viewer + ingest sender</text>
@@ -132,8 +132,8 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <line x1="680" y1="152" x2="864" y2="152" class="ar" marker-end="url(#f1a)"/>
           <text x="778" y="145" text-anchor="middle" class="s">/events · JSON envelopes</text>
 
-          <line x1="866" y1="180" x2="682" y2="180" class="ar sess" marker-end="url(#f1s)"/>
-          <text x="778" y="196" text-anchor="middle" class="s sc">rate · save → ack (agreed, not built)</text>
+          <line x1="866" y1="180" x2="682" y2="180" class="ar" marker-end="url(#f1a)"/>
+          <text x="778" y="196" text-anchor="middle" class="s">rate · analyze · save → ack</text>
 
           <line x1="866" y1="240" x2="682" y2="240" class="ar sess" marker-end="url(#f1s)"/>
           <text x="778" y="233" text-anchor="middle" class="s">/ingest · BGRA 384x216, 30 fps</text>

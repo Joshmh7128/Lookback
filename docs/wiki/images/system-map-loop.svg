@@ -53,17 +53,17 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <text x="696" y="120" text-anchor="middle" class="m">clip.candidate</text>
           <line x1="576" y1="98" x2="614" y2="98" class="ar" marker-end="url(#f3a)"/>
 
-          <rect x="816" y="70" width="160" height="56" rx="6" class="bx sess"/>
+          <rect x="816" y="70" width="160" height="56" rx="6" class="bx"/>
           <text x="896" y="92" text-anchor="middle" class="t">Shell library</text>
           <text x="896" y="107" text-anchor="middle" class="s">rates candidates</text>
-          <text x="896" y="120" text-anchor="middle" class="s">in memory only</text>
+          <text x="896" y="120" text-anchor="middle" class="s">1–5 stars, stored</text>
           <line x1="776" y1="98" x2="814" y2="98" class="ar" marker-end="url(#f3a)"/>
 
-          <rect x="1006" y="70" width="142" height="56" rx="6" class="bx plan"/>
-          <text x="1077" y="92" text-anchor="middle" class="t pt">ClipRating</text>
-          <text x="1077" y="107" text-anchor="middle" class="s">1–5 stars, agreed</text>
+          <rect x="1006" y="70" width="142" height="56" rx="6" class="bx"/>
+          <text x="1077" y="92" text-anchor="middle" class="t">ClipRating</text>
+          <text x="1077" y="107" text-anchor="middle" class="s">acked, broadcast</text>
           <text x="1077" y="120" text-anchor="middle" class="m">clip.rating · #20</text>
-          <line x1="976" y1="98" x2="1004" y2="98" class="ar sess" marker-end="url(#f3s)"/>
+          <line x1="976" y1="98" x2="1004" y2="98" class="ar" marker-end="url(#f3a)"/>
 
           <rect x="216" y="200" width="160" height="44" rx="6" class="bx"/>
           <text x="296" y="218" text-anchor="middle" class="t">CalibrationWriter</text>
@@ -73,21 +73,21 @@ text { font-family: "Segoe UI", "IBM Plex Sans", system-ui, -apple-system, sans-
           <text x="496" y="233" text-anchor="middle" class="s">game knowledge as data</text>
           <rect x="616" y="200" width="160" height="44" rx="6" class="bx plan"/>
           <text x="696" y="218" text-anchor="middle" class="t pt">ONNX scorer</text>
-          <text x="696" y="233" text-anchor="middle" class="s">in the Clipper, M4</text>
-          <rect x="816" y="200" width="160" height="44" rx="6" class="bx plan"/>
-          <text x="896" y="218" text-anchor="middle" class="t pt">ml/ training</text>
+          <text x="696" y="233" text-anchor="middle" class="s">built · not hosted yet</text>
+          <rect x="816" y="200" width="160" height="44" rx="6" class="bx"/>
+          <text x="896" y="218" text-anchor="middle" class="t">ml/ training</text>
           <text x="896" y="233" text-anchor="middle" class="s">logistic reg. → ONNX</text>
           <rect x="1006" y="200" width="142" height="44" rx="6" class="bx gate"/>
           <text x="1077" y="218" text-anchor="middle" class="t">RatingStore</text>
-          <text x="1077" y="233" text-anchor="middle" class="s">planned · refuses ephemeral</text>
+          <text x="1077" y="233" text-anchor="middle" class="s">refuses ephemeral</text>
 
           <polyline points="96,156 96,222 214,222" class="ar" marker-end="url(#f3a)"/>
           <text x="104" y="190" class="m">probe → you confirm</text>
           <line x1="376" y1="222" x2="414" y2="222" class="ar" marker-end="url(#f3a)"/>
           <line x1="496" y1="200" x2="496" y2="128" class="ar" marker-end="url(#f3a)"/>
           <text x="504" y="166" class="m">regions, rules</text>
-          <line x1="1077" y1="126" x2="1077" y2="198" class="ar plan" marker-end="url(#f3p)"/>
-          <line x1="1006" y1="222" x2="978" y2="222" class="ar plan" marker-end="url(#f3p)"/>
+          <line x1="1077" y1="126" x2="1077" y2="198" class="ar" marker-end="url(#f3a)"/>
+          <line x1="1006" y1="222" x2="978" y2="222" class="ar" marker-end="url(#f3a)"/>
           <line x1="816" y1="222" x2="778" y2="222" class="ar plan" marker-end="url(#f3p)"/>
           <line x1="696" y1="200" x2="696" y2="128" class="ar plan" marker-end="url(#f3p)"/>
           <text x="704" y="166" class="m">model_score</text>
