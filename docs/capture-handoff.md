@@ -166,8 +166,18 @@ Rebase on main before merging; they touch this file's rows too.
    `new ProfileRunner(bus, catalog, gameId, method, sessionId, freq, publishCandidates: false)`
    and `new ClipperRunner(bus, catalog, gameId, sessionId, freq)`; for an
    unknown game `new ClipperRunner(bus, sessionId, freq)`. Dispose the
-   ProfileRunner first at session end. M4's `RatingStore`/`RatingSink` plug
-   in here too.
+   ProfileRunner first at session end. Per-candidate features for M4 come
+   from `ClipperRunner.CandidateFinished` (`CandidateFeatures`,
+   "clipper-features/1"; runs on the pump thread, hand off).
+   Hosting ratings (PR #21, `Lookback.Scoring`): create
+   `new RatingStore(datasetRoot)` and
+   `new RatingSink(bus, store, new RatingSinkOptions { Source = "shell", SessionLookup = …, CandidateLookup = …, OnOutcome = … })`
+   before any session starts (it learns sessions from `session` and
+   candidates from `clip.*`). On `rate`: ack, then publish `ClipRating` on
+   `clip.rating`; the sink applies `RetentionRules.CanPersist` and refuses
+   ephemeral, official-player and unknown sessions. Or call
+   `store.Append(...)` synchronously and put its `RatingWriteResult` in the
+   ack, but never both, or the rating is written twice.
    Hosting game detection (PR #20, `src/Lookback.Detection.Windows`):
    `await using DetectionRunner d = WindowsDetection.CreateRunner(bus);`
    (1 s poll, built-in profiles, user allow/deny list in
