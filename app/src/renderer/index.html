@@ -53,16 +53,43 @@
   </section>
 
   <section id="tab-library" class="tab">
+    <div class="card footage">
+      <form id="footage-form" class="row">
+        <button type="submit" class="primary">Open footage…</button>
+        <label>Profile <select id="footage-profile"><option value="">generic</option></select></label>
+        <label>Footage is
+          <select id="footage-retention">
+            <option value="owned">my own</option>
+            <option value="permissioned">someone else's, with permission</option>
+            <option value="open-license">under an open licence</option>
+          </select>
+        </label>
+        <input id="footage-ref" type="text" placeholder="where the permission or licence is recorded" spellcheck="false" hidden>
+        <span id="footage-status" class="muted"></span>
+      </form>
+      <ul id="footage-jobs" class="jobs"></ul>
+    </div>
     <div class="split">
       <aside class="sessions" id="lib-sessions"></aside>
       <div class="lib-main">
+        <div class="card preview">
+          <video id="preview-video" controls preload="metadata"></video>
+          <div class="preview-side">
+            <p class="rate-question"><strong>Is this moment a highlight worth keeping?</strong><br><span class="muted">Rate the content, not the video quality (that is checked automatically).</span></p>
+            <div id="preview-stars" class="stars big"></div>
+            <p id="preview-info" class="muted">Select a candidate to preview it.</p>
+            <p class="muted keys">Keys: <kbd>1</kbd>–<kbd>5</kbd> rate · <kbd>0</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> move · <kbd>Space</kbd> play or pause</p>
+          </div>
+        </div>
         <div class="row toolbar">
           <label>Show
             <select id="lib-filter">
               <option value="all">all candidates</option>
               <option value="unrated">unrated</option>
-              <option value="up">rated up</option>
-              <option value="down">rated down</option>
+              <option value="rated">rated</option>
+              <option value="high">4–5 stars</option>
+              <option value="mid">3 stars</option>
+              <option value="low">1–2 stars</option>
               <option value="qa">passed QA</option>
               <option value="saved">saved clips</option>
             </select>
@@ -71,6 +98,7 @@
             <select id="lib-sort">
               <option value="time">by time</option>
               <option value="score">by score</option>
+              <option value="stars">by stars</option>
             </select>
           </label>
           <span id="lib-count" class="muted"></span>
@@ -78,10 +106,10 @@
           <button id="lib-forget" title="Remove this session from the list (memory only)">Forget session</button>
         </div>
         <table class="clips">
-          <thead><tr><th>At</th><th>Length</th><th>Score</th><th>Why</th><th>QA</th><th>Clip</th><th>Rating</th></tr></thead>
+          <thead><tr><th>At</th><th>Length</th><th>Score</th><th>Why</th><th>QA</th><th>Clip</th><th>Stars</th></tr></thead>
           <tbody id="lib-rows"></tbody>
         </table>
-        <p class="muted note">Ratings are kept in memory for now; the recorder will store them (behind its retention rules) once it accepts them.</p>
+        <p class="muted note">Ratings are kept in the shell's memory until the recorder stores them (behind its retention rules; never for official-player sessions). A rating marked "stored" was accepted by the recorder.</p>
       </div>
     </div>
   </section>

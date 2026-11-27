@@ -1,14 +1,17 @@
-import { app, BrowserWindow, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BrowseState, EmbeddedView, LibrarySnapshot, RecorderState, Settings, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
+import { newRequestId, rateMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
+import { FootageManager } from "./footage";
 import { validRect } from "./frames";
 import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
 import { datasetsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
+import { MEDIA_SCHEME, MediaRegistry, serveMedia, VIDEO_EXTENSIONS } from "./media";
 import { listProfiles } from "./profiles";
 import { RecorderHost } from "./recorder";
 import { allowNavigation, hardenApp, lockPermissions } from "./security";
@@ -32,7 +35,12 @@ const SMOKE_VIEWER = process.argv.includes("--smoke-viewer");
 /** Open the viewer on this link at startup; with --smoke-viewer, play it instead of the synthetic test pattern. */
 const VIEWER_LINK = process.argv.find((a) => a.startsWith("--viewer-link="))?.slice("--viewer-link=".length) ?? null;
 /** With --smoke, also wait for this many clip candidates (fed by the testbench) before passing. */
-const SMOKE_CANDIDATES = Number(process.argv.find((a) => a.startsWith("--smoke-candidates="))?.slice("--smoke-candidates=".length) ?? 0) || 0;
+const argValue = (name: string): string | null => process.argv.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3) ?? null;
+/** With --smoke, analyse this file through "Open footage" (no dialog), then rate and preview a candidate in the window. */
+const SMOKE_FOOTAGE = argValue("smoke-footage");
+const SMOKE_PROFILE = argValue("smoke-profile") ?? "generic";
+/** With --smoke, also wait for this many clip candidates before rating one through the window. */
+const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
 
 // Tests and the smoke run point userData at a scratch folder.
@@ -40,7 +48,11 @@ if (process.env["LOOKBACK_USER_DATA"]) {
   app.setPath("userData", process.env["LOOKBACK_USER_DATA"]);
 }
 
-protocol.registerSchemesAsPrivileged([{ scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // Candidate previews stream from the file with byte ranges.
+  { scheme: MEDIA_SCHEME, privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true } },
+]);
 hardenApp();
 
 const appRoot = app.getAppPath();
@@ -57,6 +69,18 @@ const locate = (): LocateContext => ({
 const recorder = new RecorderHost();
 const stream = new StreamClient();
 const library = new Library();
+const media = new MediaRegistry();
+const footage = new FootageManager({
+  request: (id, text) => stream.request(id, text),
+  pipe: () => recorder.connection?.pipe ?? null,
+  testbench: (args) => locateTool(TESTBENCH, settings.testbenchPath, locate(), args),
+  sessionsByTitle: (title) => library.sessionsByTitle(title),
+  linked: (sessionId) => {
+    if (library.setPreviewable(sessionId, true)) scheduleLibrary();
+  },
+  log: (line) => recorder.note(line),
+});
+footage.on("changed", (jobs: FootageJob[]) => send("lookback:footage", jobs));
 let settings: Settings;
 let mainWindow: BrowserWindow | null = null;
 let embedded: { view: EmbeddedView; contents: WebContentsView; url: string } | null = null;
@@ -115,6 +139,8 @@ let sentRevision = -1;
 stream.on("envelope", (envelope) => {
   if (library.apply(envelope)) {
     scheduleLibrary();
+    const topic = (envelope as { topic?: unknown }).topic;
+    if (topic === "session") footage.link();
   }
 });
 stream.on("state", (state) => send("lookback:stream", state));
@@ -306,8 +332,43 @@ function registerIpc(): void {
     }
 
     const ok = library.rate(sessionId, candidateId, rating);
-    if (ok) scheduleLibrary();
-    return ok;
+    if (!ok) return false;
+    scheduleLibrary();
+    // Offer it to the recorder; without an ack it stays in memory only.
+    const id = newRequestId();
+    void stream.request(id, rateMessage(id, sessionId, candidateId, rating)).then((ack) => {
+      if (ack?.ok && library.markStored(sessionId, candidateId, rating)) scheduleLibrary();
+    });
+    return true;
+  });
+  handle("lookback:open-footage", fromMain, async (raw) => {
+    const request = validFootageRequest(raw);
+    if (!request || !mainWindow) return null;
+    const picked = await dialog.showOpenDialog(mainWindow, {
+      title: "Open footage to analyse",
+      properties: ["openFile"],
+      filters: [{ name: "Video", extensions: VIDEO_EXTENSIONS }],
+    });
+    const path = picked.canceled ? undefined : picked.filePaths[0];
+    return path ? footage.open(path, request) : null;
+  });
+  handle("lookback:get-footage", fromMain, () => footage.list);
+  handle("lookback:profiles", fromMain, () => listProfiles(profilesFolder(settings, locate())));
+  handle("lookback:preview", fromMain, (sessionId, candidateId): PreviewSource | null => {
+    if (typeof sessionId !== "string" || typeof candidateId !== "string") return null;
+    const s = library.sessionOf(sessionId);
+    const c = library.candidateOf(sessionId, candidateId);
+    if (!s || !c || s.qpcFrequency <= 0) return null;
+    const length = Math.max(0, (c.endQpc - c.startQpc) / s.qpcFrequency);
+    if (c.savedPath && existsSync(c.savedPath)) {
+      return { url: media.urlFor(c.savedPath), start: 0, end: length, kind: "clip" };
+    }
+
+    const file = footage.pathFor(sessionId);
+    if (!file || !existsSync(file)) return null;
+    // A file session's clock starts at the file's first frame.
+    const start = Math.max(0, (c.startQpc - s.startQpc) / s.qpcFrequency);
+    return { url: media.urlFor(file), start, end: start + length, kind: "footage" };
   });
   handle("lookback:forget", fromMain, (sessionId) => {
     const ok = typeof sessionId === "string" && library.forget(sessionId);
@@ -379,6 +440,7 @@ function registerIpc(): void {
 // ---------------------------------------------------------------- protocol
 
 function registerProtocol(): void {
+  protocol.handle(MEDIA_SCHEME, (request) => serveMedia(request, media));
   protocol.handle("app", async (request) => {
     const url = new URL(request.url);
     let file: string | null = null;
@@ -433,6 +495,7 @@ function runSmoke(): void {
   });
   let viewerOpened = false;
   let rating = false;
+  let footageOpened = false;
   const timer = setInterval(() => {
     const state = recorder.state;
     if (state.status === "failed" || state.status === "exited") {
@@ -457,16 +520,31 @@ function runSmoke(): void {
         if (rows >= SMOKE_CANDIDATES && !rating) {
           clearInterval(timer);
           rating = true;
-          // Rate the first row through the UI, as a user would.
-          void mainWindow?.webContents
-            .executeJavaScript(`document.querySelector("#lib-rows .rate button.up")?.click(); true`, true)
-            .then(() => new Promise((r) => setTimeout(r, 300)))
-            .then(() => {
-              const rated = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 1).length;
-              finish(rated === 1, { ...base, candidates, rated });
+          // Rate the selected candidate as a user would: open the Library tab
+          // and press 5. Then see what the preview player loaded.
+          const contents = mainWindow?.webContents;
+          void contents
+            ?.executeJavaScript(`document.querySelector('#tabs button[data-tab="library"]').click(); document.dispatchEvent(new KeyboardEvent("keydown", { key: "5", bubbles: true })); true`, true)
+            .then(() => new Promise((r) => setTimeout(r, SMOKE_FOOTAGE ? 2500 : 400)))
+            .then(() =>
+              contents.executeJavaScript(
+                `(() => { const v = document.getElementById("preview-video"); return { src: (v.currentSrc || "").split(":")[0], readyState: v.readyState, time: Math.round(v.currentTime * 10) / 10, width: v.videoWidth, error: v.error ? v.error.code : null, info: document.getElementById("preview-info").textContent }; })()`,
+                false,
+              ),
+            )
+            .then((preview: unknown) => {
+              const rated = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 5).length;
+              const p = (preview ?? {}) as Record<string, unknown>;
+              const previewOk = !SMOKE_FOOTAGE || (p["src"] === MEDIA_SCHEME && Number(p["readyState"]) >= 2 && Number(p["width"]) > 0);
+              finish(rated === 1 && previewOk, { ...base, candidates, rated, preview, footage: footage.list });
             });
         }
       });
+    }
+
+    if (up && SMOKE_FOOTAGE && !footageOpened) {
+      footageOpened = true;
+      void footage.open(SMOKE_FOOTAGE, { profile: SMOKE_PROFILE, retention: "owned", permissionRef: "" });
     }
 
     if (up && SMOKE_VIEWER && !viewerOpened) {
@@ -495,6 +573,7 @@ function runSmoke(): void {
 
 async function shutdown(): Promise<void> {
   quitting = true;
+  footage.stopAll();
   viewer?.close();
   stream.disconnect();
   await recorder.stop();

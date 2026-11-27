@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { StreamState } from "../shared/api";
+import { ACK_TIMEOUT_MS, parseAck, type Ack } from "./control";
 
 interface StreamEvents {
   state: [StreamState];
@@ -29,6 +30,7 @@ export class StreamClient extends EventEmitter<StreamEvents> {
   private readonly retryMs: number;
   private readonly maxRetryMs: number;
   private readonly create: (url: string) => WebSocket;
+  private readonly pending = new Map<string, { resolve: (ack: Ack | null) => void; timer: NodeJS.Timeout }>();
 
   constructor(options: StreamClientOptions = {}) {
     super();
@@ -49,7 +51,35 @@ export class StreamClient extends EventEmitter<StreamEvents> {
     this.open();
   }
 
+  /**
+   * Sends a client command (text JSON with an `id`) and resolves with the
+   * recorder's ack, or null when the stream is not open or no ack arrives in
+   * time. Never rejects.
+   */
+  request(id: string, text: string, timeoutMs = ACK_TIMEOUT_MS): Promise<Ack | null> {
+    const socket = this.socket;
+    if (!socket || this.current.status !== "open") {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        resolve(null);
+      }, timeoutMs);
+      this.pending.set(id, { resolve, timer });
+      try {
+        socket.send(text);
+      } catch {
+        clearTimeout(timer);
+        this.pending.delete(id);
+        resolve(null);
+      }
+    });
+  }
+
   disconnect(): void {
+    this.settlePending();
     this.url = null;
     if (this.timer) {
       clearTimeout(this.timer);
@@ -96,15 +126,37 @@ export class StreamClient extends EventEmitter<StreamEvents> {
         return;
       }
 
+      const ack = parseAck(envelope);
+      if (ack) {
+        const waiting = this.pending.get(ack.id);
+        if (waiting) {
+          clearTimeout(waiting.timer);
+          this.pending.delete(ack.id);
+          waiting.resolve(ack);
+        }
+
+        return;
+      }
+
       this.received++;
       this.emit("envelope", envelope);
     });
     socket.addEventListener("close", (e: CloseEvent) => {
       if (this.socket === socket) {
         this.socket = null;
+        this.settlePending();
         this.retry(e.code === 1000 ? "the recorder closed the stream" : `the stream closed (${e.code})`);
       }
     });
+  }
+
+  private settlePending(): void {
+    for (const { resolve, timer } of this.pending.values()) {
+      clearTimeout(timer);
+      resolve(null);
+    }
+
+    this.pending.clear();
   }
 
   private retry(detail: string): void {

@@ -67,12 +67,14 @@ test("a replayed SessionStarted does not reset the session or move its start", (
   assert.equal(lib.snapshot().sessions.length, 1);
 });
 
-test("ratings stick, survive a re-sent candidate, and can be cleared", () => {
+test("star ratings stick, survive a re-sent candidate, and can be cleared", () => {
   const lib = new Library();
   lib.apply(started("s1", 0));
   lib.apply(candidate("s1", "c1", 100));
+  assert.equal(lib.rate("s1", "c1", 4), true);
   assert.equal(lib.rate("s1", "c1", 1), true);
   assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.rating, 1);
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.ratingStored, false);
   lib.apply(candidate("s1", "c1", 100, 0.9)); // the clipper re-scores it
   const c = lib.snapshot().sessions[0]!.candidates[0]!;
   assert.equal(c.rating, 1);
@@ -83,9 +85,50 @@ test("ratings stick, survive a re-sent candidate, and can be cleared", () => {
   assert.equal(lib.rate("nope", "c1", 1), false);
 });
 
-test("only -1, 0 and 1 are ratings", () => {
-  for (const ok of [-1, 0, 1]) assert.equal(validRating(ok), true);
-  for (const bad of [2, -2, 0.5, "1", null, undefined, NaN]) assert.equal(validRating(bad), false);
+test("ratings are 0 (unrated) to 5 stars", () => {
+  for (const ok of [0, 1, 2, 3, 4, 5]) assert.equal(validRating(ok), true);
+  for (const bad of [6, -1, 2.5, "3", null, undefined, NaN]) assert.equal(validRating(bad), false);
+});
+
+test("an acked rating is marked stored; a newer rating supersedes the ack", () => {
+  const lib = new Library();
+  lib.apply(started("s1", 0));
+  lib.apply(candidate("s1", "c1", 100));
+  lib.rate("s1", "c1", 3);
+  lib.rate("s1", "c1", 5);
+  assert.equal(lib.markStored("s1", "c1", 3), false); // the ack for the old value arrives late
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.ratingStored, false);
+  assert.equal(lib.markStored("s1", "c1", 5), true);
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.ratingStored, true);
+  lib.rate("s1", "c1", 2);
+  assert.equal(lib.snapshot().sessions[0]!.candidates[0]!.ratingStored, false);
+});
+
+test("a ClipRating from the recorder (field 20, clip.rating) sets stars as stored", () => {
+  const lib = new Library();
+  lib.apply(started("s1", 0));
+  lib.apply(candidate("s1", "c1", 100));
+  assert.equal(lib.apply({ qpc: "200", sessionId: "s1", topic: "clip.rating", sourceId: "shell", clipRating: { candidateId: "c1", sessionId: "s1", stars: 4 } }), true);
+  const c = lib.snapshot().sessions[0]!.candidates[0]!;
+  assert.equal(c.rating, 4);
+  assert.equal(c.ratingStored, true);
+  assert.equal(lib.apply({ qpc: "201", sessionId: "s1", topic: "clip.rating", clipRating: { candidateId: "c1", sessionId: "s1", stars: 9 } }), false);
+  assert.equal(lib.apply({ qpc: "202", sessionId: "s1", topic: "clip.rating", clipRating: { candidateId: "zz", sessionId: "s1", stars: 2 } }), false);
+});
+
+test("sessions opened as footage are previewable, and so are sessions with saved clips", () => {
+  const lib = new Library();
+  lib.apply(started("s1", 0, { title: "D:\\videos\\match.mp4" }));
+  lib.apply(started("s2", 0));
+  assert.deepEqual(lib.sessionsByTitle("D:\\videos\\match.mp4").map((s) => s.id), ["s1"]);
+  assert.equal(lib.setPreviewable("s1", true), true);
+  assert.equal(lib.setPreviewable("s1", true), false);
+  lib.apply(candidate("s2", "c1", 100));
+  lib.apply({ qpc: "300", sessionId: "s2", topic: "clip.saved", clipSaved: { candidateId: "c1", path: "D:\\clips\\c1.mp4" } });
+  const byId = Object.fromEntries(lib.snapshot().sessions.map((s) => [s.id, s.previewable]));
+  assert.deepEqual(byId, { s1: true, s2: true });
+  assert.equal(lib.candidateOf("s2", "c1")?.savedPath, "D:\\clips\\c1.mp4");
+  assert.equal(lib.sessionOf("nope"), null);
 });
 
 test("signal frames are counted, not stored, and move the session clock", () => {

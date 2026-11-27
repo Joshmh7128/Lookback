@@ -71,8 +71,11 @@ export interface BrowseState {
   builtAt: number | null;
 }
 
-/** -1 thumbs down, 0 unrated, 1 thumbs up. */
-export type Rating = -1 | 0 | 1;
+/**
+ * Stars for a candidate's content ("is this moment a highlight worth
+ * keeping?"), not its video quality. 0 is unrated; 1 to 5 are stars.
+ */
+export type Rating = 0 | 1 | 2 | 3 | 4 | 5;
 
 export interface QaCheckView {
   name: string;
@@ -96,6 +99,8 @@ export interface CandidateView {
   /** Where the recorder saved the clip, once it has. */
   savedPath: string | null;
   rating: Rating;
+  /** True once the recorder acknowledged the rating (stored behind its retention rules); false while it lives only in the shell's memory. */
+  ratingStored: boolean;
 }
 
 /** A moment drawn on the timeline: a game event, a profile detection or a lifecycle change. */
@@ -124,6 +129,8 @@ export interface SessionView {
   endReason: string | null;
   events: number;
   signalFrames: number;
+  /** True when the shell can preview this session's candidates (footage it opened, or saved clips). */
+  previewable: boolean;
 }
 
 export interface LibrarySessionSnapshot extends SessionView {
@@ -134,6 +141,36 @@ export interface LibrarySessionSnapshot extends SessionView {
 export interface LibrarySnapshot {
   revision: number;
   sessions: LibrarySessionSnapshot[];
+}
+
+/** A footage file the user opened for analysis. */
+export interface FootageJob {
+  id: string;
+  /** File name only; the full path stays in the main process. */
+  name: string;
+  profile: string;
+  /** "recorder": the recorder's analyze command; "testbench": lookback-testbench live into the recorder's pipe. */
+  via: "recorder" | "testbench" | null;
+  status: "starting" | "analysing" | "done" | "failed";
+  sessionId: string | null;
+  detail: string | null;
+}
+
+export interface FootageRequest {
+  /** Profile id; empty uses "generic". */
+  profile: string;
+  retention: "owned" | "permissioned" | "open-license";
+  /** Where the permission or licence is recorded; required unless owned. */
+  permissionRef: string;
+}
+
+/** What the renderer needs to play a candidate: a media URL and the window in seconds of that media. */
+export interface PreviewSource {
+  url: string;
+  start: number;
+  end: number;
+  /** "footage": the analysed file, seeked to the window; "clip": the saved clip file. */
+  kind: "footage" | "clip";
 }
 
 /** The API the main window's preload exposes as `window.lookback`. */
@@ -155,6 +192,13 @@ export interface LookbackApi {
   getLibrary(): Promise<LibrarySnapshot>;
   onLibrary(listener: (snapshot: LibrarySnapshot) => void): () => void;
   rate(sessionId: string, candidateId: string, rating: Rating): Promise<boolean>;
+  /** Asks for a footage file in a dialog and analyses it; null when cancelled. */
+  openFootage(request: FootageRequest): Promise<FootageJob | null>;
+  getFootage(): Promise<FootageJob[]>;
+  onFootage(listener: (jobs: FootageJob[]) => void): () => void;
+  /** Profile ids for the footage picker. */
+  profiles(): Promise<string[]>;
+  preview(sessionId: string, candidateId: string): Promise<PreviewSource | null>;
   forgetSession(sessionId: string): Promise<boolean>;
   /** Show an embedded page over `bounds` (in CSS pixels of the main window), or hide it with null. */
   showView(view: EmbeddedView | null, bounds: ViewBounds | null): Promise<boolean>;

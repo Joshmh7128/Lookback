@@ -115,6 +115,20 @@ export class Library {
       return this.changed();
     }
 
+    if (isObject(e["clipRating"])) {
+      // The recorder stored a rating (from any client) and echoes it to all.
+      const r = e["clipRating"];
+      const target = this.sessions.get(str(r["sessionId"]) || sessionId);
+      const c = target?.candidates.get(str(r["candidateId"]));
+      const stars = num(r["stars"]);
+      if (!target || !c || !validRating(stars)) {
+        return false;
+      }
+
+      this.setRating(target.view.id, c, stars, true);
+      return this.changed();
+    }
+
     if (isObject(e["clipSaved"])) {
       const v = e["clipSaved"];
       const c = s.candidates.get(str(v["candidateId"]));
@@ -130,14 +144,56 @@ export class Library {
     return false;
   }
 
-  /** Sets the user's rating of a candidate; 0 clears it. Returns false for an unknown candidate. */
+  /** Sets the user's rating of a candidate in memory; 0 clears it. Returns false for an unknown candidate. */
   rate(sessionId: string, candidateId: string, rating: Rating): boolean {
     const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
     if (!c) {
       return false;
     }
 
-    const key = ratingKey(sessionId, candidateId);
+    this.setRating(sessionId, c, rating, false);
+    return this.changed();
+  }
+
+  /** Marks a rating as stored by the recorder (it acknowledged it). */
+  markStored(sessionId: string, candidateId: string, rating: Rating): boolean {
+    const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
+    if (!c || c.rating !== rating) {
+      return false;
+    }
+
+    c.ratingStored = true;
+    return this.changed();
+  }
+
+  candidateOf(sessionId: string, candidateId: string): CandidateView | null {
+    const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
+    return c ? { ...c, reasons: [...c.reasons] } : null;
+  }
+
+  sessionOf(sessionId: string): SessionView | null {
+    const s = this.sessions.get(sessionId);
+    return s ? { ...s.view } : null;
+  }
+
+  /** Lets the shell mark sessions it can preview (footage it opened). */
+  setPreviewable(sessionId: string, previewable: boolean): boolean {
+    const s = this.sessions.get(sessionId);
+    if (!s || s.view.previewable === previewable) {
+      return false;
+    }
+
+    s.view.previewable = previewable;
+    return this.changed();
+  }
+
+  /** Sessions with this title, oldest first, for linking footage the shell opened. */
+  sessionsByTitle(title: string): SessionView[] {
+    return [...this.sessions.values()].filter((s) => s.view.title === title).map((s) => ({ ...s.view }));
+  }
+
+  private setRating(sessionId: string, c: CandidateView, rating: Rating, stored: boolean): void {
+    const key = ratingKey(sessionId, c.id);
     if (rating === 0) {
       this.ratings.delete(key);
     } else {
@@ -145,7 +201,7 @@ export class Library {
     }
 
     c.rating = rating;
-    return this.changed();
+    c.ratingStored = stored;
   }
 
   /** Drops a session the user no longer wants listed (memory only). */
@@ -182,6 +238,7 @@ export class Library {
       .map((s) => ({
         ...s.view,
         marks: s.marks.map((m) => ({ ...m })),
+        previewable: s.view.previewable || [...s.candidates.values()].some((c) => c.savedPath !== null),
         candidates: [...s.candidates.values()].map((c) => ({ ...c, reasons: [...c.reasons], qa: c.qa ? { passed: c.qa.passed, checks: c.qa.checks.map((k) => ({ ...k })) } : null })),
       }));
     return { revision: this.version, sessions };
@@ -242,6 +299,7 @@ export class Library {
       qa: existing?.qa ?? null,
       savedPath: existing?.savedPath ?? null,
       rating: this.ratings.get(ratingKey(s.view.id, id)) ?? 0,
+      ratingStored: existing?.ratingStored ?? false,
     };
     s.candidates.set(id, view);
     if (s.candidates.size > MAX_CANDIDATES) {
@@ -274,13 +332,13 @@ export function ratingKey(sessionId: string, candidateId: string): string {
   return `${sessionId}\u0000${candidateId}`;
 }
 
-/** Checks a rating that came from a renderer. */
+/** Checks a rating (0 to 5 stars) that came from a renderer or the wire. */
 export function validRating(value: unknown): value is Rating {
-  return value === -1 || value === 0 || value === 1;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 5;
 }
 
 function emptyView(id: string, qpc: number, order: number): SessionView {
-  return { id, order, title: "", sourceKind: "unspecified", retention: "unspecified", profile: "", qpcFrequency: 0, startQpc: qpc, lastQpc: qpc, ended: false, endReason: null, events: 0, signalFrames: 0 };
+  return { id, order, title: "", sourceKind: "unspecified", retention: "unspecified", profile: "", qpcFrequency: 0, startQpc: qpc, lastQpc: qpc, ended: false, endReason: null, events: 0, signalFrames: 0, previewable: false };
 }
 
 function isObject(v: unknown): v is Json {

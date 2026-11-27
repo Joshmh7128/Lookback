@@ -33,13 +33,29 @@ real YouTube video and a live Twitch channel. Full description:
   timeline (canvas lanes, live window), profiler, datasets, settings. Viewer
   page with the YouTube IFrame Player API and the Twitch embed; a synthetic
   test-pattern page for the smoke run.
-- Tests (`npm test`, 54): handshake, recorder (fake child), ingest, frames,
+- Tests (`npm test`, 72): handshake, recorder (fake child), ingest, frames, control, footage, media,
   library, stream, files (settings, static paths, locate, profiles, viewer
   server), and integration against the real recorder.
 - CI job `app` (Linux and Windows): typecheck and tests; on Windows also builds
   the recorder, runs the integration tests and both smoke runs.
 - `tsconfig.main.json` moved to `module`/`moduleResolution` `node16`
   (TypeScript 6 deprecates `node10`).
+
+## Rating flow (added after the first review)
+
+- 1–5 stars for content ("is this a highlight"), keys 1–5 / 0 / ↑↓ / Space,
+  star filters and sort, "stored" vs "in memory" per rating.
+- "Open footage…" (`footage.ts`): the recorder's `analyze` command first, else
+  `lookback-testbench live <file> --pipe <recorder pipe> --speed 8 --title <path>`;
+  sessions are linked to files by title.
+- Preview (`media.ts`): `lookback-media://` with byte ranges, registered files
+  only; the candidate window loops; saved clips play whole.
+- Control channel (`control.ts`, `stream.ts`): `rate`/`analyze` with a 2 s ack,
+  `clip.rating` envelopes applied. Contract recorded in
+  [Desktop-Shell.md](wiki/Desktop-Shell.md#control-commands-on-events-agreed-recorder-side-pending).
+- Verified: `--smoke --smoke-footage=sample.mp4 --smoke-profile=overwatch` opened
+  the file through the fallback, listed its candidate, rated it 5 with the key,
+  and the preview loaded the file (1280 wide, playing inside the window).
 
 ## Verified on AETHER
 
@@ -62,10 +78,10 @@ real YouTube video and a live Twitch channel. Full description:
 
 ## Open items
 
-- **Ratings persistence.** Proposed to the live-capture thread: client
-  commands on `/events`, e.g. `{"type":"rate","sessionId","candidateId","rating":1|-1|0}`,
-  persisted by the recorder behind `RetentionRules` (refused for ephemeral
-  sessions) and echoed on the bus. Until then ratings are in memory.
+- **Recorder side of the control commands** (`rate`, `analyze`, `save`, acks,
+  `ClipRating` on field 20): agreed with the live-capture thread, which builds
+  it with the recorder wiring step. Until then ratings are in memory and
+  footage goes through the testbench.
 - **Orphaned recorder.** If the shell is killed rather than quit, the
   recorder keeps running. A recorder option to exit when its parent exits
   would close it.

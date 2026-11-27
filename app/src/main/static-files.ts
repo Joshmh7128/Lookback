@@ -53,6 +53,8 @@ export const SHELL_CSP = [
   "script-src 'self'",
   "style-src 'self'",
   "img-src 'self' data:",
+  // Candidate previews, from files the shell registered (see media.ts).
+  "media-src lookback-media:",
   "connect-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",

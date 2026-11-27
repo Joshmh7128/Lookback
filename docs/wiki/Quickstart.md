@@ -164,10 +164,16 @@ terminal, as in step 6:
 dotnet run -c Release --project src/Lookback.Testbench -- live sample.mp4 --profile overwatch --pipe lookback.events
 ```
 
-**Library** lists the session's clip candidates with score, reasons and QA;
-rate them with ▲ and ▼. **Timeline** draws the session's events and
-candidates live. Ratings are kept in memory for now. `npm run smoke` checks
-the whole start-up path and prints `LOOKBACK_SMOKE ok …`.
+**Library** lists the session's clip candidates with score, reasons and QA.
+**Timeline** draws the session's events and candidates live. `npm run smoke`
+checks the whole start-up path and prints `LOOKBACK_SMOKE ok …`.
+
+To rate your own gameplay, press **Open footage…** in the Library tab, pick
+a video and its profile. Candidates appear as it is analysed (at 8x speed);
+select one to watch its moment, and give it 1 to 5 stars for whether it is a
+highlight worth keeping (keys <kbd>1</kbd>–<kbd>5</kbd>, <kbd>0</kbd> clears,
+<kbd>↑</kbd>/<kbd>↓</kbd> to move). Ratings are about the moment, not the
+video quality, and are kept in memory until the recorder stores them.
 
 ## 9. Calibrate a profile from a YouTube or Twitch video
 

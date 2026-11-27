@@ -93,21 +93,77 @@ envelopes into:
 - **timeline marks**: game events, profile detections and lifecycle changes;
 - **clip candidates**: window, peak, heuristic and model score, reasons, the
   QA report and the saved-clip path once they arrive;
-- **ratings**: up, down or none per candidate.
+- **ratings**: 0 (unrated) to 5 stars per candidate, and whether the
+  recorder has stored each one.
 
 The main process sends the renderer a snapshot at most four times a second.
-The **Library** tab lists sessions and their candidates (filter by rating,
-QA or saved; sort by time or score; rate with ▲/▼; "Show file" for clips the
-recorder reported saved, and only those). The **Timeline** tab draws the
-selected session's lanes (game, profile, events, candidates coloured by
-rating) over the last 2 or 10 minutes or the whole session; click a candidate
-to open it in the library.
+The **Timeline** tab draws the selected session's lanes (game, profile,
+events, candidates coloured by stars) over the last 2 or 10 minutes or the
+whole session; click a candidate to open it in the library.
+
+### Rating clips
+
+Ratings are about **content**: "is this moment a highlight worth keeping?",
+not video quality (QA checks that automatically). The Library tab is built
+for going through candidates quickly:
+
+1. **Open footage…** picks a video file (your own gameplay, or someone
+   else's with a recorded permission or licence) and a profile. The shell
+   asks the recorder to analyse it (`analyze`, below). Until the recorder
+   supports that, it runs `lookback-testbench live <file> --profile <id>
+   --pipe <recorder pipe> --speed 8 --title <path>` instead: the testbench
+   analyses the file, applies `RetentionRules`, writes nothing, and its FILE
+   session reaches `/events` like any other. The session's title is the
+   file's path, which is how the shell links it back to the file.
+2. The candidates appear as the analysis runs. Select one (click, or
+   <kbd>↑</kbd>/<kbd>↓</kbd>): the **preview** plays its window
+   `[start, end]` from the file in a loop, or the saved clip when the
+   recorder reported one.
+3. Rate with the stars or <kbd>1</kbd>–<kbd>5</kbd>; <kbd>0</kbd> or ×
+   clears; clicking the current star clears it too. Filter by stars
+   (unrated, rated, 4–5, 3, 1–2), QA or saved clips; sort by time, score or
+   stars.
+
+Previews are streamed by the main process over a private
+`lookback-media://` scheme with HTTP byte ranges (`media.ts`). Only files the
+shell itself opened, or that the recorder reported as saved clips, are
+registered, under random ids; nothing is copied or transcoded, and the
+renderer's CSP allows media from that scheme only.
 
 **Retention.** The shell writes no session data. The library and ratings are
-in memory and are gone when the app quits. Storing ratings belongs to the
-recorder behind `RetentionRules` (refused for ephemeral sources); a
-`{"type":"rate",…}` command on `/events` is proposed for that and the shell
-will send it once the recorder accepts it.
+in memory; each rating is offered to the recorder (`rate`, below) and marked
+**stored** only when the recorder acknowledges it. Without an ack within 2 s
+it stays "in memory" and is gone when the app quits.
+
+### Control commands on `/events` (agreed, recorder side pending)
+
+Agreed with the live-capture thread; the M4 scorer design reserves Envelope
+field 20 for `ClipRating`. Text JSON on the existing `/events` socket, same
+token and Origin checks:
+
+| Shell sends | Meaning |
+|---|---|
+| `{"type":"rate","id","sessionId","candidateId","stars":0..5}` | Rate a candidate; 0 clears |
+| `{"type":"analyze","id","path","profile"?,"retention":"owned\|permissioned\|open-license","permissionRef"?}` | Analyse a footage file; `permissionRef` required unless owned |
+| `{"type":"save","id","sessionId","candidateId"}` | Cut the clip (later, once the replay ring can) |
+
+The recorder answers the sending client only with
+`{"type":"ack","id","ok":true}` or
+`{"type":"ack","id","ok":false,"error":"ephemeral|unknown-session|unknown-candidate|bad-request"}`.
+On success it publishes `ClipRating` (Envelope field 20, topic `clip.rating`:
+`candidate_id` 1, `session_id` 2, `stars` 3; `source_id` "shell") to every
+client, stored through the M4 `RatingStore` and gated by
+`RetentionRules.CanPersist`, so official-player and other ephemeral sessions
+get `ok:false "ephemeral"` and nothing is written. For `analyze` it runs the
+analysis and publishes an ordinary FILE session (path in the title; events,
+candidates, QA and the end, but no signal frames).
+
+Shell behaviour today: every `rate` is sent; no ack in 2 s or `ok:false`
+keeps the rating in memory. `analyze` with no ack (or `bad-request`) falls
+back to the testbench; any other refusal is shown and not worked around.
+Incoming `clip.rating` envelopes set the stars as stored. A recorder that
+predates the commands ignores inbound messages, so all of this degrades to
+the in-memory path.
 
 ## The official-player viewer
 
@@ -173,6 +229,7 @@ npm test                      # builds, then node:test over dist/test
 npm run smoke                 # app up: recorder ready, stream open, window rendered
 npm run smoke:viewer          # + viewer capture → /ingest on a synthetic player
 npx electron . --smoke-viewer --viewer-link=https://www.youtube.com/watch?v=M7lc1UVf-VE
+npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=overwatch
 ```
 
 | Suite | What it proves |
@@ -181,23 +238,29 @@ npx electron . --smoke-viewer --viewer-link=https://www.youtube.com/watch?v=M7lc
 | `recorder` | A fake child's handshake gives `ready`; token never in state or log; exit, timeout and spawn failures |
 | `ingest` | Byte layout of kind-1 frames, the start message, start/stop on the socket, drop under back-pressure |
 | `frames` | 30 fps from 60/144 Hz and jittery 30 Hz sources, no burst after a stall, crop scaling and clamping |
-| `library` | Sessions, marks, candidates, QA, saved clips, ratings surviving re-sends, caps, junk ignored |
+| `library` | Sessions, marks, candidates, QA, saved clips, 0–5 star ratings surviving re-sends, acks marking them stored, `clip.rating` envelopes, previewable sessions, caps, junk ignored |
+| `control` | The `rate`/`analyze` messages, ack parsing, footage-request checks, request/ack over the stream with timeouts and drops |
+| `footage` | `analyze` first, testbench fallback with the right arguments, permission references, refusals not worked around, linking sessions by title |
+| `media` | Byte ranges, only registered files served under opaque ids, 206/416/404/405 |
 | `stream` | Envelope parsing, reconnect with backoff, stale sockets ignored |
 | `files` | Settings sanitizing and atomic save, static path escapes, recorder lookup and args, profile ids, the viewer server's Host check and CSP |
 | `recorder-integration` | Against the real built recorder: frames over `/ingest` become an ephemeral official-player session on `/events`, the video id never comes back, stop ends it, a wrong token is refused |
 
 A smoke run prints one `LOOKBACK_SMOKE ok|fail {json}` line (the recorder,
 stream, ingest and panel status, and what the main window rendered) and
-exits 0 or 1. `--smoke-candidates=N` also waits for N clip candidates, for
-feeding the recorder with `lookback-testbench live … --pipe <name>`. Set
+exits 0 or 1. `--smoke-candidates=N` also waits for N clip candidates (fed
+with `lookback-testbench live … --pipe <name>`), then opens the Library tab,
+presses <kbd>5</kbd> and checks the rating. `--smoke-footage=<file>` does the
+whole rating flow: opens the file as "Open footage" would, waits for a
+candidate, rates it and checks that the preview player loaded the file. Set
 `LOOKBACK_USER_DATA` to keep a run's userData in a scratch folder. CI runs the
 unit tests on Linux and Windows, and on Windows also builds the recorder,
 runs the integration tests and both smoke runs.
 
 ## Limits and next steps
 
-- Ratings and the library are in memory until the recorder accepts a `rate`
-  command on `/events`.
+- Ratings and the library are in memory until the recorder implements the
+  agreed commands; footage analysis goes through the testbench until then.
 - If the shell is killed (not quit), the recorder keeps running; a
   parent-exit watch in the recorder would close that gap.
 - Video only in calibration (see [Official-Player Calibration](Official-Player-Calibration#limits)).

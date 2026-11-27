@@ -2,7 +2,7 @@
 // recorder's profiler page, the dataset browser and settings. Everything
 // comes from the main process through `window.lookback`; this page opens no
 // sockets and stores nothing.
-import type { CandidateView, EmbeddedView, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StreamState, TimelineMark } from "../shared/api";
+import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StreamState, TimelineMark } from "../shared/api";
 
 declare global {
   interface Window {
@@ -134,6 +134,8 @@ $<HTMLFormElement>("viewer-form").addEventListener("submit", (e) => {
 
 // ---------------------------------------------------------------- library
 
+const STAR_MEANING = ["unrated", "not a highlight", "weak", "decent", "good", "a must-keep"];
+
 function seconds(s: LibrarySessionSnapshot, qpc: number): number {
   return s.qpcFrequency > 0 ? (qpc - s.startQpc) / s.qpcFrequency : 0;
 }
@@ -147,7 +149,68 @@ function clock(t: number): string {
 }
 
 function sessionLabel(s: LibrarySessionSnapshot): string {
+  if (s.sourceKind === "file" && /[\\/]/.test(s.title)) return s.title.split(/[\\/]/).pop() ?? s.title;
   return s.title || (s.sourceKind === "official_player" ? "Official player" : s.id.slice(0, 18));
+}
+
+function currentSession(): LibrarySessionSnapshot | undefined {
+  return library.sessions.find((x) => x.id === selectedSession);
+}
+
+/** The candidates the table shows, in its order. */
+function visibleCandidates(s: LibrarySessionSnapshot | undefined): CandidateView[] {
+  const filter = $<HTMLSelectElement>("lib-filter").value;
+  const sort = $<HTMLSelectElement>("lib-sort").value;
+  const keep = (c: CandidateView): boolean => {
+    switch (filter) {
+      case "unrated":
+        return c.rating === 0;
+      case "rated":
+        return c.rating > 0;
+      case "high":
+        return c.rating >= 4;
+      case "mid":
+        return c.rating === 3;
+      case "low":
+        return c.rating === 1 || c.rating === 2;
+      case "qa":
+        return c.qa?.passed === true;
+      case "saved":
+        return c.savedPath !== null;
+      default:
+        return true;
+    }
+  };
+  return (s?.candidates ?? []).filter(keep).sort((a, b) => (sort === "score" ? b.score - a.score : sort === "stars" ? b.rating - a.rating || a.peakQpc - b.peakQpc : a.peakQpc - b.peakQpc));
+}
+
+/** A 1-5 star control; clicking the current star (or ×) clears it. */
+function stars(c: CandidateView, s: LibrarySessionSnapshot, big = false): HTMLDivElement {
+  const box = el("div", { class: `stars${big ? " big" : ""}`, role: "radiogroup", "aria-label": "Stars" });
+  for (let n = 1 as Rating; n <= 5; n = (n + 1) as Rating) {
+    const value = n;
+    const b = el("button", { class: c.rating >= value ? "on" : "", title: `${value} star${value > 1 ? "s" : ""}: ${STAR_MEANING[value]}`, role: "radio", "aria-checked": String(c.rating === value) }, "★");
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      rate(s.id, c.id, c.rating === value ? 0 : value);
+    });
+    box.append(b);
+  }
+
+  if (c.rating > 0) {
+    const clear = el("button", { class: "clear", title: "Clear the rating" }, "×");
+    clear.addEventListener("click", (e) => {
+      e.stopPropagation();
+      rate(s.id, c.id, 0);
+    });
+    box.append(clear, el("span", { class: "stored", title: c.ratingStored ? "The recorder stored this rating" : "Kept in the shell's memory only" }, c.ratingStored ? "stored" : "in memory"));
+  }
+
+  return box;
+}
+
+function rate(sessionId: string, candidateId: string, rating: Rating): void {
+  void api.rate(sessionId, candidateId, rating);
 }
 
 function renderLibrary(): void {
@@ -159,12 +222,13 @@ function renderLibrary(): void {
   $("lib-sessions").replaceChildren(
     ...(sessions.length
       ? sessions.map((s) => {
+          const rated = s.candidates.filter((c) => c.rating > 0).length;
           const b = el(
             "button",
-            { class: s.id === selectedSession ? "active" : "" },
+            { class: s.id === selectedSession ? "active" : "", title: s.title },
             el("span", { class: "title" }, sessionLabel(s)),
             el("span", { class: "meta" }, `${s.sourceKind.replace("_", " ")} · ${s.retention} · ${s.profile || "no profile"}`),
-            el("span", { class: "meta" }, `${s.candidates.length} candidates · ${s.events} events · ${s.ended ? "ended" : "live"}`),
+            el("span", { class: "meta" }, `${s.candidates.length} candidates · ${rated} rated · ${s.ended ? "ended" : "live"}${s.previewable ? " · preview" : ""}`),
           );
           b.addEventListener("click", () => {
             selectedSession = s.id;
@@ -173,35 +237,30 @@ function renderLibrary(): void {
           });
           return b;
         })
-      : [el("p", { class: "muted" }, "No sessions yet. Start the recorder and feed it (a game, the testbench, or the viewer).")]),
+      : [el("p", { class: "muted" }, "No sessions yet. Open footage above, or feed the recorder (a game, the testbench, or the viewer).")]),
   );
 
-  const s = sessions.find((x) => x.id === selectedSession);
+  const s = currentSession();
   $<HTMLButtonElement>("lib-forget").disabled = !s;
-  const filter = $<HTMLSelectElement>("lib-filter").value;
-  const sort = $<HTMLSelectElement>("lib-sort").value;
-  const rows = (s?.candidates ?? [])
-    .filter((c) =>
-      filter === "unrated" ? c.rating === 0 : filter === "up" ? c.rating === 1 : filter === "down" ? c.rating === -1 : filter === "qa" ? c.qa?.passed === true : filter === "saved" ? c.savedPath !== null : true,
-    )
-    .sort((a, b) => (sort === "score" ? b.score - a.score : a.peakQpc - b.peakQpc));
+  const rows = visibleCandidates(s);
+  if (selectedCandidate && !rows.some((c) => c.id === selectedCandidate)) selectedCandidate = null;
+  if (!selectedCandidate && rows[0]) selectedCandidate = rows[0].id;
   $("lib-count").textContent = s ? `${rows.length} of ${s.candidates.length}` : "";
   $("lib-rows").replaceChildren(...(s ? rows.map((c) => candidateRow(s, c)) : []));
+  renderSelected();
   renderSummary();
   syncTimelineSessions();
   if (activeTab === "timeline") drawTimeline();
 }
 
 function candidateRow(s: LibrarySessionSnapshot, c: CandidateView): HTMLTableRowElement {
-  const rate = (r: Rating): void => void api.rate(s.id, c.id, c.rating === r ? 0 : r);
-  const up = el("button", { class: `up ${c.rating === 1 ? "on" : ""}`, title: "Keep: a good clip" }, "▲");
-  const down = el("button", { class: `down ${c.rating === -1 ? "on" : ""}`, title: "Not a highlight" }, "▼");
-  up.addEventListener("click", () => rate(1));
-  down.addEventListener("click", () => rate(-1));
   let clip: Node = el("span", { class: "muted" }, "—");
   if (c.savedPath) {
     const b = el("button", { title: c.savedPath }, "Show file");
-    b.addEventListener("click", () => void api.revealClip(c.savedPath ?? ""));
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void api.revealClip(c.savedPath ?? "");
+    });
     clip = b;
   }
 
@@ -217,10 +276,101 @@ function candidateRow(s: LibrarySessionSnapshot, c: CandidateView): HTMLTableRow
     el("td", {}, ...c.reasons.map((r) => el("span", { class: "tag" }, r))),
     el("td", {}, qa),
     el("td", {}, clip),
-    el("td", {}, el("div", { class: "rate" }, up, down)),
+    el("td", {}, stars(c, s)),
   );
+  row.addEventListener("click", () => selectCandidate(c.id));
   return row;
 }
+
+function selectCandidate(id: string | null): void {
+  if (id === selectedCandidate) return;
+  selectedCandidate = id;
+  for (const tr of document.querySelectorAll<HTMLTableRowElement>("#lib-rows tr")) {
+    tr.classList.toggle("selected", tr.dataset["id"] === id);
+  }
+
+  document.querySelector(`#lib-rows tr.selected`)?.scrollIntoView({ block: "nearest" });
+  renderSelected();
+}
+
+// The preview: the candidate's window of the analysed file (or the saved
+// clip), played in a loop. Streamed from the file by the main process.
+const video = $<HTMLVideoElement>("preview-video");
+let previewFor: string | null = null;
+let window_: { start: number; end: number } | null = null;
+
+video.addEventListener("loadedmetadata", () => {
+  if (window_) video.currentTime = window_.start;
+});
+video.addEventListener("timeupdate", () => {
+  if (window_ && video.currentTime >= window_.end) video.currentTime = window_.start;
+});
+
+function renderSelected(): void {
+  const s = currentSession();
+  const c = s?.candidates.find((x) => x.id === selectedCandidate);
+  const starBox = $("preview-stars");
+  if (!s || !c) {
+    starBox.replaceChildren();
+    $("preview-info").textContent = "Select a candidate to preview it.";
+    stopPreview();
+    return;
+  }
+
+  starBox.replaceChildren(stars(c, s, true));
+  const key = `${s.id}\u0000${c.id}`;
+  if (previewFor === key) return;
+  previewFor = key;
+  $("preview-info").textContent = `${clock(seconds(s, c.startQpc))}–${clock(seconds(s, c.endQpc))} · peak ${clock(seconds(s, c.peakQpc))} · ${c.reasons.join(", ") || "no reasons"}`;
+  void api.preview(s.id, c.id).then((p) => {
+    if (previewFor !== key) return;
+    if (!p) {
+      stopPreview();
+      $("preview-info").textContent += " · no preview: open this footage in Lookback to watch its candidates";
+      return;
+    }
+
+    window_ = { start: p.start, end: p.end };
+    if (video.src !== p.url) {
+      video.src = p.url;
+    } else {
+      video.currentTime = p.start;
+    }
+
+    void video.play().catch(() => undefined);
+  });
+}
+
+function stopPreview(): void {
+  previewFor = null;
+  window_ = null;
+  video.pause();
+  video.removeAttribute("src");
+  video.load();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (activeTab !== "library" || e.ctrlKey || e.altKey || e.metaKey) return;
+  const t = e.target as HTMLElement | null;
+  if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
+  const s = currentSession();
+  const rows = visibleCandidates(s);
+  const at = rows.findIndex((c) => c.id === selectedCandidate);
+  if (/^[0-5]$/.test(e.key) && s && at >= 0) {
+    e.preventDefault();
+    rate(s.id, rows[at]!.id, Number(e.key) as Rating);
+  } else if ((e.key === "ArrowDown" || e.key === "j") && rows.length) {
+    e.preventDefault();
+    selectCandidate(rows[Math.min(rows.length - 1, at + 1)]!.id);
+  } else if ((e.key === "ArrowUp" || e.key === "k") && rows.length) {
+    e.preventDefault();
+    selectCandidate(rows[Math.max(0, at - 1)]!.id);
+  } else if (e.key === " " && t?.tagName !== "BUTTON" && t?.tagName !== "VIDEO") {
+    e.preventDefault();
+    if (video.paused) void video.play().catch(() => undefined);
+    else video.pause();
+  }
+});
 
 function renderSummary(): void {
   const live = library.sessions.filter((s) => !s.ended);
@@ -236,6 +386,47 @@ $("lib-sort").addEventListener("change", renderLibrary);
 $("lib-forget").addEventListener("click", () => {
   if (selectedSession) void api.forgetSession(selectedSession);
 });
+
+// Open footage: the user's own gameplay (or permissioned footage) analysed
+// so its candidates can be watched and rated.
+const retention = $<HTMLSelectElement>("footage-retention");
+const permissionRef = $<HTMLInputElement>("footage-ref");
+retention.addEventListener("change", () => {
+  permissionRef.hidden = retention.value === "owned";
+});
+$<HTMLFormElement>("footage-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if (retention.value !== "owned" && !permissionRef.value.trim()) {
+    $("footage-status").textContent = "Someone else's footage needs a note of where the permission or licence is recorded.";
+    permissionRef.focus();
+    return;
+  }
+
+  $("footage-status").textContent = "";
+  void api
+    .openFootage({ profile: $<HTMLSelectElement>("footage-profile").value, retention: retention.value as FootageRequest["retention"], permissionRef: permissionRef.value })
+    .then((job) => {
+      if (job) $("footage-status").textContent = `${job.name}: ${job.status}`;
+    });
+});
+
+function renderFootage(jobs: FootageJob[]): void {
+  $("footage-jobs").replaceChildren(
+    ...jobs.slice(0, 6).map((j) =>
+      el("li", { class: j.status }, `${j.name} · ${j.profile} · ${j.status}${j.via === "testbench" ? " (via testbench)" : j.via === "recorder" ? " (recorder)" : ""}${j.detail ? ` — ${j.detail}` : ""}`),
+    ),
+  );
+  // A freshly linked session is what the user wants to rate next.
+  const latest = jobs.find((j) => j.sessionId && j.status !== "failed");
+  if (latest?.sessionId && latest.sessionId !== lastFootageSession) {
+    lastFootageSession = latest.sessionId;
+    selectedSession = latest.sessionId;
+    selectedCandidate = null;
+    renderLibrary();
+  }
+}
+
+let lastFootageSession: string | null = null;
 
 // --------------------------------------------------------------- timeline
 
@@ -323,7 +514,7 @@ function drawTimeline(): void {
         if (b < t0 || a > t1) continue;
         const xa = Math.max(left, x(a));
         const xb = Math.max(xa + 2, Math.min(right, x(b)));
-        g.fillStyle = c.rating === 1 ? "#5fc27a" : c.rating === -1 ? "#e06b6b" : lane.color;
+        g.fillStyle = c.rating >= 4 ? "#5fc27a" : c.rating === 3 ? "#f2c94c" : c.rating > 0 ? "#e06b6b" : lane.color;
         g.globalAlpha = 0.35 + 0.6 * Math.min(1, Math.max(0, c.score));
         g.fillRect(xa, y + 6, xb - xa, laneH - 12);
         g.globalAlpha = 1;
@@ -332,7 +523,7 @@ function drawTimeline(): void {
           g.strokeRect(xa, y + 6, xb - xa, laneH - 12);
         }
 
-        hits.push({ x0: xa, x1: xb, y0: y, y1: y + laneH, text: `candidate ${clock(a)}–${clock(b)} · score ${c.score.toFixed(2)} · ${c.reasons.join(", ")}`, candidate: c.id });
+        hits.push({ x0: xa, x1: xb, y0: y, y1: y + laneH, text: `candidate ${clock(a)}–${clock(b)} · score ${c.score.toFixed(2)}${c.rating ? ` · ${"★".repeat(c.rating)}` : ""} · ${c.reasons.join(", ")}`, candidate: c.id });
       }
 
       return;
@@ -373,6 +564,7 @@ tlCanvas.addEventListener("click", (e) => {
   if (hit?.candidate) {
     selectedSession = tlSelect.value;
     selectedCandidate = hit.candidate;
+    previewFor = null;
     renderLibrary();
     showTab("library");
     document.querySelector(`#lib-rows tr[data-id="${CSS.escape(hit.candidate)}"]`)?.scrollIntoView({ block: "center" });
@@ -441,6 +633,12 @@ void api.getLibrary().then((snap) => {
   renderLibrary();
 });
 void api.getSettings().then(fillSettings);
+api.onFootage(renderFootage);
+void api.getFootage().then(renderFootage);
+void api.profiles().then((ids) => {
+  const select = $<HTMLSelectElement>("footage-profile");
+  for (const id of ids.filter((x) => x !== "generic")) select.append(el("option", { value: id }, id));
+});
 void api.getBrowseState().then((b) => {
   $("browse-status").textContent = b.available ? `built ${b.builtAt ? new Date(b.builtAt).toLocaleString() : ""}` : "not built yet";
 });
