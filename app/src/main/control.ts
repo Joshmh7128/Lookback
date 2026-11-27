@@ -7,7 +7,8 @@ import type { FootageRequest, Rating, StorageState } from "../shared/api";
 //
 //   {"type":"rate","id","sessionId","candidateId","stars":0..5}          (0 clears)
 //   {"type":"analyze","id","path","profile"?,"retention","permissionRef"?}
-//   {"type":"save","id","sessionId","candidateId"}                        (later)
+//   {"type":"save","id","sessionId","candidateId"}
+//   {"type":"preview","id","sessionId","candidateId"}   (a temporary cut to watch, not a saved clip)
 //
 // The recorder answers the sending client only:
 //
@@ -17,7 +18,8 @@ import type { FootageRequest, Rating, StorageState } from "../shared/api";
 // A stored rating's ack carries stored:true, and the recorder publishes
 // ClipRating (Envelope field 20, topic clip.rating) to every client; an
 // analyze ack carries the new session's id; a save ack the clip's path (and a
-// clip.saved envelope follows). `message` is meant for the user.
+// clip.saved envelope follows); a preview ack the preview's path (nothing follows:
+// a preview is not kept, it pins no footage and uses no clips budget). `message` is meant for the user.
 // No ack within the timeout means a recorder that predates the commands (it
 // ignores inbound messages): ratings stay in memory and footage goes
 // through the testbench.
@@ -40,6 +42,9 @@ export interface Ack {
 
 /** Saving remuxes from the recording, so it may take longer than a rating. */
 export const SAVE_TIMEOUT_MS = 30_000;
+
+/** A preview remuxes too; the user is waiting to watch, so it gives up sooner. */
+export const PREVIEW_TIMEOUT_MS = 15_000;
 
 /** What to tell the user about a refused command. */
 export function refusal(ack: Ack): string {
@@ -71,6 +76,18 @@ export function rateMessage(id: string, sessionId: string, candidateId: string, 
 
 export function saveMessage(id: string, sessionId: string, candidateId: string): string {
   return JSON.stringify({ type: "save", id, sessionId, candidateId });
+}
+
+export function previewMessage(id: string, sessionId: string, candidateId: string): string {
+  return JSON.stringify({ type: "preview", id, sessionId, candidateId });
+}
+
+/** A preview path from the recorder's ack: an .mp4 in the store's previews folder, or null. */
+export function previewPath(ack: { ok: boolean; path: string | null } | null): string | null {
+  const p = ack?.ok ? ack.path : null;
+  if (!p || !/\.mp4$/i.test(p)) return null;
+  const parts = p.split(/[\\/]/);
+  return parts.length >= 2 && parts[parts.length - 2]!.toLowerCase() === "previews" ? p : null;
 }
 
 /** A `recorder.storage` envelope's StorageStatus, or null when `envelope` is not one. */

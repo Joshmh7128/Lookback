@@ -33,6 +33,9 @@ public sealed class SegmentStore
 
     public string ClipsRoot => Path.Combine(Options.Root, "clips");
 
+    /// <summary>Temporary cuts for watching a candidate without saving it (see <see cref="WritePreview"/>).</summary>
+    public string PreviewsRoot => Path.Combine(Options.Root, "previews");
+
     public long TotalBytes
     {
         get { lock (_lock) { return _totalBytes; } }
@@ -241,6 +244,88 @@ public sealed class SegmentStore
         }
 
         return path;
+    }
+
+    /// <summary>
+    /// Writes a temporary preview of a candidate's window, so it can be watched
+    /// without saving it, and returns its path. A preview is not a saved clip: it
+    /// pins no segments, uses no clips budget, and is reused while it exists.
+    /// Previews not watched for <see cref="StoreOptions.PreviewMaxAge"/>, and the
+    /// least recently watched past <see cref="StoreOptions.PreviewBudgetBytes"/>,
+    /// are deleted whenever one is written.
+    /// </summary>
+    public string WritePreview(string sessionId, string candidateId, ClipSource clip)
+    {
+        ArgumentNullException.ThrowIfNull(clip);
+        SessionManifest manifest;
+        lock (_lock)
+        {
+            if (!_manifests.TryGetValue(sessionId, out manifest!))
+            {
+                throw new InvalidOperationException($"Unknown session {sessionId}.");
+            }
+        }
+
+        if (!RetentionRules.CanPersist(manifest.ToSessionStarted()))
+        {
+            throw new InvalidOperationException($"Session {sessionId} may not be persisted.");
+        }
+
+        Directory.CreateDirectory(PreviewsRoot);
+        string path = Path.Combine(PreviewsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
+        if (File.Exists(path))
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow); // watched again: kept longest
+            return path;
+        }
+
+        byte[] bytes = ClipWriter.Mux(clip, manifest.QpcFrequency);
+        string part = path + ".part";
+        File.WriteAllBytes(part, bytes);
+        File.Move(part, path, overwrite: true); // whole or not at all
+        TrimPreviews(path, DateTime.UtcNow);
+        return path;
+    }
+
+    /// <summary>Deletes old previews and the least recently watched past the budget, keeping <paramref name="keep"/>.</summary>
+    internal void TrimPreviews(string? keep, DateTime nowUtc)
+    {
+        if (!Directory.Exists(PreviewsRoot))
+        {
+            return;
+        }
+
+        string? kept = keep is null ? null : Path.GetFullPath(keep);
+        long total = 0;
+        foreach (FileInfo f in new DirectoryInfo(PreviewsRoot).GetFiles("*.mp4").OrderByDescending(f => f.LastWriteTimeUtc))
+        {
+            bool isKept = string.Equals(f.FullName, kept, StringComparison.OrdinalIgnoreCase);
+            if (!isKept && (nowUtc - f.LastWriteTimeUtc > Options.PreviewMaxAge || total + f.Length > Options.PreviewBudgetBytes))
+            {
+                TryDelete(f.FullName);
+                continue;
+            }
+
+            total += f.Length;
+        }
+
+        foreach (string part in Directory.EnumerateFiles(PreviewsRoot, "*.part"))
+        {
+            TryDelete(part); // previews are written one at a time; a leftover is from a crash
+        }
+    }
+
+    /// <summary>Letters, digits, dot, dash and underscore; anything else becomes an underscore.</summary>
+    private static string SafeName(string id)
+    {
+        Span<char> chars = id.Length <= 96 ? stackalloc char[id.Length] : new char[96];
+        for (int i = 0; i < chars.Length; i++)
+        {
+            char c = id[i];
+            chars[i] = char.IsAsciiLetterOrDigit(c) || c is '.' or '-' or '_' ? c : '_';
+        }
+
+        return new string(chars);
     }
 
     /// <summary>Re-reads every session folder. Called at open; cheap enough to call after a sweep.</summary>

@@ -38,7 +38,7 @@ server GC's per-core heaps.
 | `DatasetsDirectory` | `%LOCALAPPDATA%\Lookback\datasets` | Where ratings are stored (`<dir>/<game>/ratings.jsonl`); point it at the checkout's `datasets` so `ml/` trains on them |
 | `ParentProcessId` | unset | The shell's pid: the recorder stops when that process exits, however it exits |
 | `Capture` | `true` on Windows | Record every allowed game game detection sees start (one at a time) |
-| `StoreDirectory` | `%LOCALAPPDATA%\Lookback\store` | Session footage (`sessions/`) and saved clips (`clips/`) |
+| `StoreDirectory` | `%LOCALAPPDATA%\Lookback\store` | Session footage (`sessions/`), saved clips (`clips/`) and temporary previews (`previews/`) |
 | `FootageBudgetGB` | `20` | Cap on session footage; the governor may pick less; the oldest unpinned segments go first |
 | `ClipsBudgetGB` | `10` | Cap on saved clips, which are never swept: saving is refused at the cap |
 | `ClipsWarnFraction` | `0.9` | `recorder.storage` sets `clips_near_limit` from here, for the UI warning |
@@ -131,6 +131,7 @@ contract in [Desktop Shell](Desktop-Shell#control-commands-on-events):
 | `rate` | Looks the session and candidate up in `SessionDirectory` (the last 64 sessions' headers and candidates seen on the bus), refuses unknown ones and any session `RetentionRules.CanPersist` rejects (official player: `ephemeral`, nothing written), stores the rating with `RatingStore.Append`, then publishes `ClipRating` on `clip.rating` so every client sees it |
 | `analyze` | Validates the path, profile and retention, acks with a new session id, then (`FootageSessions`, at most two at once) runs the file through `FootageAnalyzer`, the profile (`publishCandidates: false`) and `ClipperRunner` on a private bus as fast as the machine allows. Only the session header and end, game events, profile detections, candidates and QA reports reach the recorder's bus, so the shell gets no signal frames. The header's title is the exact path the shell sent |
 | `save` | Cuts the candidate's window from the live session's RAM ring (or the stored segments once it has left RAM) into `clips/<session>-NNN.mp4` with no re-encode, pins those segments, publishes `ClipSaved` and a fresh `recorder.storage`, and acks with the `path`. Refused with `clips-full` at the clips budget, `ephemeral` for sessions that may not persist, and `unsupported` for footage files (already on disk) or when the recording no longer covers the moment |
+| `preview` | The same cut into `previews/<session>-<candidate>.mp4`, to watch a candidate without saving it: no pin, no clips budget, no `ClipSaved`; reused while it exists. Previews unwatched for 24 h, and the least recently watched past 1 GB, are deleted when one is written. Refused like `save`, except never `clips-full` |
 
 Verified end to end against the built recorder: handshake, `analyze` of a
 generated clip, candidates on the socket with 0 signal frames, `rate` acked as

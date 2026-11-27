@@ -137,6 +137,13 @@ public sealed class ControlServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Preview_needs_a_candidate_and_live_capture()
+    {
+        Assert.Equal("bad-request", Error(await SendAsync(new { type = "preview", id = "p", sessionId = "s1" })));
+        Assert.Equal("unsupported", Error(await SendAsync(new { type = "preview", id = "p", sessionId = "s1", candidateId = "c1" })));
+    }
+
+    [Fact]
     public async Task Analyze_refuses_what_it_cannot_run()
     {
         string clip = Path.Combine(_dir, "x.mp4");

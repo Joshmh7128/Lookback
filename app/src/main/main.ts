@@ -5,7 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { newRequestId, parseStorage, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, validFootageRequest } from "./control";
+import { newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
@@ -169,6 +169,8 @@ let libraryTimer: NodeJS.Timeout | null = null;
 let sentRevision = -1;
 // The recorder's storage use (recorder.storage), every 10 s and after each save.
 let storage: StorageState | null = null;
+/** Preview cuts the recorder made, per session and candidate; temporary, never saved clips. */
+const previews = new Map<string, string>();
 stream.on("envelope", (envelope) => {
   const s = parseStorage(envelope);
   if (s) {
@@ -437,7 +439,7 @@ function registerIpc(): void {
   });
   handle("lookback:get-footage", fromMain, () => footage.list);
   handle("lookback:profiles", fromMain, () => listProfiles(profilesFolder(settings, locate())));
-  handle("lookback:preview", fromMain, (sessionId, candidateId): PreviewSource | null => {
+  handle("lookback:preview", fromMain, async (sessionId, candidateId): Promise<PreviewSource | null> => {
     if (typeof sessionId !== "string" || typeof candidateId !== "string") return null;
     const s = library.sessionOf(sessionId);
     const c = library.candidateOf(sessionId, candidateId);
@@ -445,6 +447,20 @@ function registerIpc(): void {
     const length = Math.max(0, (c.endQpc - c.startQpc) / s.qpcFrequency);
     if (c.savedPath && existsSync(c.savedPath)) {
       return { url: media.urlFor(c.savedPath), start: 0, end: length, kind: "clip" };
+    }
+
+    if (s.sourceKind === "live_game") {
+      // A live recording has no file of its own: the recorder cuts a temporary
+      // preview from its footage (not a saved clip; Save keeps one).
+      const key = `${sessionId}\u0000${candidateId}`;
+      let path = previews.get(key) ?? null;
+      if (!path || !existsSync(path)) {
+        const id = newRequestId();
+        path = previewPath(await stream.request(id, previewMessage(id, sessionId, candidateId), PREVIEW_TIMEOUT_MS));
+        if (path && existsSync(path)) previews.set(key, path);
+      }
+
+      return path && existsSync(path) ? { url: media.urlFor(path), start: 0, end: length, kind: "clip" } : null;
     }
 
     const file = footage.pathFor(sessionId);

@@ -356,7 +356,7 @@ function renderSelected(): void {
       stopPreview();
       $("preview-info").textContent +=
         s.sourceKind === "live_game"
-          ? " · no preview yet: save the clip (S) to watch it; a live recording has no file of its own"
+          ? " · no preview: the recorder could not cut this moment from its footage (kept 24 h after a session, within its budget), or it is not running"
           : s.sourceKind === "official_player"
             ? " · not recorded: YouTube and Twitch moments are never kept. Replay it in the viewer with ▶ in its panel (section 4), while the video is open"
             : " · no preview: open this footage in Lookback to watch its candidates";

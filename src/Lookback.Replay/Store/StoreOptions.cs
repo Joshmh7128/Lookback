@@ -3,7 +3,7 @@ namespace Lookback.Replay.Store;
 /// <summary>Where the disk session store lives and how much it may use. The governor fills these in.</summary>
 public sealed record StoreOptions
 {
-    /// <summary>Root folder; sessions go in <c>sessions/</c>, clips in <c>clips/</c>.</summary>
+    /// <summary>Root folder; sessions go in <c>sessions/</c>, clips in <c>clips/</c>, previews in <c>previews/</c>.</summary>
     public required string Root { get; init; }
 
     /// <summary>Total bytes all session segments may take. Oldest unpinned segments are evicted beyond it.</summary>
@@ -17,6 +17,12 @@ public sealed record StoreOptions
 
     /// <summary>How long after a session ends its unpinned segments are kept.</summary>
     public TimeSpan Grace { get; init; } = TimeSpan.FromHours(24);
+
+    /// <summary>Total bytes the temporary previews may take; the least recently used go first beyond it.</summary>
+    public long PreviewBudgetBytes { get; init; } = 1L << 30;
+
+    /// <summary>How long a preview is kept after it was last watched.</summary>
+    public TimeSpan PreviewMaxAge { get; init; } = TimeSpan.FromHours(24);
 
     /// <summary>For tests: reports free bytes on the store's volume. Null uses the real drive.</summary>
     public Func<long>? FreeSpaceProbe { get; init; }

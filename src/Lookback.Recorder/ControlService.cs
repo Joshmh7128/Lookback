@@ -65,6 +65,7 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
                 "rate" => Rate(id, root),
                 "analyze" => Analyze(id, root),
                 "save" => await SaveAsync(id, root).ConfigureAwait(false),
+                "preview" => await PreviewAsync(id, root).ConfigureAwait(false),
                 string other => Ack(id, false, "bad-request", $"Unknown command \"{other}\"."),
                 null => Ack(id, false, "bad-request", "Missing \"type\"."),
             };
@@ -142,6 +143,24 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         }
 
         SaveResult r = await capture.SaveAsync(sessionId, candidateId).ConfigureAwait(false);
+        return r.Path is null ? Ack(id, false, r.Error, r.Message) : Ack(id, true, null, null, path: r.Path);
+    }
+
+    private async Task<string> PreviewAsync(string id, JsonElement root)
+    {
+        string? sessionId = Str(root, "sessionId");
+        string? candidateId = Str(root, "candidateId");
+        if (sessionId is null || candidateId is null)
+        {
+            return Ack(id, false, "bad-request", "preview needs \"sessionId\" and \"candidateId\".");
+        }
+
+        if (capture is null)
+        {
+            return Ack(id, false, "unsupported", "Previews need live capture in the recorder, which is off.");
+        }
+
+        SaveResult r = await capture.PreviewAsync(sessionId, candidateId).ConfigureAwait(false);
         return r.Path is null ? Ack(id, false, r.Error, r.Message) : Ack(id, true, null, null, path: r.Path);
     }
 
