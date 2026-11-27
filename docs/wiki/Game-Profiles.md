@@ -54,9 +54,11 @@ flowchart LR
    any other signal. Allocation-free per frame.
 2. **Merge.** Video frames and audio hops arrive on different threads at
    different speeds. The merger releases them in time order, holding each
-   item until every stream has moved past it (the watermark). A stream that
-   falls more than one second behind, or never sends at all (no audio
-   device), stops holding the others back.
+   item until every stream has moved past it (the watermark). The output
+   depends only on timestamps, so a replay at 8x (where the audio decoder
+   can run seconds of footage behind video) gives exactly the same events
+   as one at 1x. Only a stream that has sent nothing for two seconds of
+   wall time (no audio device) stops holding the others back.
 3. **Rules.** On every video frame the detector checks each rule. A rule
    that holds and is out of its cooldown opens a pending event.
 4. **Boosts.** Corroborating evidence near the trigger, such as an audio

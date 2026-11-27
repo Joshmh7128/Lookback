@@ -74,7 +74,9 @@ Synthetic frames and audio with known answers (`Synth.cs`).
 |---|---|---|
 | `MergerTests.cs` | `ReleasesInTimeOrderOnlyBelowTheWatermark` | Video and audio from two streams come out in time order, and nothing is released past the slower stream |
 | | `TiesKeepArrivalOrder` | Equal timestamps keep the order they arrived in |
-| | `StalledStreamStopsHoldingBackAfterMaxLag` | A stream that never sends (no audio device) holds the others back only for `maxLag` |
+| | `StreamFarBehindInFootageTimeStillHoldsTheWatermark` | Audio five seconds of footage behind video still holds the watermark, so nothing is released out of order |
+| | `SilentStreamStopsHoldingBackAfterTheWallClockTimeout` | A stream that never sends (no audio device) holds the others back only until the wall-clock timeout |
+| | `DetectorOutputDoesNotDependOnArrivalSkew` | The same footage gives identical events whether audio arrives in step, one second late or five seconds late |
 | `DetectorTests.cs` | `AboveFiresOnceThenRespectsCooldown` | A held condition fires once, then again only after the cooldown |
 | | `BelowAndAllConditionsMustHoldTogether` | `when` needs every condition on the same frame |
 | | `RiseComparesWithTheBaselineNotAnAbsoluteLevel` | A constant bright value never fires; a step up does, on the step |

@@ -37,7 +37,7 @@ public sealed class ProfileRunner : IAsyncDisposable
         _bus = bus;
         Profile = profile;
         _detector = new ProfileEventDetector(profile, frequency);
-        _merger = new TimeOrderedMerger<Envelope>(QpcTime.Rescale(1000, 1000, frequency)); // 1 s
+        _merger = new TimeOrderedMerger<Envelope>(TimeSpan.FromSeconds(2)); // wall time: output depends on QPC only
         _merger.Register(1);
         _merger.Register(2);
         _events = new EnvelopeFactory(new ManualClock(frequency), sessionId, $"profile.{profile.Id}");
