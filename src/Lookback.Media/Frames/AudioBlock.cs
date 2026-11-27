@@ -28,4 +28,14 @@ public sealed class AudioBlock
     public ReadOnlySpan<float> Samples => Buffer.AsSpan(0, Count);
 
     internal float[] Buffer { get; }
+
+    /// <summary>Copies another block's samples and timing into this one (same capacity or larger).</summary>
+    public void CopyFrom(AudioBlock other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        other.Samples.CopyTo(Buffer);
+        Count = other.Count;
+        FirstSample = other.FirstSample;
+        Qpc = other.Qpc;
+    }
 }

@@ -14,8 +14,8 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins, clip read-back from disk) | `Lookback.Replay` | **Done**, tested |
 | Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | **Done**, tested |
 | Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is still to come |
-| Audio sample clock (WASAPI device position → QPC, drift correction) | `Lookback.Media` | Next |
-| Live analyzer (push frames/audio from capture threads into the signal banks) | `Lookback.Signals` | Next |
+| Audio sample clock (WASAPI device position → QPC, weighted least-squares drift fit) and live assembler (downmix, resample to 48 kHz, silence for gaps) | `Lookback.Media` (`Live/`) | **Done**, tested |
+| Live analyzer (capture threads hand frames/hops through pools + SPSC rings, below-normal worker publishes signals with capture QPC, thins to 30 fps, drops when behind) | `Lookback.Signals` | **Done**, tested |
 | WGC capture (CsWinRT), DXGI duplication fallback | `Lookback.Capture` (Windows) | Planned |
 | GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Planned |
 | Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback), AAC MFT | `Lookback.Encode` (Windows) | Planned |
@@ -80,26 +80,27 @@ Consequences:
 - Windows work is built and tested in a separate clone,
   `D:\Lookback Game Recorder\capture-m3`.
 
+## Store layout (as built)
+
+```
+<root>/sessions/<id>/session.json    manifest: source, retention, QPC origin/frequency, runs (track configs), pins, ended
+<root>/sessions/<id>/init-001.mp4    init segment per run (a new run when track formats change)
+<root>/sessions/<id>/seg-000001.m4s  moof+mdat, starts on a video keyframe, ~2 s
+<root>/sessions/<id>/segments.jsonl  {run, seq, file, startQpc, endQpc, bytes} per segment
+<root>/clips/<id>-001.mp4            saved clips (never swept)
+```
+
+`SessionRecording` pulls packets from the ring by sequence number, so the
+encoders only ever feed the ring. Late audio (behind the last cut) is
+dropped and counted in `Late`. Eviction is store-wide, oldest first, and
+skips pinned ranges and the newest segment of an open session.
+
 ## Next steps, in order
 
-1. `SegmentStore` + `SessionRecording`: the writer pulls from the ring by
-   sequence, cuts at the first video keyframe once 2 s have passed, and
-   waits for audio to pass the cut (or 500 ms). It writes `init-<run>.mp4`
-   and `seg-<n>.m4s`, plus `segments.jsonl` entries with QPC ranges. It
-   evicts store-wide, oldest first, and never touches pinned ranges or the
-   open segment. Clip cutting from disk uses `Mp4FragmentReader`.
-2. `CacheSweeper`: delete unpinned segments once `ended + grace` has passed
-   (default 24 h). A session with no end marker (a crash) uses the last write
-   time. Saved clips are never deleted.
-3. `Lookback.Governor`: a pure policy over a `MachineProfile` (RAM, volumes
-   with SSD/HDD, GPUs with encoder support, display). The ring gets
-   min(5% of available RAM, 1 GB). Disk gets min(user cap, a share of free
-   space) above a free-space floor. Pick the tier that holds a useful
-   session length. At runtime, step down on memory/disk/encoder pressure
-   with hysteresis, effective at the next keyframe. The Windows probe uses
-   `GlobalMemoryStatusEx`, `IOCTL_STORAGE_QUERY_PROPERTY` (seek penalty),
-   DXGI and `MFTEnumEx`.
-4. Windows projects target `net10.0-windows10.0.19041.0` (Windows 10 support)
+1. Windows probe for the governor: `GlobalMemoryStatusEx`,
+   `IOCTL_STORAGE_QUERY_PROPERTY` (seek penalty), DXGI adapters, and
+   `MFTEnumEx` per adapter LUID.
+2. Windows projects target `net10.0-windows10.0.19041.0` (Windows 10 support)
    and build on Linux CI with `EnableWindowsTargeting`. Their tests run on the
    Windows leg only (WARP for the downscale shader, the software H.264 MFT
    for encode).
