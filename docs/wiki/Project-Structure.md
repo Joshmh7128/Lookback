@@ -27,6 +27,7 @@ src/
   Lookback.Governor/          budget policy and runtime controller
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
+  Lookback.Audio/             WASAPI loopback + mic capture (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
@@ -39,6 +40,7 @@ tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
+  Lookback.Audio.Tests/       Windows: AAC round trip, WASAPI loopback and mic (skip elsewhere)
   Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
@@ -92,13 +94,14 @@ flowchart TB
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
-| `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
-| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
+| `Lookback.Encode` | `MfVideoEncoder.cs`, `MfAacEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
+| `Lookback.Audio` | `WasapiSource.cs`, `AudioCapturePolicy.cs`, `StereoResampler.cs`, `PcmFormat.cs`, `RenderStream.cs`, `Interop/*` | [Live audio](Live-Capture#live-audio) on Windows: what a session may capture, WASAPI capture stamped in QPC, 48 kHz stereo for the AAC encoder (`Lookback.Encode`) and hops for the live analyzer |
+| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `AudioBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `audio` captures live audio on its own |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Detection`, `Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Detection`, `Lookback.Clipper`, `Lookback.Quality`,
 `Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`.)
 

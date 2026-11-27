@@ -64,7 +64,7 @@ the shell's memory.
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
 | Electron shell: library, timeline, 1–5 star rating, official-player viewer and ingest sender | `app/` | In progress |
-| WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
+| WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback untested (needs build 20348+) |
 | Governor Windows probe | Governor.Windows | In progress |
 | Clipper v1: normalisation, excitement curve, peaks, windows, merge, QA gates | Clipper | In progress (M2) |
 | Game detection: process and window watcher, profile matching, `GameLifecycle` | Detection | In progress (M2) |

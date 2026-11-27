@@ -159,6 +159,26 @@ See [Live Capture](Live-Capture#tests).
 | | `Hardware_encoder_round_trips_through_the_muxer` (H.264, HEVC) | Every display adapter's hardware MFT: all frames out, `Dispose` drains in under 3 s, same clip checks |
 | `EncodeTickerTests.cs` | `Irregular_capture_becomes_constant_rate_packets` | Slow, bursty, then absent capture still gives one packet per tick at constant spacing, repeats counted, nothing skipped or busy |
 
+## `Lookback.Audio.Tests`
+
+Windows-only tests skip elsewhere. The device tests also skip without a
+default render or capture device, and CI runners have none, so on CI the AAC
+tests run and the WASAPI ones skip. On AETHER everything runs except process
+loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
+
+| File | Test | What it proves |
+|---|---|---|
+| `AacEncoderTests.cs` | `Sine_round_trips_through_ring_and_muxer` (128, 192 kbps) | Sine → `MfAacEncoder` → `ReplayRing` → `ClipWriter.Mux`: ffprobe reads `aac,48000,2`, the duration matches the input within a frame, ffmpeg decodes with no errors, and the left channel decodes back to 440 Hz at the input level |
+| | `Decoded_onset_lands_at_its_capture_time` | A tone after 0.5 s of silence decodes at the sample its QPC says, within 1 ms (this pins `EncoderDelay`) |
+| | `Late_input_is_preceded_by_silence_and_early_input_trimmed` | A 200 ms capture gap becomes 200 ms of silence, input that runs ahead is dropped, and the track stays the right length |
+| | `Encoding_allocates_nothing_after_the_first_packet` | 0 bytes allocated per `Encode` call |
+| `LoopbackTests.cs` | `Endpoint_loopback_hears_a_rendered_tone` | A quiet 997 Hz tone played through a render stream comes back through endpoint loopback at the right pitch; QPC stamps are current and monotonic; the clock fit is within 0.1% of nominal; hops cover the capture; 0 B per packet |
+| | `Default_device_change_reopens_and_the_timeline_carries_on` | A default-device notification re-opens the stream; the gap is filled and hops stay continuous |
+| | `Process_loopback_falls_back_only_where_allowed`, `Process_loopback_hears_this_process` | Before build 20348 a process-loopback request falls back to the endpoint and says why, or is refused when fallback isn't allowed; on 20348+ it hears this process's tone |
+| | `Microphone_track_opens_and_streams` | The default mic streams at 48 kHz with current stamps and 0 B per packet |
+| `ResamplerTests.cs` | 5 tests | A unity ratio is a two-frame delay; 44.1, 96 and 47.99 kHz resample to 48 kHz keeping pitch, level and length; surround downmix cannot clip and drops LFE; PCM16, PCM24 and float decode |
+| `PolicyTests.cs` | 4 tests | Official player: never system loopback, encoder or mic; a live game falls back to system loopback before 20348 and says so; ephemeral is analysis only; invalid retention is refused |
+
 ## Testing approach
 
 - **Deterministic time.** `ManualClock` and hand-set `qpc` values; no test

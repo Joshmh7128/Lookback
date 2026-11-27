@@ -8,6 +8,7 @@
     <Description>Bench tool for live capture: captures a window or monitor, runs the signal pipeline, and reports rates; optionally encodes and saves a clip of the last seconds. Optional live profiler page.</Description>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Lookback.Audio\Lookback.Audio.csproj" />
     <ProjectReference Include="..\Lookback.Capture\Lookback.Capture.csproj" />
     <ProjectReference Include="..\Lookback.Encode\Lookback.Encode.csproj" />
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
