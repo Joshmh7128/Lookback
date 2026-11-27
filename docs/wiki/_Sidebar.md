@@ -3,6 +3,7 @@
 - [Home](Home)
 - [Quickstart](Quickstart)
 - [Architecture](Architecture)
+- [System Map](System-Map)
 - [Detection Walkthrough](Detection-Walkthrough)
 - [Detection Design Notes](Detection-Design-Notes)
 - [Project Structure](Project-Structure)
