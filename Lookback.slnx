@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Lookback.Capture.Cli/Lookback.Capture.Cli.csproj" />
+    <Project Path="src/Lookback.Encode/Lookback.Encode.csproj" />
     <Project Path="src/Lookback.Capture/Lookback.Capture.csproj" />
     <Project Path="src/Lookback.Contracts/Lookback.Contracts.csproj" />
     <Project Path="src/Lookback.Core/Lookback.Core.csproj" />

@@ -16,9 +16,9 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Governor policy (machine profile → ring/disk budget + quality tier) and runtime controller (step down under pressure, back up with hysteresis) | `Lookback.Governor` | **Done**, tested. The Windows probe is still to come |
 | Audio sample clock (WASAPI device position → QPC, weighted least-squares drift fit) and live assembler (downmix, resample to 48 kHz, silence for gaps) | `Lookback.Media` (`Live/`) | **Done**, tested |
 | Live analyzer (capture threads hand frames/hops through pools + SPSC rings, below-normal worker publishes signals with capture QPC, thins to 30 fps, drops when behind) | `Lookback.Signals` | **Done**, tested |
-| WGC capture (CsWinRT), DXGI duplication fallback | `Lookback.Capture` (Windows) | Planned |
-| GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Planned |
-| Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback), AAC MFT | `Lookback.Encode` (Windows) | Planned |
+| WGC capture (raw WinRT interop), DXGI duplication fallback, live session, bench CLI (`lookback-capture`) | `Lookback.Capture`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (DXGI ~57 fps, WGC ~140 fps, analysis 29.4 fps, 0 dropped; `--official-player` persists nothing) |
+| GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource; SDR/scRGB/PQ) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Downscale **done**, WARP-tested. `Nv12Converter` written, builds, not yet run |
+| Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback), AAC MFT | `Lookback.Encode` (Windows) | `MfVideoEncoder` **written, builds, never run**. AAC, CFR ticker and tests still to do |
 | WASAPI loopback, process loopback (Win10 20348+ only), mic track | `Lookback.Audio` (Windows) | Planned |
 | Recorder wiring, control commands on `/events` | `Lookback.Recorder` | Planned; contract additions to be agreed with the Electron thread first |
 | Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
@@ -97,10 +97,36 @@ skips pinned ranges and the newest segment of an open session.
 
 ## Next steps, in order
 
-1. Windows probe for the governor: `GlobalMemoryStatusEx`,
+Where it stopped: `MfVideoEncoder` compiles but has not been run anywhere. It
+enumerates encoder MFTs with `MFTEnum2` filtered by the capture adapter's LUID,
+unlocks async hardware MFTs and gives them the D3D11 device manager, sets
+ICodecAPI (CBR, 2 s GOP, 0 B-frames, low latency), copies each NV12 frame into
+an 8-slot texture pool wrapped once in DXGI surface buffers, and emits
+length-prefixed packets to an `IPacketSink`, announcing the track on the first
+keyframe (falling back to `MF_MT_MPEG_SEQUENCE_HEADER` for the parameter sets).
+Software H.264 runs synchronously on the same DXGI buffers. Things to verify
+first on AETHER: that the MS software MFT accepts DXGI surface buffers (if not,
+map a staging copy into a memory buffer), that NVENC really raises NeedInput
+before the first `Encode` call, and that `Dispose` drains without hanging.
+
+1. Encoder test on Windows: software H.264 on WARP (CI) and NVENC/AMF on
+   AETHER. Encode ~120 frames into a `ReplayRing`, `ClipWriter.Mux`, and
+   check with ffprobe (frame count, keyframe every 2 s, no B-frames).
+2. CFR ticker: a thread at tier fps that runs `Nv12Converter` on the
+   latest captured texture (repeating it when WGC sends nothing) and calls
+   `Encode`. Hook it through `LiveCaptureSession.FrameTap`. Add
+   `--encode <seconds> --out clip.mp4` to `lookback-capture`.
+3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
+4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
+   `SampleClock` and `LiveAudioAssembler`.
+5. Windows probe for the governor: `GlobalMemoryStatusEx`,
    `IOCTL_STORAGE_QUERY_PROPERTY` (seek penalty), DXGI adapters, and
-   `MFTEnumEx` per adapter LUID.
-2. Windows projects target `net10.0-windows10.0.19041.0` (Windows 10 support)
-   and build on Linux CI with `EnableWindowsTargeting`. Their tests run on the
-   Windows leg only (WARP for the downscale shader, the software H.264 MFT
-   for encode).
+   `MfVideoEncoder.List` per adapter LUID.
+6. Recorder wiring (`CaptureService`, control commands on `/events`).
+   Message the Electron thread before touching the contract. Ephemeral
+   sessions never create the encoder, ring or store.
+7. Present-hook DLL (M6).
+
+Windows projects target `net10.0-windows10.0.22621.0` with
+`SupportedOSPlatformVersion` 10.0.19041.0 and build on Linux with
+`EnableWindowsTargeting`. Their tests skip off Windows.
