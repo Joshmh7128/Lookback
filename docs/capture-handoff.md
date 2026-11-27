@@ -132,6 +132,23 @@ Rebase on main before merging; they touch this file's rows too.
 6. Recorder wiring (`CaptureService`, control commands on `/events`).
    Message the Electron thread before touching the contract. Ephemeral
    sessions never create the encoder, ring or store.
+   Agreed with the shell session (2026-11-27), recorder side not built yet.
+   Additive: `LOOKBACK_READY` and the existing `/events` and `/ingest`
+   traffic do not change. Inbound text JSON on `/events`, same token and
+   Origin checks:
+   `{"type":"rate","id":"<client request id>","sessionId":"…","candidateId":"…","stars":1..5}`
+   (`stars` 0 clears) and, once clips can be cut,
+   `{"type":"save","id":"…","sessionId":"…","candidateId":"…"}`. The
+   recorder answers that client only with
+   `{"type":"ack","id":"…","ok":true}` or `ok:false` plus
+   `"error":"ephemeral|unknown-session|unknown-candidate|bad-request"`.
+   On success it publishes `ClipRating` (new Envelope field 20, topic
+   `clip.rating`: `candidate_id`=1, `session_id`=2, `stars`=3; the field
+   number the M4 scorer design reserved) or the existing `ClipSaved` on
+   `clip.saved`. Ratings persist through the M4 `RatingStore` only when
+   `RetentionRules.CanPersist` allows; official-player sessions get
+   `ephemeral` and nothing is written. The shell keeps ratings in memory
+   when there is no ack within ~2 s or the ack is `ok:false`.
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with
