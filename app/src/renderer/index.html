@@ -21,6 +21,13 @@
     <button id="open-viewer" class="primary">Open viewer</button>
   </nav>
 
+  <div id="banner" class="banner" role="status" hidden>
+    <span id="banner-text"></span>
+    <button id="banner-details" type="button">Details</button>
+    <button id="banner-start" type="button" hidden>Start the recorder</button>
+    <pre id="banner-log" class="banner-log" hidden></pre>
+  </div>
+
   <section id="tab-overview" class="tab active">
     <div class="grid">
       <div class="card">
@@ -152,6 +159,7 @@
       <label class="check"><input name="autoStart" type="checkbox"> Start the recorder when Lookback opens</label>
       <div class="row"><button type="submit" class="primary">Save</button><span id="settings-status" class="muted"></span></div>
       <p class="muted">Changes to the recorder's options apply on its next start.</p>
+      <p id="ratings-path" class="muted"></p>
     </form>
   </section>
 </body>

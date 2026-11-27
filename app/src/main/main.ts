@@ -2,18 +2,19 @@ import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebConte
 import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { newRequestId, rateMessage, validFootageRequest } from "./control";
+import { newRequestId, rateMessage, refusal, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
 import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
-import { datasetsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
+import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
 import { MEDIA_SCHEME, MediaRegistry, serveMedia, VIDEO_EXTENSIONS } from "./media";
 import { listProfiles } from "./profiles";
 import { RecorderHost } from "./recorder";
+import { RecorderSupervisor } from "./supervisor";
 import { allowNavigation, hardenApp, lockPermissions } from "./security";
 import { loadSettings, saveSettings, sanitizeSettings } from "./settings";
 import { BROWSE_CSP, contentType, resolveStatic, SHELL_CSP } from "./static-files";
@@ -39,6 +40,8 @@ const argValue = (name: string): string | null => process.argv.find((a) => a.sta
 /** With --smoke, analyse this file through "Open footage" (no dialog), then rate and preview a candidate in the window. */
 const SMOKE_FOOTAGE = argValue("smoke-footage");
 const SMOKE_PROFILE = argValue("smoke-profile") ?? "generic";
+/** With --smoke, kill the recorder once it is up and pass when the supervisor has it ready again on a new handshake. */
+const SMOKE_SUPERVISE = process.argv.includes("--smoke-supervise");
 /** With --smoke, also wait for this many clip candidates before rating one through the window. */
 const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
@@ -105,8 +108,9 @@ function findRepoRoot(start: string): string | null {
 // ---------------------------------------------------------------- recorder
 
 function startRecorder(): RecorderState {
-  const profiles = profilesFolder(settings, locate());
-  const command = locateTool(RECORDER, settings.recorderPath, locate(), recorderArgs(settings, profiles));
+  const ctx = locate();
+  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: datasetsFolder(settings, ctx), parentPid: process.pid });
+  const command = locateTool(RECORDER, settings.recorderPath, ctx, args);
   if (!command) {
     recorder.reportFailure("Lookback.Recorder was not found. Build it with `dotnet build Lookback.slnx -c Release`, or set its path in Settings.");
     return recorder.state;
@@ -115,6 +119,13 @@ function startRecorder(): RecorderState {
   recorder.start(command);
   return recorder.state;
 }
+
+// Restarts the recorder after an unexpected exit (see supervisor.ts).
+const supervisor = new RecorderSupervisor(recorder, () => {
+  recorder.note("restarting the recorder after an unexpected exit");
+  return startRecorder().status !== "failed";
+});
+supervisor.on("state", (state) => send("lookback:supervision", state));
 
 recorder.on("state", (state) => {
   send("lookback:state", state);
@@ -314,14 +325,24 @@ function pagesSession(): Electron.Session {
 
 function registerIpc(): void {
   handle("lookback:get-state", fromMain, () => recorder.state);
-  handle("lookback:start", fromMain, () => startRecorder());
+  handle("lookback:start", fromMain, () => {
+    supervisor.reset();
+    return startRecorder();
+  });
   handle("lookback:stop", fromMain, async () => {
+    supervisor.reset();
     await recorder.stop();
     return recorder.state;
   });
   handle("lookback:restart", fromMain, async () => {
+    supervisor.reset();
     await recorder.stop();
     return startRecorder();
+  });
+  handle("lookback:get-supervision", fromMain, () => supervisor.state);
+  handle("lookback:get-paths", fromMain, (): ShellPaths => {
+    const datasets = datasetsFolder(settings, locate());
+    return { ratings: datasets ?? defaultRatingsFolder(process.env), ratingsInCheckout: datasets !== null, profiles: profilesFolder(settings, locate()) };
   });
   handle("lookback:get-log", fromMain, () => recorder.logTail);
   handle("lookback:get-stream", fromMain, (): StreamState => stream.state);
@@ -337,7 +358,9 @@ function registerIpc(): void {
     // Offer it to the recorder; without an ack it stays in memory only.
     const id = newRequestId();
     void stream.request(id, rateMessage(id, sessionId, candidateId, rating)).then((ack) => {
-      if (ack?.ok && library.markStored(sessionId, candidateId, rating)) scheduleLibrary();
+      if (!ack) return; // an older recorder: memory only
+      const changed = ack.ok && ack.stored ? library.markStored(sessionId, candidateId, rating) : !ack.ok && library.markRefused(sessionId, candidateId, rating, refusal(ack));
+      if (changed) scheduleLibrary();
     });
     return true;
   });
@@ -496,9 +519,11 @@ function runSmoke(): void {
   let viewerOpened = false;
   let rating = false;
   let footageOpened = false;
+  let killed: { pid: number | null; endpoint: string | null } | null = null;
   const timer = setInterval(() => {
     const state = recorder.state;
-    if (state.status === "failed" || state.status === "exited") {
+    // In the supervise run the exit is the point; the supervisor brings it back.
+    if ((state.status === "failed" || state.status === "exited") && !(SMOKE_SUPERVISE && killed)) {
       clearInterval(timer);
       finish(false, { reason: `recorder ${state.status}`, detail: state.detail, log: recorder.logTail.slice(-15) });
       return;
@@ -507,6 +532,18 @@ function runSmoke(): void {
     const base = { recorder: state.status, stream: stream.state.status, received: stream.state.received, renderer: rendererReady };
     const up = state.status === "ready" && stream.state.status === "open" && rendererReady;
     const candidates = library.snapshot().sessions.reduce((n, x) => n + x.candidates.length, 0);
+    if (SMOKE_SUPERVISE) {
+      if (up && !killed) {
+        killed = { pid: state.pid, endpoint: state.endpoint };
+        recorder.note(`smoke: killing the recorder (pid ${state.pid}) to test the supervisor`);
+        if (state.pid) process.kill(state.pid);
+      } else if (killed && up && state.pid !== killed.pid) {
+        clearInterval(timer);
+        finish(state.endpoint !== killed.endpoint, { ...base, before: killed, after: { pid: state.pid, endpoint: state.endpoint }, supervision: supervisor.state });
+      }
+
+      return;
+    }
     if (up && !SMOKE_VIEWER && candidates >= SMOKE_CANDIDATES) {
       if (SMOKE_CANDIDATES === 0) {
         clearInterval(timer);
@@ -536,11 +573,13 @@ function runSmoke(): void {
               const rated = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 5).length;
               const p = (preview ?? {}) as Record<string, unknown>;
               const previewOk = !SMOKE_FOOTAGE || (p["src"] === MEDIA_SCHEME && Number(p["readyState"]) >= 2 && Number(p["width"]) > 0);
-              finish(rated === 1 && previewOk, { ...base, candidates, rated, preview, footage: footage.list });
+              const stored = library.snapshot().sessions.flatMap((x) => x.candidates).filter((c) => c.rating === 5 && c.ratingStored).length;
+              finish(rated === 1 && previewOk, { ...base, candidates, rated, stored, preview, footage: footage.list });
             });
         }
       });
     }
+
 
     if (up && SMOKE_FOOTAGE && !footageOpened) {
       footageOpened = true;
@@ -573,6 +612,7 @@ function runSmoke(): void {
 
 async function shutdown(): Promise<void> {
   quitting = true;
+  supervisor.dispose();
   footage.stopAll();
   viewer?.close();
   stream.disconnect();

@@ -82,9 +82,9 @@ real YouTube video and a live Twitch channel. Full description:
   `ClipRating` on field 20): agreed with the live-capture thread, which builds
   it with the recorder wiring step. Until then ratings are in memory and
   footage goes through the testbench.
-- **Orphaned recorder.** If the shell is killed rather than quit, the
-  recorder keeps running. A recorder option to exit when its parent exits
-  would close it.
+- ~~Orphaned recorder~~: closed. The shell passes `--Recorder:ParentProcessId`
+  and supervises the recorder (restart with backoff, crash banner); see
+  [Desktop-Shell.md](wiki/Desktop-Shell.md#supervision).
 - **Packaging.** `locate.ts` looks for `resources/recorder`, but nothing builds
   an installer yet.
 - **Audio in calibration** needs player-only audio, which the embeds do not

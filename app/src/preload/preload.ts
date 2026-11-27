@@ -2,7 +2,7 @@
 // CommonJS file that imports only types. It exposes `window.lookback` and
 // nothing else: no ipcRenderer, no Node.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, Rating, RecorderState, Settings, StreamState, ViewBounds } from "../shared/api";
+import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, Rating, RecorderState, Settings, ShellPaths, StreamState, SupervisionState, ViewBounds } from "../shared/api";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const wrapped = (_e: IpcRendererEvent, value: T): void => listener(value);
@@ -18,6 +18,9 @@ const api: LookbackApi = {
   restartRecorder: () => ipcRenderer.invoke("lookback:restart") as Promise<RecorderState>,
   getLog: () => ipcRenderer.invoke("lookback:get-log") as Promise<string[]>,
   onLog: (listener) => subscribe<string>("lookback:log", listener),
+  getSupervision: () => ipcRenderer.invoke("lookback:get-supervision") as Promise<SupervisionState>,
+  onSupervision: (listener) => subscribe<SupervisionState>("lookback:supervision", listener),
+  getPaths: () => ipcRenderer.invoke("lookback:get-paths") as Promise<ShellPaths>,
   getStream: () => ipcRenderer.invoke("lookback:get-stream") as Promise<StreamState>,
   onStream: (listener) => subscribe<StreamState>("lookback:stream", listener),
   onIngest: (listener) => subscribe<IngestState>("lookback:ingest", listener),

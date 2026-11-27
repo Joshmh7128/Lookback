@@ -82,6 +82,28 @@ or in the state the renderer sees. States: `stopped → starting → ready`, or
 time). Stop is a terminate, then a kill after 3 s. Quitting the app stops the
 recorder first.
 
+Arguments the shell adds: `--Recorder:ParentProcessId=<shell pid>`, so the
+recorder exits when the shell does however the shell ends (closed, crashed or
+killed); `--Recorder:ProfilesDirectory` and `--Recorder:DatasetsDirectory`
+for the checkout's `profiles/` and `datasets/` (or the folders in
+Settings), so calibration can save and ratings land where `ml/` trains. With
+no datasets folder the recorder uses its default,
+`%LOCALAPPDATA%\Lookback\datasets`, which Settings shows. A recorder that
+does not know an option ignores it.
+
+### Supervision
+
+`RecorderSupervisor` (`supervisor.ts`) restarts the recorder when it exits
+unexpectedly: a crash, or a watchdog ending it on purpose after writing
+`lookback: fatal: <reason>` to stderr. Restarts wait 1 s, 2 s, then 5 s;
+after 5 restarts within a minute the shell stops trying. A banner shows what
+happened (the fatal reason when there is one), the countdown, and on
+**Details** the recorder's last stderr lines; once it has given up, **Start
+the recorder** tries again and resets the count. Each start re-reads
+`LOOKBACK_READY` (the port and token change) and the stream, viewer and
+footage jobs follow the new handshake. A stop the user asks for, or a
+recorder that cannot be found or spawned, is never restarted.
+
 ## Library, timeline and ratings
 
 `StreamClient` (`stream.ts`) holds the read-only `/events` socket, with
@@ -217,9 +239,10 @@ sequenceDiagram
 
 Stored in `userData/settings.json` (paths and recorder options only; each
 value is sanitized on load, so a hand-edited file cannot stop the app). Recorder
-path, testbench path, datasets folder, profiles folder, pipe name, WebSocket
-port, serve the profiler page, start the recorder on launch. Changes to
-recorder options apply on its next start.
+path, testbench path, datasets folder (also where the recorder stores
+ratings), profiles folder, pipe name, WebSocket port, serve the profiler page,
+start the recorder on launch. The page shows where ratings are stored. Changes
+to recorder options apply on its next start.
 
 ## Tests and smoke runs
 
@@ -243,6 +266,8 @@ npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=over
 | `footage` | `analyze` first, testbench fallback with the right arguments, permission references, refusals not worked around, linking sessions by title |
 | `media` | Byte ranges, only registered files served under opaque ids, 206/416/404/405 |
 | `stream` | Envelope parsing, reconnect with backoff, stale sockets ignored |
+| `supervisor` | Restart after 1/2/5 s, give up after 5 in a minute, older restarts expire, user stops and unfixable failures left alone, a user action cancels a pending restart |
+| `recorder-control` | Against a recorder with control commands (skipped otherwise): an ephemeral rating refused with a message, `bad-request` and `unsupported`, `analyze` refusing a missing file, parent-exit; with `LOOKBACK_TEST_FOOTAGE`, analyze → candidate → a stored, broadcast rating in the datasets folder the shell passed |
 | `files` | Settings sanitizing and atomic save, static path escapes, recorder lookup and args, profile ids, the viewer server's Host check and CSP |
 | `recorder-integration` | Against the real built recorder: frames over `/ingest` become an ephemeral official-player session on `/events`, the video id never comes back, stop ends it, a wrong token is refused |
 
@@ -252,7 +277,10 @@ exits 0 or 1. `--smoke-candidates=N` also waits for N clip candidates (fed
 with `lookback-testbench live … --pipe <name>`), then opens the Library tab,
 presses <kbd>5</kbd> and checks the rating. `--smoke-footage=<file>` does the
 whole rating flow: opens the file as "Open footage" would, waits for a
-candidate, rates it and checks that the preview player loaded the file. Set
+candidate, rates it and checks that the preview player loaded the file (and
+reports whether the recorder stored the rating). `--smoke-supervise` kills
+the recorder once it is up and passes when the supervisor has it ready again
+on a new handshake. Set
 `LOOKBACK_USER_DATA` to keep a run's userData in a scratch folder. CI runs the
 unit tests on Linux and Windows, and on Windows also builds the recorder,
 runs the integration tests and both smoke runs.
@@ -261,7 +289,5 @@ runs the integration tests and both smoke runs.
 
 - Ratings and the library are in memory until the recorder implements the
   agreed commands; footage analysis goes through the testbench until then.
-- If the shell is killed (not quit), the recorder keeps running; a
-  parent-exit watch in the recorder would close that gap.
 - Video only in calibration (see [Official-Player Calibration](Official-Player-Calibration#limits)).
 - No packaging yet: `resources/recorder` is looked up, but no installer builds it.

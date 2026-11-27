@@ -4,7 +4,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { datasetsFolder, locateTool, profilesFolder, RECORDER, recorderArgs } from "../main/locate";
+import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs } from "../main/locate";
 import { listProfiles } from "../main/profiles";
 import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from "../main/settings";
 import { resolveStatic } from "../main/static-files";
@@ -55,12 +55,16 @@ test("the recorder is found Release first, apphost before dll, and explicit path
 });
 
 test("recorder arguments carry settings and the profiles folder, never a token", () => {
-  assert.deepEqual(recorderArgs({ ...DEFAULT_SETTINGS }, "D:\\repo\\profiles"), [
+  assert.deepEqual(recorderArgs({ ...DEFAULT_SETTINGS }, { profilesDir: "D:\\repo\\profiles", datasetsDir: "D:\\repo\\datasets", parentPid: 4242 }), [
     "--Recorder:PipeName=lookback.events",
     "--Recorder:WebSocketPort=0",
     "--Recorder:Profiler=true",
     "--Recorder:ProfilesDirectory=D:\\repo\\profiles",
+    "--Recorder:DatasetsDirectory=D:\\repo\\datasets",
+    "--Recorder:ParentProcessId=4242",
   ]);
+  assert.ok(!recorderArgs({ ...DEFAULT_SETTINGS }, { parentPid: 0 }).some((a) => a.includes("ParentProcessId")));
+  assert.equal(defaultRatingsFolder({ LOCALAPPDATA: "C:\\Users\\x\\AppData\\Local" }), join("C:\\Users\\x\\AppData\\Local", "Lookback", "datasets"));
   assert.deepEqual(recorderArgs({ ...DEFAULT_SETTINGS, profilerPage: false }), ["--Recorder:PipeName=lookback.events", "--Recorder:WebSocketPort=0"]);
   const ctx = { repoRoot: "R", exists: (p: string) => p === join("R", "profiles") };
   assert.equal(profilesFolder({ ...DEFAULT_SETTINGS }, ctx), join("R", "profiles"));

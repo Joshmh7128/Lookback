@@ -163,6 +163,19 @@ export class Library {
     }
 
     c.ratingStored = true;
+    c.ratingNote = null;
+    return this.changed();
+  }
+
+  /** The recorder refused to store this rating; keeps it in memory with the reason. */
+  markRefused(sessionId: string, candidateId: string, rating: Rating, note: string): boolean {
+    const c = this.sessions.get(sessionId)?.candidates.get(candidateId);
+    if (!c || c.rating !== rating) {
+      return false;
+    }
+
+    c.ratingStored = false;
+    c.ratingNote = note;
     return this.changed();
   }
 
@@ -202,6 +215,7 @@ export class Library {
 
     c.rating = rating;
     c.ratingStored = stored;
+    c.ratingNote = null;
   }
 
   /** Drops a session the user no longer wants listed (memory only). */
@@ -300,6 +314,7 @@ export class Library {
       savedPath: existing?.savedPath ?? null,
       rating: this.ratings.get(ratingKey(s.view.id, id)) ?? 0,
       ratingStored: existing?.ratingStored ?? false,
+      ratingNote: existing?.ratingNote ?? null,
     };
     s.candidates.set(id, view);
     if (s.candidates.size > MAX_CANDIDATES) {

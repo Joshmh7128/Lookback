@@ -2,7 +2,7 @@
 // recorder's profiler page, the dataset browser and settings. Everything
 // comes from the main process through `window.lookback`; this page opens no
 // sockets and stores nothing.
-import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StreamState, TimelineMark } from "../shared/api";
+import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StreamState, SupervisionState, TimelineMark } from "../shared/api";
 
 declare global {
   interface Window {
@@ -203,7 +203,9 @@ function stars(c: CandidateView, s: LibrarySessionSnapshot, big = false): HTMLDi
       e.stopPropagation();
       rate(s.id, c.id, 0);
     });
-    box.append(clear, el("span", { class: "stored", title: c.ratingStored ? "The recorder stored this rating" : "Kept in the shell's memory only" }, c.ratingStored ? "stored" : "in memory"));
+    const label = c.ratingStored ? "stored" : c.ratingNote ? "not stored" : "in memory";
+    const tip = c.ratingStored ? "The recorder stored this rating" : (c.ratingNote ?? "Kept in the shell's memory only");
+    box.append(clear, el("span", { class: `stored${c.ratingNote ? " refused" : ""}`, title: tip }, label));
   }
 
   return box;
@@ -317,7 +319,7 @@ function renderSelected(): void {
     return;
   }
 
-  starBox.replaceChildren(stars(c, s, true));
+  starBox.replaceChildren(stars(c, s, true), ...(c.ratingNote ? [el("p", { class: "rating-note" }, `Not stored: ${c.ratingNote}`)] : []));
   const key = `${s.id}\u0000${c.id}`;
   if (previewFor === key) return;
   previewFor = key;
@@ -613,6 +615,62 @@ form.addEventListener("submit", (e) => {
     fillSettings(saved);
     $("settings-status").textContent = "saved";
   });
+});
+
+// ----------------------------------------------------------- supervision
+
+// Shown when the recorder stopped unexpectedly: what it said, and when the
+// shell restarts it (or that it stopped trying).
+let supervision: SupervisionState | null = null;
+let showCrashLog = false;
+function renderSupervision(): void {
+  const s = supervision;
+  const banner = $("banner");
+  const crash = s?.lastCrash;
+  const recent = crash !== null && crash !== undefined && Date.now() - crash.at < 120_000;
+  if (!s || (!s.gaveUp && s.nextRestartAt === null && !recent)) {
+    banner.hidden = true;
+    return;
+  }
+
+  banner.hidden = false;
+  banner.className = `banner${s.gaveUp ? " bad" : ""}`;
+  const why = crash ? (crash.fatal ? `stopped on purpose: ${crash.fatal}` : crash.detail) : "stopped";
+  let text: string;
+  if (s.gaveUp) {
+    text = `The recorder ${why}. It stopped ${s.restarts >= s.maxRestarts ? `${s.restarts} times in a minute` : "and could not be started again"}, so Lookback is no longer restarting it.`;
+  } else if (s.nextRestartAt !== null) {
+    const secs = Math.max(0, Math.ceil((s.nextRestartAt - Date.now()) / 1000));
+    text = `The recorder ${why}. Restarting in ${secs} s (restart ${s.restarts + 1} of ${s.maxRestarts} this minute).`;
+  } else {
+    text = `The recorder ${why}. Lookback restarted it.`;
+  }
+
+  $("banner-text").textContent = text;
+  $<HTMLButtonElement>("banner-start").hidden = !s.gaveUp;
+  const log = $("banner-log");
+  log.hidden = !showCrashLog || !crash;
+  log.textContent = crash ? crash.stderr.join("\n") || "(nothing on stderr)" : "";
+}
+
+$("banner-details").addEventListener("click", () => {
+  showCrashLog = !showCrashLog;
+  renderSupervision();
+});
+$("banner-start").addEventListener("click", () => void api.startRecorder().then(renderRecorder));
+api.onSupervision((s) => {
+  supervision = s;
+  renderSupervision();
+});
+void api.getSupervision().then((s) => {
+  supervision = s;
+  renderSupervision();
+});
+window.setInterval(renderSupervision, 500);
+void api.getPaths().then((p) => {
+  $("ratings-path").textContent = p.ratingsInCheckout
+    ? `Ratings are stored by the recorder in ${p.ratings} (the checkout's datasets folder, where ml/ trains).`
+    : `Ratings are stored by the recorder in ${p.ratings} (its default). Set a datasets folder above to store them in a checkout.`;
 });
 
 // ------------------------------------------------------------------- boot

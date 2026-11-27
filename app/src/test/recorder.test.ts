@@ -45,11 +45,22 @@ test("an unexpected exit is reported as exited", async () => {
   assert.match(host.state.detail ?? "", /code 3/);
 });
 
+test("an exit after a fatal line reports the reason and the stderr tail, and can be restarted", async () => {
+  const host = new RecorderHost();
+  host.start(fakeRecorder(`${READY.replace("setInterval(() => {}, 1000);", "")} setTimeout(() => { process.stderr.write("warn: encoder stalled\\r\\nlookback: fatal: encode stalled for 5 s\\r\\n"); process.exit(134); }, 200);`));
+  await until(() => host.state.status === "exited", 10_000, "exit");
+  assert.equal(host.state.restartable, true);
+  assert.equal(host.fatal, "encode stalled for 5 s");
+  assert.match(host.state.detail ?? "", /code 134\): encode stalled for 5 s/);
+  assert.deepEqual(host.stderrLines.slice(-2), ["warn: encoder stalled", "lookback: fatal: encode stalled for 5 s"]);
+});
+
 test("no handshake within the timeout fails and kills the child", async () => {
   const host = new RecorderHost({ readyTimeoutMs: 300 });
   host.start(fakeRecorder("setInterval(() => {}, 1000);"));
   await until(() => host.state.status === "failed", 10_000, "failed");
   await until(() => host.state.pid === null, 10_000, "child gone");
+  assert.equal(host.state.restartable, true);
 });
 
 test("a recorder that cannot be spawned fails cleanly", async () => {
@@ -58,4 +69,5 @@ test("a recorder that cannot be spawned fails cleanly", async () => {
   await until(() => host.state.status === "failed", 10_000, "failed");
   host.reportFailure("not found");
   assert.equal(host.state.detail, "not found");
+  assert.equal(host.state.restartable, false);
 });

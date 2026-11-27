@@ -22,6 +22,29 @@ export interface RecorderState {
   /** Why the recorder is not running, when it stopped or failed. */
   detail: string | null;
   startedAt: number | null;
+  /** True when it ended in a way worth restarting (an unexpected exit, or no handshake in time). */
+  restartable: boolean;
+}
+
+/** The shell's watch over the recorder: restarts after unexpected exits. */
+export interface SupervisionState {
+  /** Restarts in the last minute. */
+  restarts: number;
+  maxRestarts: number;
+  /** When the next restart is due (ms since the epoch), or null. */
+  nextRestartAt: number | null;
+  /** True after too many restarts in a minute: the shell stopped trying. */
+  gaveUp: boolean;
+  lastCrash: { at: number; detail: string; fatal: string | null; stderr: string[] } | null;
+}
+
+/** Where things live, for the Settings page. */
+export interface ShellPaths {
+  /** Where the recorder stores ratings (`<dir>/<game>/ratings.jsonl`). */
+  ratings: string;
+  /** True when that is the checkout's datasets folder (passed to the recorder), false for the recorder's default. */
+  ratingsInCheckout: boolean;
+  profiles: string | null;
 }
 
 /** The main process's connection to the recorder's /events stream. */
@@ -101,6 +124,8 @@ export interface CandidateView {
   rating: Rating;
   /** True once the recorder acknowledged the rating (stored behind its retention rules); false while it lives only in the shell's memory. */
   ratingStored: boolean;
+  /** Why the recorder did not store the rating (its ack's message), when it refused. */
+  ratingNote: string | null;
 }
 
 /** A moment drawn on the timeline: a game event, a profile detection or a lifecycle change. */
@@ -182,6 +207,9 @@ export interface LookbackApi {
   restartRecorder(): Promise<RecorderState>;
   getLog(): Promise<string[]>;
   onLog(listener: (line: string) => void): () => void;
+  getSupervision(): Promise<SupervisionState>;
+  onSupervision(listener: (state: SupervisionState) => void): () => void;
+  getPaths(): Promise<ShellPaths>;
   getStream(): Promise<StreamState>;
   onStream(listener: (state: StreamState) => void): () => void;
   /** The viewer's ingest state, for the overview. */
