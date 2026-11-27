@@ -1,0 +1,90 @@
+{
+  // Arena fighting: combos, special moves and awakenings.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.jujutsu-shenanigans",
+  "displayName": "Jujutsu Shenanigans",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["fighting", "pvp"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "jjs_awakening",
+      "x": 0.3,
+      "y": 0.8,
+      "w": 0.4,
+      "h": 0.06,
+      "purpose": "Awakening meter above the hotbar."
+    }
+  ],
+  "disable": [
+    "impact",
+    "action_burst"
+  ],
+  "events": [
+    {
+      "name": "big_move",
+      "weight": 0.9,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1500,
+      "when": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.1
+        },
+        {
+          "signal": "motion.coverage",
+          "above": 0.5
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 6000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "awakening",
+      "weight": 1.5,
+      "baseConfidence": 0.45,
+      "cooldownMs": 30000,
+      "when": [
+        {
+          "signal": "region.jjs_awakening.activity",
+          "rise": 0.1
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.08,
+          "withinMs": 500,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 5000,
+        "postMs": 8000
+      }
+    }
+  ],
+  "composites": [
+    {
+      "name": "combo",
+      "of": "big_move",
+      "atLeast": 3,
+      "withinMs": 5000,
+      "weight": 2.5
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+// Lobby or waiting area: the experience's combat rules are switched off, the Roblox-wide ones stay.
+{
+  "id": "roblox.bedwars.lobby",
+  "displayName": "BedWars: lobby",
+  "version": 1,
+  "parent": "roblox.bedwars",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage with lookback-testbench fingerprint."
+  },
+  "disable": [
+    "elimination",
+    "bed_destroyed",
+    "multikill"
+  ]
+}

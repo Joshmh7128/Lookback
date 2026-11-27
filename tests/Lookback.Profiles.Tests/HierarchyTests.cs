@@ -217,4 +217,29 @@ public class HierarchyTests
         Assert.True(closed.Count > 1);
         Assert.All(closed, c => Assert.True(c.EndQpc - c.StartQpc <= 10_000));
     }
+
+    [Fact]
+    public void GameIdHintsPickTheExperienceThatListsTheId()
+    {
+        GameProfile game = Game() with
+        {
+            IdHints = [new IdHint { Source = HintSource.Log, Regex = @"universeid:(\d+)", Kind = "roblox.universe" }],
+        };
+        GameProfile red = Sub("red") with { Detect = new DetectSpec(), Ids = new Dictionary<string, IReadOnlyList<string>> { ["roblox.universe"] = ["555"] } };
+        var catalog = new ProfileCatalog([game, red, Sub("blue") with { Detect = new DetectSpec() }]);
+        Assert.Same(red, catalog.FindById("roblox.universe", "555"));
+        Assert.Null(catalog.FindById("roblox.universe", "556"));
+
+        var tracker = new ProfileTracker(catalog, "game", 1000, DetectionMethod.Executable);
+        ProfileDetected d = tracker.ApplyHints(new DetectionContext { LogLines = ["Report game_join_loadtime: placeid:1, universeid:555"] }, 0)!;
+        Assert.Equal("game.red", d.ProfileId);
+        Assert.Contains("555", d.Evidence[0], StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnIdBelongsToOneProfile()
+    {
+        var ids = new Dictionary<string, IReadOnlyList<string>> { ["roblox.universe"] = ["1"] };
+        Assert.Throws<InvalidDataException>(() => new ProfileCatalog([Game(), Sub("red") with { Ids = ids }, Sub("blue") with { Ids = ids }]));
+    }
 }

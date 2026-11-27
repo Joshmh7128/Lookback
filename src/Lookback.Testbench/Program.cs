@@ -14,7 +14,8 @@ const string Usage = """
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>]
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
-      lookback-testbench profiles
+      lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
+      lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
       lookback-testbench report <session-path-without-extension> [--video <file>]
 
     Profiles:
@@ -44,7 +45,8 @@ try
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
         ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
-        ["profiles"] => PrintProfiles(),
+        ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
+        ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
         _ => PrintUsage(),
     };
@@ -183,9 +185,27 @@ static async Task<int> FingerprintAsync(string manifest, Dictionary<string, stri
     return 0;
 }
 
-static int PrintProfiles()
+static int PrintProfiles(Dictionary<string, string> flags)
 {
     Lookback.Profiles.Model.ProfileCatalog catalog = Lookback.Profiles.Model.ProfileCatalog.BuiltIn;
+    if (flags.TryGetValue("id", out string? id))
+    {
+        string[] kv = id.Split('=', 2);
+        var hit = kv.Length == 2 ? catalog.FindById(kv[0], kv[1]) : null;
+        Console.WriteLine(hit is null ? $"no profile lists {id}" : $"{hit.Id}  {hit.DisplayName}  [{string.Join(", ", hit.Tags)}]");
+        return hit is null ? 1 : 0;
+    }
+
+    if (flags.TryGetValue("tag", out string? tag))
+    {
+        foreach (var p in catalog.Tagged(tag))
+        {
+            Console.WriteLine($"{p.Id,-40} {p.DisplayName}");
+        }
+
+        return 0;
+    }
+
     foreach (var game in catalog.All.Where(p => string.IsNullOrEmpty(p.Parent)).OrderBy(p => p.Id, StringComparer.Ordinal))
     {
         foreach (var p in catalog.Subtree(game.Id))
@@ -200,6 +220,24 @@ static int PrintProfiles()
     }
 
     return 0;
+}
+
+static async Task<int> RobloxIdsAsync(Dictionary<string, string> flags, CancellationToken ct)
+{
+    using var http = new HttpClient();
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("lookback-testbench/1.0");
+    bool write = flags.GetValueOrDefault("write") is "true" or "yes";
+    var results = await Lookback.Testbench.Catalog.RobloxIdResolver.RunAsync(flags.GetValueOrDefault("dir", Path.Combine("profiles", "roblox")), write, http, ct);
+    Console.WriteLine($"{"profile",-42} {"universe",-12} {"root place",-12} {"playing",9}  name on Roblox (how found)");
+    foreach (var r in results)
+    {
+        string flag = r.Problem is not null ? $"  PROBLEM: {r.Problem}" : r.NameMatches ? "" : "  CHECK: name differs";
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"{r.Profile,-42} {r.UniverseId?.ToString(CultureInfo.InvariantCulture) ?? "-",-12} {r.RootPlaceId?.ToString(CultureInfo.InvariantCulture) ?? "-",-12} {r.Playing,9}  {r.RobloxName} ({r.Source}){flag}"));
+    }
+
+    Console.WriteLine(write ? "\nIds written for every profile whose name matched." : "\nDry run. Add --write true to write ids where the name matches.");
+    return results.Any(r => r.Problem is not null) ? 1 : 0;
 }
 
 static IReadOnlyList<string> Extra(Dictionary<string, string> flags) =>

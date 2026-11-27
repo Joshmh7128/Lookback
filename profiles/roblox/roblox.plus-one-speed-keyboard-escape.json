@@ -1,0 +1,72 @@
+{
+  // Obstacle course where speed grows every second.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.plus-one-speed-keyboard-escape",
+  "displayName": "+1 Speed Keyboard Escape",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["obby", "speed"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "speed_counter",
+      "x": 0.4,
+      "y": 0.85,
+      "w": 0.2,
+      "h": 0.06,
+      "purpose": "Speed counter."
+    }
+  ],
+  "disable": [
+    "centre_popup"
+  ],
+  "events": [
+    {
+      "name": "stage_complete",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        {
+          "signal": "region.centre.activity",
+          "rise": 0.08
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 8000,
+        "postMs": 2000
+      }
+    },
+    {
+      "name": "high_speed_run",
+      "weight": 0.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 10000,
+      "when": [
+        {
+          "signal": "motion.coverage",
+          "above": 0.7
+        },
+        {
+          "signal": "motion.energy",
+          "above": 0.1
+        }
+      ],
+      "clip": {
+        "preMs": 8000,
+        "postMs": 4000
+      }
+    }
+  ]
+}

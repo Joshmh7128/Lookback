@@ -1,0 +1,100 @@
+{
+  // Arena duels, first to a set number of round wins.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.rivals",
+  "displayName": "RIVALS",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["shooter", "pvp", "duels"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "rivals_score",
+      "x": 0.38,
+      "y": 0.0,
+      "w": 0.24,
+      "h": 0.08,
+      "purpose": "Round score at the top."
+    },
+    {
+      "name": "rivals_notice",
+      "x": 0.38,
+      "y": 0.6,
+      "w": 0.24,
+      "h": 0.08,
+      "purpose": "Elimination notice below the crosshair."
+    }
+  ],
+  "disable": [
+    "centre_popup"
+  ],
+  "events": [
+    {
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 300,
+      "whenAny": [
+        {
+          "signal": "region.rivals_notice.activity",
+          "rise": 0.05
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.25
+        }
+      ],
+      "clip": {
+        "preMs": 6000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "round_won",
+      "weight": 0.9,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        {
+          "signal": "region.rivals_score.activity",
+          "rise": 0.06
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 10000,
+        "postMs": 3000
+      }
+    }
+  ],
+  "composites": [
+    {
+      "name": "multikill",
+      "of": "elimination",
+      "atLeast": 2,
+      "withinMs": 3000,
+      "weight": 2.5
+    },
+    {
+      "name": "clutch",
+      "of": "elimination",
+      "atLeast": 3,
+      "withinMs": 8000,
+      "weight": 4
+    }
+  ]
+}

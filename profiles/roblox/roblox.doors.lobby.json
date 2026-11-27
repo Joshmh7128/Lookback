@@ -1,0 +1,15 @@
+{
+  "id": "roblox.doors.lobby",
+  "displayName": "DOORS: lobby",
+  "version": 1,
+  "parent": "roblox.doors",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage."
+  },
+  "disable": [
+    "jumpscare",
+    "death"
+  ]
+}

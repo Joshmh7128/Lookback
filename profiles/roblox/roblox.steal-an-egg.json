@@ -1,0 +1,69 @@
+{
+  // Collect eggs and steal them from other players.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.steal-an-egg",
+  "displayName": "Steal an Egg",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["tycoon", "pvp", "pets"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "egg_alert",
+      "x": 0.25,
+      "y": 0.08,
+      "w": 0.5,
+      "h": 0.1,
+      "purpose": "Alerts across the top."
+    }
+  ],
+  "events": [
+    {
+      "name": "steal_alert",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 3000,
+      "when": [
+        {
+          "signal": "region.egg_alert.activity",
+          "rise": 0.06
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 300,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 10000,
+        "postMs": 5000
+      }
+    },
+    {
+      "name": "egg_hatch",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.1
+        },
+        {
+          "signal": "region.centre.activity",
+          "rise": 0.08
+        }
+      ],
+      "clip": {
+        "preMs": 5000,
+        "postMs": 5000
+      }
+    }
+  ]
+}

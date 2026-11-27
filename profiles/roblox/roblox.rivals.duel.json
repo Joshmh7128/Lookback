@@ -1,0 +1,13 @@
+// Duel: everything from the experience applies.
+{
+  "id": "roblox.rivals.duel",
+  "displayName": "RIVALS: duel",
+  "version": 1,
+  "parent": "roblox.rivals",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage with lookback-testbench fingerprint."
+  },
+  "events": []
+}

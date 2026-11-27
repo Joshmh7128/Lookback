@@ -183,6 +183,34 @@ public static class GameProfileLoader
             problems.Add("detect: minScore must be in (0, 1], windowSeconds positive, holdSeconds not negative.");
         }
 
+        if (!root && p.IdHints.Count > 0)
+        {
+            problems.Add("only a game has idHints; children list their ids.");
+        }
+
+        foreach (IdHint h in p.IdHints)
+        {
+            try
+            {
+                if (new System.Text.RegularExpressions.Regex(h.Regex, System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(100)).GetGroupNumbers().Length < 2)
+                {
+                    problems.Add($"id hint '{h.Regex}' needs a capture group for the id.");
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                problems.Add($"id hint '{h.Regex}' is not a valid regular expression: {ex.Message}");
+            }
+        }
+
+        foreach ((string kind, IReadOnlyList<string> values) in p.Ids)
+        {
+            if (values.Any(v => v.Length == 0 || !v.All(char.IsAsciiDigit)) && kind.StartsWith("roblox.", StringComparison.Ordinal))
+            {
+                problems.Add($"ids.{kind}: Roblox ids are numbers.");
+            }
+        }
+
         foreach (DetectHint h in p.Detect.Hints)
         {
             try

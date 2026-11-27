@@ -1,0 +1,80 @@
+{
+  // Fishing: a reel minigame, then a catch card. Rare catches are the clips.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  "id": "roblox.fisch",
+  "displayName": "Fisch",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["fishing", "collection"],
+  "ids": {},
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "fisch_reel",
+      "x": 0.3,
+      "y": 0.78,
+      "w": 0.4,
+      "h": 0.08,
+      "purpose": "Reel minigame bar."
+    },
+    {
+      "name": "fisch_catch",
+      "x": 0.3,
+      "y": 0.25,
+      "w": 0.4,
+      "h": 0.35,
+      "purpose": "Catch card with the fish and its rarity."
+    }
+  ],
+  "disable": [
+    "centre_popup"
+  ],
+  "events": [
+    {
+      "name": "catch",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 4000,
+      "when": [
+        {
+          "signal": "region.fisch_catch.activity",
+          "rise": 0.08
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 400,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 15000,
+        "postMs": 4000
+      }
+    },
+    {
+      "name": "rare_catch",
+      "weight": 1.5,
+      "baseConfidence": 0.45,
+      "cooldownMs": 4000,
+      "when": [
+        {
+          "signal": "region.fisch_catch.activity",
+          "rise": 0.08
+        },
+        {
+          "signal": "region.fisch_catch.saturation",
+          "above": 0.45
+        }
+      ],
+      "clip": {
+        "preMs": 15000,
+        "postMs": 5000
+      }
+    }
+  ]
+}
