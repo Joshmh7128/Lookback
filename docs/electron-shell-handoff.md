@@ -24,3 +24,8 @@ Status: paused mid-scaffold (WIP, not built or tested yet). Code lives in `app/`
 3. Renderer: overview, live profiler, datasets, clips (candidates/QA/saved from the stream), settings; viewer page with YouTube IFrame API / Twitch Embed.
 4. Unit tests in `src/test/` (handshake, embeds, settings, static paths, ingest encoding, recorder with a fake child).
 5. CI job for `app/`, wiki page, then build and smoke-test on AETHER and open the PR.
+
+## Update from the calibration thread (branch claude/project-thread-cj6xs2)
+- The recorder serves `/ingest` and `/calibrate` by default (`Recorder:OfficialPlayer=true`). The ready JSON's `ingest` URL has no token: the shell appends `?token=` (as `ingest.ts` already does). `calibrate` gets `#token=` appended.
+- Receiver: `src/Lookback.Calibration/CalibrationHost.cs`; sample client: `tests/Lookback.Calibration.Tests/IngestTests.cs`.
+- Pass `--Recorder:ProfilesDirectory=<checkout>/profiles` from the shell so the panel's Save works.
