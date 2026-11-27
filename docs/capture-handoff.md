@@ -11,8 +11,8 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Annex B → length-prefixed, `avcC` / `hvcC` / AAC ASC from in-band parameter sets | `Lookback.Replay` | **Done**, tested |
 | fMP4 fragmenter (init segment + `moof`/`mdat`) and fragment reader | `Lookback.Replay` | **Done**, tested against ffprobe/ffmpeg (H.264, HEVC, AAC) |
 | Clip writer (ring → fMP4 clip, starts on a keyframe, no re-encode) | `Lookback.Replay` | **Done**, tested |
-| Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins) | `Lookback.Replay` | Next |
-| Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | Next |
+| Segment store (2 s `.m4s`, `session.json`, budget, oldest-first eviction, pins, clip read-back from disk) | `Lookback.Replay` | **Done**, tested |
+| Cache sweeper (unused segments deleted 24 h after session end, swept at launch) | `Lookback.Replay` | **Done**, tested |
 | Governor policy (probe → ring/disk budget + quality tier, hysteresis) | `Lookback.Governor` | Next |
 | Audio sample clock (WASAPI device position → QPC, drift correction) | `Lookback.Media` | Next |
 | Live analyzer (push frames/audio from capture threads into the signal banks) | `Lookback.Signals` | Next |
