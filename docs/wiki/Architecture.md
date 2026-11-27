@@ -23,6 +23,8 @@ flowchart LR
         CAP[Capture backends<br/>WGC · DXGI dup · hook · FileSource]
         GPU[GPU downscale + convert<br/>M3]
         ENC[Hardware encode<br/>M3]
+        AUD[WASAPI loopback + mic<br/>M3]
+        AAC[AAC encode<br/>M3]
         RING[RAM replay ring<br/>M3]
         DISK[Disk session store<br/>M3]
         GOV[Resource governor<br/>M3]
@@ -52,6 +54,8 @@ flowchart LR
     G -- present --> H -- shared texture + fence --> CAP
     G -. WGC window capture .-> CAP
     DET --> CAP --> GPU --> ENC --> RING --> DISK
+    AUD --> AAC --> RING
+    AUD -- 10 ms hops --> AS
     GOV -. budgets .-> RING & DISK & ENC
     GPU -- small frames --> VS
     VS & AS & IS --> BUS
@@ -133,6 +137,14 @@ sequenceDiagram
 Detection reads only what the OS shows about other programs: no memory
 reads, no injection, no hooks. Its profile match carries the capture policy
 the recorder must honour. See [Game Detection](Game-Detection).
+
+## Live audio (M3)
+
+WASAPI loopback (and the mic) is stamped in QPC through `SampleClock`,
+resampled to 48 kHz stereo at the measured device rate, then encoded to AAC
+into the replay ring and cut into 10 ms hops for the audio signals.
+Official-player sessions never get system loopback or the encoder. Details
+in [Live Capture](Live-Capture#live-audio).
 
 ## Recording tiers (M3)
 

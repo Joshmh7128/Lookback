@@ -48,7 +48,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Done: [game identifier](Game-Detection), [Clipper v1](Clipper) (curve, peaks, fusion with profile events, QA gates), desktop shell with library, timeline, 1–5 star rating with previews (in memory until the recorder stores them) and the official-player viewer |
-| M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
+| M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video and audio encode, ring, store, governor policy and probe done, no-deadlock encode path; recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |
 | M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |

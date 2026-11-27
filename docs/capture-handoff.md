@@ -21,8 +21,8 @@ design, what has landed and what's next. Update it with every PR on this work.
 | GPU downscale to 384x216 BGRA (compute shader, letterboxed like FileSource; SDR/scRGB/PQ) and BGRA→NV12 (D3D11 video processor) | `Lookback.Capture` | Downscale **done**, WARP-tested. `Nv12Converter` **done**, tested on AETHER through the encoder and ticker tests (WARP has no video processor) |
 | Media Foundation hardware encode (async MFT, NVENC/AMF/QSV, software fallback) | `Lookback.Encode` (Windows) | `MfVideoEncoder` **done**, verified on AETHER: NVENC H.264 and HEVC, software H.264 on the RTX and on WARP, all round-trip through the ring and muxer (ffprobe: every frame, keyframe every 2 s, no B-frames, no decode errors) |
 | CFR encode clock and bench | `Lookback.Encode` (`EncodeTicker`), `Lookback.Capture.Cli` | **Done**, tested. Live on AETHER: WGC 144 fps in, HEVC 1080p60 out at 60.0 fps, 0 skipped, 0 busy (`lookback-capture --encode 8 --out clip.mp4`) |
-| AAC encoder MFT | `Lookback.Encode` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
-| WASAPI loopback, process loopback (Win10 20348+ only), mic track | `Lookback.Audio` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
+| AAC encode (`MfAacEncoder`: Microsoft AAC MFT, sync, 48 kHz stereo, float→PCM16, 128/160/192 kbps, raw access units, ASC from `MF_MT_USER_DATA`, sample-count timeline with gap fill and trim) | `Lookback.Encode` (Windows) | **Done**, tested on AETHER and the Windows CI runner (ring → `ClipWriter` → ffprobe `aac,48000,2`, decoded onset within 0.1 ms of its QPC, 0 B per call) |
+| WASAPI endpoint loopback (silence keep-alive), process loopback (build 20348+, runtime check, falls back to the endpoint where allowed), mic track; QPC via `SampleClock`, drift-following resample to 48 kHz stereo, hops through `LiveAudioAssembler`, re-open on default-device change; `AudioCapturePolicy` (official player: never system loopback, encoder or mic); `lookback-capture audio` | `Lookback.Audio`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (Realtek loopback hears a rendered 997 Hz tone, clock fit within 2 ppm, 0 B per packet, Yeti mic streams, re-open gap ~30 ms filled). Process loopback written, never run (needs 20348+) |
 | Recorder wiring, control commands on `/events` | `Lookback.Recorder` | Planned; contract additions to be agreed with the Electron thread first |
 | Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
 
@@ -111,9 +111,8 @@ and skips (counts) ticks that are a full period late instead of bursting.
 `lookback-capture --encode <s> --out clip.mp4` exercises it live. See the
 wiki page `Live-Capture.md` for the path, measurements and tests.
 
-Steps 3–5 are running in parallel sessions on their own branches
-(`claude/capture-audio`: steps 3 and 4; step 5 landed from `claude/governor-probe`).
-Rebase on main before merging; they touch this file's rows too.
+Steps 3–5 have landed: audio (steps 3 and 4, `claude/capture-audio`) and the
+governor probe (step 5, `claude/governor-probe`).
 
 1. ~~Encoder test on Windows~~ **done** (`tests/Lookback.Capture.Tests/EncoderTests.cs`,
    every display adapter: NVENC and AMF on AETHER).
@@ -127,9 +126,35 @@ Rebase on main before merging; they touch this file's rows too.
    Still open: AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per
    busy tick (force IDRs at GOP-aligned ticks).
 2. ~~CFR ticker and `--encode`~~ **done** (`EncodeTicker`, `EncodeBench`).
-3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
-4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
-   `SampleClock` and `LiveAudioAssembler`.
+3. ~~AAC encoder MFT~~ **Done** (`MfAacEncoder`). The Microsoft encoder
+   emits no priming frame (packet k decodes to samples k·1024 onward), so
+   `EncoderDelay` is 0. It anchors on its first input's QPC and keeps the
+   sample count on the clock: silence before late input, early input
+   trimmed (20 ms tolerance). ProcessInput/ProcessOutput are raw vtable
+   calls, so a call allocates 0 B.
+4. ~~WASAPI loopback + mic~~ **Done** (`Lookback.Audio`: `WasapiSource`,
+   `AudioCapturePolicy`; bench: `lookback-capture audio`). Notes for whoever
+   wires it:
+   - Loopback `u64QPCPosition` is the engine's presentation time, about one
+     device period (10.5 ms on AETHER) after the packet is readable. It is
+     kept as is: it marks when the sound plays, like a frame's present time.
+   - With nothing playing, endpoint loopback delivers no packets at all, so
+     the source plays silence on the endpoint (`KeepLoopbackAlive`). Process
+     loopback has no such stream; the assembler and the encoder fill its
+     gaps when the next packet comes.
+   - The resampler follows `SampleClock.MeasuredRate` once the fit has 5 s,
+     so 48 kHz output tracks QPC instead of drifting into periodic drops.
+   - A default-device change re-opens on the new device (its format may
+     differ); the timeline carries on and the gap is filled. Tested by
+     driving the notification hook, not by switching AETHER's real default.
+   - Process loopback (`ActivateAudioInterfaceAsync`) is written to the docs
+     but has never run: AETHER is 19045. Its test runs on 20348+ with an
+     audio device, which CI runners don't have.
+   - Wiring: `AudioCapturePolicy.Decide(started, OsBuild, gamePid, mic)`
+     gives the plan; then `WasapiSource.Start(AudioSourceOptions.ForGame(plan,
+     pid), plan.Encode ? aac.Encode : null, b => analyzer.SubmitAudio(b))`.
+     Game audio is AAC track "game"; the mic is a second track "mic", and
+     mic hops are not analysed.
 5. ~~Windows probe for the governor~~ **Done.** `WindowsMachineProbe.Run(storePath)`
    then `MachineProfileMapper.Map(probe, captureTarget.ToProbeTarget())` gives
    the `MachineProfile` for `GovernorPolicy.Decide`. The recorder should probe

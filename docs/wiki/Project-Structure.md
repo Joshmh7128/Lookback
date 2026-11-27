@@ -30,6 +30,7 @@ src/
   Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
+  Lookback.Audio/             WASAPI loopback + mic capture (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
   Lookback.Detection/         game detection: matcher, debounced lifecycle, bus runner
   Lookback.Detection.Windows/ process + window probe, capture target for a game (Windows)
@@ -50,6 +51,7 @@ tests/
   Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
   Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
   Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
+  Lookback.Audio.Tests/       Windows: AAC round trip, WASAPI loopback and mic (skip elsewhere)
   Lookback.Testbench.Tests/
   Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
 ml/                           Python: train, calibrate, evaluate, export the learned scorer
@@ -114,8 +116,9 @@ flowchart TB
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
 | `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
-| `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
-| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
+| `Lookback.Encode` | `MfVideoEncoder.cs`, `MfAacEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
+| `Lookback.Audio` | `WasapiSource.cs`, `AudioCapturePolicy.cs`, `StereoResampler.cs`, `PcmFormat.cs`, `RenderStream.cs`, `Interop/*` | [Live audio](Live-Capture#live-audio) on Windows: what a session may capture, WASAPI capture stamped in QPC, 48 kHz stereo for the AAC encoder (`Lookback.Encode`) and hops for the live analyzer |
+| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `AudioBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `audio` captures live audio on its own |
 | `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
 | `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
 | `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
@@ -123,9 +126,8 @@ flowchart TB
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Audio`, `Lookback.Quality`,
-`Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
-`Lookback.Capture/Gpu`.)
+`Lookback.Quality`, `Lookback.Memory`, `native/hook`. (`Lookback.Gpu` folded into
+`Lookback.Capture/Gpu`; `app/` and `ml/` exist now.)
 
 ```mermaid
 flowchart TB

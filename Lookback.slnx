@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Lookback.Audio/Lookback.Audio.csproj" />
     <Project Path="src/Lookback.Capture.Cli/Lookback.Capture.Cli.csproj" />
     <Project Path="src/Lookback.Encode/Lookback.Encode.csproj" />
     <Project Path="src/Lookback.Capture/Lookback.Capture.csproj" />
@@ -23,6 +24,7 @@
     <Project Path="src/Lookback.Testbench/Lookback.Testbench.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Lookback.Audio.Tests/Lookback.Audio.Tests.csproj" />
     <Project Path="tests/Lookback.Capture.Tests/Lookback.Capture.Tests.csproj" />
     <Project Path="tests/Lookback.Calibration.Tests/Lookback.Calibration.Tests.csproj" />
     <Project Path="tests/Lookback.Clipper.Tests/Lookback.Clipper.Tests.csproj" />
