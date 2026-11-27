@@ -276,11 +276,23 @@ export type EmbedSource =
 
 export type PlaybackStatus = "idle" | "loading" | "playing" | "paused" | "ended" | "error";
 
+/** Where the embedded player is in its video, as its own API says. */
+export interface PlayerPosition {
+  /** Seconds into the video. */
+  seconds: number;
+  /** Playback rate (1 is normal speed). */
+  rate: number;
+  /** False for a live channel, which cannot go back to a moment. */
+  seekable: boolean;
+}
+
 /** What the viewer page reports to the main process. */
 export interface ViewerReport {
   status: PlaybackStatus;
   /** The player's rectangle in CSS pixels of the viewer page. */
   rect: ViewBounds | null;
+  /** The player's own position, when its API is ready. */
+  position: PlayerPosition | null;
 }
 
 export interface IngestState {
@@ -306,4 +318,6 @@ export interface ViewerApi {
   onIngest(listener: (state: IngestState) => void): () => void;
   /** Shows or hides the docked calibration panel. */
   togglePanel(): void;
+  /** The recorder asked the player to go back to a moment (a replay from the calibration panel). */
+  onSeek(listener: (seconds: number) => void): () => void;
 }

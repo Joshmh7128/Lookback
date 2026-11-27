@@ -18,6 +18,7 @@
   table { width:100%; border-collapse:collapse; } td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { font-weight:600; color:var(--muted); font-size:12px; } code { font-size:12px; }
   .banner { padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); margin:8px 0; }
+  .replay { padding:1px 6px; margin-right:6px; font-size:11px; }
   .stars button { padding:2px 7px; margin-right:2px; } .stars button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .score { font-variant-numeric:tabular-nums; font-size:20px; font-weight:600; } .tiles { display:flex; gap:16px; flex-wrap:wrap; margin:6px 0 10px; }
   .tiles div { min-width:120px; } .tiles span { display:block; color:var(--muted); font-size:12px; }
@@ -80,6 +81,8 @@ ws.onmessage = ev => {
   const m = JSON.parse(ev.data);
   if (m.type === 'state') { state = m; render(); }
   else if (m.type === 'saved') { $('result').textContent = m.files.length ? `Saved: ${m.files.join(', ')}` : 'Nothing to save.'; $('result').className = 'ok'; checked.clear(); }
+  else if (m.type === 'error' && Date.now() - checkCommandAt < 3000) { $('checkSaveError').textContent = m.message; $('result').textContent = m.message; $('result').className = 'warn'; }
+  else if (m.type === 'ok' && m.what === 'replay') { $('checkSaveError').textContent = ''; }
   else if (m.type === 'ok' && m.what === 'judge') { $('checkSaveError').textContent = m.stored || !(state && state.check && state.check.saving) ? '' : (m.reason || 'The rating was not saved.'); }
   else if (m.type === 'error') { $('result').textContent = m.message; $('result').className = 'warn'; }
 };
@@ -100,6 +103,7 @@ function selection() {
   return { regions, thresholds };
 }
 $('apply').onclick = () => send({ type: 'apply', ...selection() });
+let checkCommandAt = 0;
 $('missed').onclick = () => send({ type: 'missed' });
 $('checkReset').onclick = () => send({ type: 'check-reset' });
 const pct = v => v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
@@ -132,7 +136,13 @@ function renderCheck() {
       stars.appendChild(b);
     }
     if (k.saved !== null && k.saved !== undefined) stars.appendChild(el('span', { class: k.saved ? 'ok' : 'warn', title: k.saved ? 'Saved: stars and numbers only' : 'Not saved' }, k.saved ? ' saved' : ' not saved'));
-    tr.append(el('td', { class: 'num' }, mmss(k.start)), el('td', { class: 'num' }, `${num(k.end - k.start)} s`), el('td', { class: 'num' }, num(k.score, 2)),
+    const at = el('td', { class: 'num', title: k.video != null ? 'Where it is in the video' : 'Time since the player started' }, k.video != null ? mmss(k.video) : mmss(k.start));
+    if (c.canReplay && k.video != null) {
+      const replay = el('button', { class: 'replay', title: 'Replay this moment in the player' }, '▶');
+      replay.onclick = () => { checkCommandAt = Date.now(); send({ type: 'replay', candidateId: k.id }); };
+      at.prepend(replay);
+    }
+    tr.append(at, el('td', { class: 'num' }, `${num(k.end - k.start)} s`), el('td', { class: 'num' }, num(k.score, 2)),
       el('td', { class: 'muted' }, k.reasons.join('; ')), el('td', { class: k.qa ? 'ok' : 'warn' }, k.qa ? 'ok' : 'fails'), stars);
     rows.appendChild(tr);
   }

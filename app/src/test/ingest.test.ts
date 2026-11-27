@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { encodeVideoFrame, INGEST_HEIGHT, INGEST_WIDTH, IngestSession, startMessage, VIDEO_HEADER_BYTES } from "../main/ingest";
+import { encodeVideoFrame, INGEST_HEIGHT, INGEST_WIDTH, IngestSession, parseSeek, positionMessage, startMessage, validPosition, VIDEO_HEADER_BYTES } from "../main/ingest";
 import { socketFactory } from "./fakes";
 
 test("a video frame is kind 1, int64 LE microseconds, uint16 LE width and height, then BGRA", () => {
@@ -80,4 +80,57 @@ test("a refused or broken connection reports an error with no token in it", () =
   f.sockets[0]!.fail();
   assert.equal(session.state.status, "error");
   assert.ok(!JSON.stringify(session.state).includes("SECRETTOKEN"));
+});
+
+test("a position message carries the player's own time, rate and whether it can seek", () => {
+  assert.deepEqual(JSON.parse(positionMessage(1_500_000.4, { seconds: 61.23456, rate: 1.5, seekable: true }, true)), {
+    type: "position",
+    t: 1_500_000,
+    video: 61.235,
+    rate: 1.5,
+    playing: true,
+    seekable: true,
+  });
+  assert.equal(JSON.parse(positionMessage(-3, { seconds: 0, rate: 1, seekable: false }, false)).t, 0);
+});
+
+test("positions from the page are checked before they go anywhere", () => {
+  assert.deepEqual(validPosition({ seconds: 12.5, rate: 1, seekable: false }), { seconds: 12.5, rate: 1, seekable: false });
+  for (const bad of [null, "x", {}, { seconds: -1, rate: 1, seekable: true }, { seconds: Number.NaN, rate: 1, seekable: true },
+    { seconds: 1, rate: 0, seekable: true }, { seconds: 1, rate: 99, seekable: true }, { seconds: 1, rate: 1, seekable: "yes" }]) {
+    assert.equal(validPosition(bad), null, JSON.stringify(bad));
+  }
+});
+
+test("only a well-formed seek from the recorder becomes a seek", () => {
+  assert.equal(parseSeek('{"type":"seek","seconds":42.5}'), 42.5);
+  for (const bad of ['{"type":"seek","seconds":-1}', '{"type":"seek"}', '{"type":"stop","seconds":3}', "not json", '{"type":"seek","seconds":"3"}', 7]) {
+    assert.equal(parseSeek(bad), null, String(bad));
+  }
+});
+
+test("a session sends positions while streaming and passes the recorder's seeks on", () => {
+  const f = socketFactory();
+  const session = new IngestSession("ws://127.0.0.1:5000/ingest", "TOKEN0123456789abcdef", { platform: "youtube", videoRef: "abc", profile: "" }, f.create);
+  const seeks: number[] = [];
+  session.on("seek", (s) => seeks.push(s));
+  session.open();
+  const socket = f.sockets[0]!;
+  session.sendPosition({ seconds: 5, rate: 1, seekable: true }, true);
+  assert.equal(socket.sent.length, 0); // nothing before the socket opens
+
+  socket.accept();
+  const t0 = performance.now();
+  session.sendPosition({ seconds: 5, rate: 1, seekable: true }, true, t0 + 250);
+  const p = JSON.parse(socket.sent[1] as string);
+  assert.equal(p.type, "position");
+  assert.equal(p.video, 5);
+  assert.ok(p.t >= 249_000 && p.t <= 251_000 + 50_000, `t ${p.t}`);
+
+  socket.receive('{"type":"seek","seconds":30.5}');
+  socket.receive("garbage");
+  assert.deepEqual(seeks, [30.5]);
+  session.close();
+  socket.receive('{"type":"seek","seconds":1}'); // after close: not ours any more
+  assert.deepEqual(seeks, [30.5]);
 });

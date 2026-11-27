@@ -37,8 +37,16 @@ function draw(): void {
 
 api.select({ platform: "youtube", videoId: "testpattern", startSeconds: 0 }, "");
 requestAnimationFrame(draw);
-api.report({ status: "playing", rect: rect() });
-window.setInterval(() => api.report({ status: "playing", rect: rect() }), 1000);
+// A seekable "video" whose position is the seconds since the page started (a seek moves the origin).
+let origin = performance.now();
+const position = (): { seconds: number; rate: number; seekable: boolean } => ({ seconds: (performance.now() - origin) / 1000, rate: 1, seekable: true });
+api.report({ status: "playing", rect: rect(), position: position() });
+window.setInterval(() => api.report({ status: "playing", rect: rect(), position: position() }), 1000);
+api.onSeek((seconds) => {
+  origin = performance.now() - seconds * 1000;
+  status.textContent = `playing (replayed from ${seconds.toFixed(1)} s)`;
+  api.report({ status: "playing", rect: rect(), position: position() });
+});
 status.textContent = "playing";
 api.onIngest((s: IngestState) => {
   badge.className = `ingest ${s.status}`;

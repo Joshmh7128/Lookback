@@ -186,6 +186,11 @@ function visibleCandidates(s: LibrarySessionSnapshot | undefined): CandidateView
 
 /** A 1-5 star control; clicking the current star (or ×) clears it. */
 function stars(c: CandidateView, s: LibrarySessionSnapshot, big = false): HTMLDivElement {
+  if (s.sourceKind === "official_player") {
+    // A watched video's moments are rated in the viewer's panel, where the rating is saved as numbers only.
+    return el("div", { class: `stars-note${big ? " big" : ""}`, title: "Ratings of videos you watch are saved from the viewer's calibration panel (section 4), as numbers only" }, "rate in the viewer's panel");
+  }
+
   const box = el("div", { class: `stars${big ? " big" : ""}`, role: "radiogroup", "aria-label": "Stars" });
   for (let n = 1 as Rating; n <= 5; n = (n + 1) as Rating) {
     const value = n;
@@ -352,7 +357,9 @@ function renderSelected(): void {
       $("preview-info").textContent +=
         s.sourceKind === "live_game"
           ? " · no preview yet: save the clip (S) to watch it; a live recording has no file of its own"
-          : " · no preview: open this footage in Lookback to watch its candidates";
+          : s.sourceKind === "official_player"
+            ? " · not recorded: YouTube and Twitch moments are never kept. Replay it in the viewer with ▶ in its panel (section 4), while the video is open"
+            : " · no preview: open this footage in Lookback to watch its candidates";
       return;
     }
 
@@ -384,7 +391,7 @@ document.addEventListener("keydown", (e) => {
   const at = rows.findIndex((c) => c.id === selectedCandidate);
   if (/^[0-5]$/.test(e.key) && s && at >= 0) {
     e.preventDefault();
-    rate(s.id, rows[at]!.id, Number(e.key) as Rating);
+    if (s.sourceKind !== "official_player") rate(s.id, rows[at]!.id, Number(e.key) as Rating);
   } else if ((e.key === "ArrowDown" || e.key === "j") && rows.length) {
     e.preventDefault();
     selectCandidate(rows[Math.min(rows.length - 1, at + 1)]!.id);
