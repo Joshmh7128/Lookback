@@ -14,6 +14,8 @@ automatically when `main` changes, so the wiki always matches the code.
 | Page | What it covers |
 |---|---|
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
+| [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
+| [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |
 | [Project Structure](Project-Structure) | Every folder and project, and how they depend on each other |
 | [Infrastructure](Infrastructure) | Build system, CI, runtime launch, security boundaries |
 | [Event Schema](Event-Schema) | `events.proto`: every message, field and topic |

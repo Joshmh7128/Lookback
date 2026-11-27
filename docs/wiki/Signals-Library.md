@@ -16,7 +16,7 @@ burst in the audio lanes, the onset lane and the spectrogram; the fade in
 flowchart LR
     VF[VideoFrame] --> LP[LumaPlane<br/>luma + histogram, once per frame]
     LP --> L[LumaStats] & M[Motion] & F[Flash] & S[SceneCut] & H[Hud]
-    L & M & F & S & H --> VV["one float vector<br/>(19 values)"]
+    L & M & F & S & H --> VV["one float vector<br/>(12 values, plus 4 per profile region)"]
     VV --> VP[SignalPublisher<br/>schema 1, signals.video]
 
     AB[AudioBlock] --> SP[SpectrumFrame<br/>Hann + FFT 1024, once per hop]
