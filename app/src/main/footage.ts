@@ -1,6 +1,5 @@
 import { spawn as nodeSpawn, type ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { basename } from "node:path";
 import type { FootageJob, FootageRequest, SessionView } from "../shared/api";
 import { analyzeMessage, newRequestId, type Ack } from "./control";
 import { LineSplitter } from "./handshake";
@@ -68,7 +67,7 @@ export class FootageManager extends EventEmitter<FootageEvents> {
   }
 
   async open(path: string, request: FootageRequest): Promise<FootageJob> {
-    const job: Job = { id: newRequestId(), name: basename(path), profile: request.profile || "generic", via: null, status: "starting", sessionId: null, detail: null, path, child: null, tail: [] };
+    const job: Job = { id: newRequestId(), name: fileName(path), profile: request.profile || "generic", via: null, status: "starting", sessionId: null, detail: null, path, child: null, tail: [] };
     this.jobs.unshift(job);
     this.changed();
 
@@ -189,6 +188,11 @@ export class FootageManager extends EventEmitter<FootageEvents> {
   private changed(): void {
     this.emit("changed", this.list);
   }
+}
+
+/** The file name of a Windows or POSIX path (the shell may show a path from either). */
+export function fileName(path: string): string {
+  return path.split(/[\\/]/).pop() || path;
 }
 
 function publicJob(j: Job): FootageJob {

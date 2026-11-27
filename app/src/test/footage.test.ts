@@ -5,7 +5,7 @@ import { test } from "node:test";
 import type { ChildProcess } from "node:child_process";
 import type { SessionView } from "../shared/api";
 import type { Ack } from "../main/control";
-import { FALLBACK_SPEED, FootageManager, type FootageDeps } from "../main/footage";
+import { FALLBACK_SPEED, fileName, FootageManager, type FootageDeps } from "../main/footage";
 import type { Command } from "../main/locate";
 
 class FakeChild extends EventEmitter {
@@ -125,4 +125,10 @@ test("each session is linked to one job only; stopAll kills running analyses", a
   assert.deepEqual(ids, ["a", "b"]);
   t.manager.stopAll();
   assert.ok(t.children.every((c) => c.killed));
+});
+
+test("file names come from Windows and POSIX paths alike", () => {
+  assert.equal(fileName("D:\\videos\\my match.mp4"), "my match.mp4");
+  assert.equal(fileName("/home/me/videos/match.mp4"), "match.mp4");
+  assert.equal(fileName("match.mp4"), "match.mp4");
 });
