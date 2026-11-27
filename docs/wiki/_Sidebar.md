@@ -16,4 +16,5 @@
 - [Signals Library](Signals-Library)
 - [Game Profiles](Game-Profiles)
 - [Testbench](Testbench)
+- [Live Profiler](Live-Profiler)
 - [Testing](Testing)

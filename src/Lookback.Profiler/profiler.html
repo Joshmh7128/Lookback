@@ -258,7 +258,8 @@
     const t = p.atQpc !== undefined ? sec(s, p.atQpc) : sec(s, e.qpc);
     const l = lane(s.gameLanes, name, name, "game");
     const hit = { t, color: colorFor(name), conf: p.confidence };
-    if (p.windowStartQpc !== undefined && p.windowEndQpc !== undefined && s.freq) { hit.t0 = sec(s, p.windowStartQpc); hit.t1 = sec(s, p.windowEndQpc); }
+    // proto3 JSON omits zero values, so a window starting at the session's first tick has no start field.
+    if (p.windowEndQpc !== undefined && s.freq) { hit.t0 = sec(s, p.windowStartQpc || 0); hit.t1 = sec(s, p.windowEndQpc); }
     l.hits.push(hit); trim(l.hits, t); l.count++; l.lastWall = now(); l.lastT = t;
     l.detail = p.confidence !== undefined ? "conf " + num(p.confidence).toFixed(2) : "";
     s.fired++;
@@ -399,6 +400,8 @@
         const v = view ? view.series[x.c.idx].last() : NaN;
         if (!(v > 0)) all = false;
         if (!isFinite(v)) { x.v.textContent = "–"; x.fill.style.width = "0"; continue; }
+        // Profiles write -1e9 when a condition's signal is missing from the stream.
+        if (v <= -1e8) { x.v.textContent = "no signal"; x.fill.style.width = "0"; continue; }
         x.c.scale = Math.max(x.c.scale * 0.995, Math.abs(v));
         const frac = Math.min(1, Math.abs(v) / x.c.scale) * 50;
         x.fill.style.left = v >= 0 ? "50%" : (50 - frac) + "%";
@@ -469,7 +472,8 @@
       for (const hit of l.hits) {
         if (hit.t < t0 - 1 || hit.t > t1 + 1) continue;
         g.fillStyle = hit.color;
-        if (hit.t0 !== undefined) { g.globalAlpha = .28; g.fillRect(X(hit.t0), y + rowH * .25, Math.max(2, X(hit.t1) - X(hit.t0)), rowH * .5); g.globalAlpha = 1; }
+        // The suggested clip window, as a thin strip along the bottom of the lane.
+        if (hit.t0 !== undefined) { g.globalAlpha = .45; g.fillRect(X(hit.t0), y + rowH - 6, Math.max(2, X(hit.t1) - X(hit.t0)), 3); g.globalAlpha = 1; }
         const x = X(hit.t), age = wall - (l.lastWall - (l.lastT - hit.t));
         g.fillRect(x - 1.5, y + 3, 3, rowH - 6);
         if (age < 0.6 && hit === l.hits[l.hits.length - 1]) { g.globalAlpha = 1 - age / 0.6; g.beginPath(); g.arc(x, y + rowH / 2, 6 + 10 * age, 0, 7); g.fill(); g.globalAlpha = 1; }
@@ -524,8 +528,8 @@
           if (f.t1 < t0) continue;
           const x0 = X(f.t), x1 = Math.max(x0 + 1, X(f.t1)), bh = r.h / f.f.length;
           for (let b = 0; b < f.f.length; b++) {
-            const q = (f.f[b] - lo) / rng;   // dark violet (quiet) to bright amber (loud)
-            g.fillStyle = "hsl(" + (275 - 230 * q) + " 80% " + (4 + 62 * q * q) + "%)";
+            const q = (f.f[b] - lo) / rng;   // near black (quiet) to bright amber (loud)
+            g.fillStyle = "hsl(" + (20 + 30 * q) + " 90% " + (3 + 60 * q * q) + "%)";
             g.fillRect(x0, y + r.h - (b + 1) * bh, x1 - x0 + .5, bh + .5);
           }
         }

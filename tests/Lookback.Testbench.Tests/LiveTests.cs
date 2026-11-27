@@ -56,7 +56,7 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
         string? url = null;
         var announced = new TaskCompletionSource();
         Task<LiveResult> run = LiveRunner.RunAsync(
-            new LiveOptions { File = fixture.File, Game = "fixture-game", Speed = 6, Token = "T0KEN" },
+            new LiveOptions { File = fixture.File, Game = "fixture-game", Profile = "generic", Speed = 6, Token = "T0KEN" },
             line =>
             {
                 if (line.StartsWith("profiler ", StringComparison.Ordinal))
@@ -75,6 +75,7 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
         await ws.ConnectAsync(new Uri($"ws://{page.Authority}/events?token=T0KEN"), ct);
 
         var kinds = new List<string>();
+        var topics = new List<string>();
         var sw = System.Diagnostics.Stopwatch.StartNew();
         byte[] buffer = new byte[1 << 16];
         while (!kinds.Contains("sessionEnded"))
@@ -86,6 +87,7 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
                 Assert.Equal("fixture-game", started.GetProperty("gameProfile").GetString());
             }
 
+            topics.Add(doc.RootElement.GetProperty("topic").GetString()!);
             kinds.Add(doc.RootElement.EnumerateObject().Select(p => p.Name).Last(n => n is not ("qpc" or "sessionId" or "topic" or "sourceId" or "seq")));
         }
 
@@ -93,8 +95,9 @@ public class LiveTests(FootageFixture fixture) : IClassFixture<FootageFixture>
         LiveResult result = await run;
 
         Assert.Equal("sessionStarted", kinds[0]);
-        Assert.Equal(2, kinds.Count(k => k == "signalSchema"));
-        Assert.InRange(kinds.Count(k => k == "signalFrame"), 380, 420); // 90 video frames and ~300 audio hops
+        Assert.Equal(3, kinds.Count(k => k == "signalSchema"));   // video, audio, and the profile's rules
+        Assert.Contains("signals.rules", topics);                 // the profile ran live, in step with the clip
+        Assert.InRange(topics.Count(t => t is "signals.video" or "signals.audio") - 2, 380, 420); // 90 video frames and ~300 audio hops
         Assert.Equal(result.Released, kinds.Count);
         // 3 s of footage at 6x is paced over about half a second, not dumped at once.
         Assert.True(took > TimeSpan.FromMilliseconds(350), $"took {took}");

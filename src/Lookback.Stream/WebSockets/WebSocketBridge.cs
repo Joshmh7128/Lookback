@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.WebSockets;
 using System.Security.Cryptography;
@@ -69,6 +70,7 @@ public sealed record BridgePage(string Path, string Html);
 /// </summary>
 public sealed class WebSocketBridge : IAsyncDisposable
 {
+    private static readonly TimeSpan ShutdownGrace = TimeSpan.FromSeconds(2);
     private static readonly JsonFormatter Json = new(JsonFormatter.Settings.Default.WithFormatDefaultValues(false));
 
     private readonly IEventBus _bus;
@@ -78,6 +80,7 @@ public sealed class WebSocketBridge : IAsyncDisposable
     private readonly HashSet<string> _origins;
     private int _clients;
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly ConcurrentDictionary<IEventSubscription, byte> _open = new();
 
     public WebSocketBridge(IEventBus bus, WebSocketBridgeOptions? options = null)
     {
@@ -196,6 +199,7 @@ public sealed class WebSocketBridge : IAsyncDisposable
 
         using WebSocket socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
         using IEventSubscription sub = _bus.Subscribe(_options.TopicPattern);
+        _open.TryAdd(sub, 0);
         using var closed = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, _shutdown.Token);
         CancellationToken ct = closed.Token;
         Interlocked.Increment(ref _clients);
@@ -241,6 +245,7 @@ public sealed class WebSocketBridge : IAsyncDisposable
         }
 
         await receive.ConfigureAwait(false);
+        _open.TryRemove(sub, out _);
         Interlocked.Decrement(ref _clients);
     }
 
@@ -274,10 +279,18 @@ public sealed class WebSocketBridge : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        // End open sockets first: the server otherwise waits for clients to hang up.
+        // Finish open sockets first; the server otherwise waits for clients to
+        // hang up. Completing each subscription lets its send loop deliver what
+        // is already queued and close normally; a client that stops reading is
+        // cut off after a short grace period.
+        foreach (IEventSubscription sub in _open.Keys)
+        {
+            sub.Dispose();
+        }
+
         if (!_shutdown.IsCancellationRequested)
         {
-            await _shutdown.CancelAsync().ConfigureAwait(false);
+            _shutdown.CancelAfter(ShutdownGrace);
         }
 
         if (_app is not null)

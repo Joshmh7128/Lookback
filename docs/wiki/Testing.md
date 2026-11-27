@@ -36,6 +36,13 @@ xUnit v3 on Microsoft.Testing.Platform. Run everything with
 | `WebSocketBridgeTests.cs` | `StreamsJsonToAClientWithTheToken` | A client with the token receives proto3 JSON |
 | | `RejectsMissingToken` | No token, no connection |
 | | `RejectsForeignBrowserOrigin` | A page from another origin is refused even with the token |
+| `BridgeProfilerTests.cs` | `ServesAConfiguredPageWithLockedDownHeaders` | A configured page is served with CSP (`connect-src 'self'`, `frame-ancestors 'none'`) and `nosniff` |
+| | `PageUrlCarriesTheTokenOnlyInTheFragment` | The printed link has no query string; the token is after `#` |
+| | `ServesNoPagesByDefault` | The shipping bridge returns 404 for `/profiler` |
+| | `OwnOriginIsAllowedOnlyWhenServingPages` | `http://127.0.0.1:port` and `localhost` connect only when pages are on; a foreign origin is still refused |
+| | `ALateClientGetsTheSessionAndSchemasFirst` | A client connecting after the session started receives `SessionStarted` and the schema before anything else |
+| | `SnapshotForgetsEndedSessionsAndKeepsTheLatestSchema` | A re-published schema replaces the old one; `SessionEnded` clears the session |
+| | `SnapshotIsBoundedToTheNewestSessions` | Past 32 sessions the oldest are evicted |
 | `SessionLogTests.cs` | `EphemeralSessionsNeverTouchDisk` | An official-player session creates no file at all |
 | | `OfficialPlayerCannotBeMarkedOwned` | Mislabelling it fails and also creates nothing |
 | | `PermissionedFootageWithoutReferenceIsRefused` | Third-party footage needs its permission reference |
@@ -116,6 +123,9 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | | `ScoringMatchesOneToOneWithinTolerance` | Two detections of one kill count as one hit and one false positive; per-entry scores add up |
 | | `ManifestParsesAndRejectsEphemeral` | Comments and trailing commas are fine; a dataset entry cannot be ephemeral |
 | | `DatasetRunScoresAgainstLabels` | A one-entry dataset labelled with the flash scores a true positive |
+| `LiveTests.cs` | `RelayReleasesInFootageOrderAtFootageTime` | Out-of-order envelopes come out in QPC order, each at its footage time scaled by speed (manual clock) |
+| | `LivePlaysTheClipIntoTheProfilerSocket` | `live` with the generic profile: a socket client with the page's origin gets `SessionStarted` first, three schemas (video, audio, rules), every frame and hop, and the end, paced over real time |
+| | `LiveRefusesPermissionedFootageWithoutAReference` | Retention is checked before anything starts |
 
 ## Testing approach
 

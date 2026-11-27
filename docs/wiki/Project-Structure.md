@@ -20,6 +20,7 @@ src/
   Lookback.Media/             analysis format, frames, ffmpeg FileSource
   Lookback.Signals/           video + audio signals, DSP, publisher
   Lookback.Profiles/          game profiles: regions, rules, event detector
+  Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
@@ -43,8 +44,8 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 
 ```mermaid
 flowchart TB
-    R[Lookback.Recorder<br/>exe] --> S[Lookback.Stream]
-    TB[Lookback.Testbench<br/>exe] --> S & PR[Lookback.Profiles]
+    R[Lookback.Recorder<br/>exe] --> PF[Lookback.Profiler] --> S[Lookback.Stream]
+    TB[Lookback.Testbench<br/>exe] --> PF & S & PR[Lookback.Profiles]
     PR --> SG[Lookback.Signals]
     PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
@@ -73,8 +74,9 @@ flowchart TB
 | `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
 | `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
 | `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*` | Game profiles as data: HUD regions, event rules, the detector and its bus runner |
+| `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
-| `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Report/*`, `Datasets/*` | Footage CLI, the timeline viewer, and per-game dataset scoring |
+| `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*` | Footage CLI, the timeline viewer, and per-game dataset scoring |
 
 ## Planned projects
 

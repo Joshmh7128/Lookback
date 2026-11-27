@@ -25,6 +25,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Signals Library](Signals-Library) | Every video and audio signal, how it is computed and why |
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
+| [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Testing](Testing) | What each test proves |
 
 ## Status
