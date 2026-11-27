@@ -19,6 +19,7 @@ const api: ViewerApi = {
   report: (report: ViewerReport) => ipcRenderer.send("viewer:report", report),
   onIngest: (listener) => subscribe<IngestState>("viewer:ingest", listener),
   togglePanel: () => ipcRenderer.send("viewer:toggle-panel"),
+  onSeek: (listener) => subscribe<number>("viewer:seek", listener),
 };
 
 contextBridge.exposeInMainWorld("lookbackViewer", api);

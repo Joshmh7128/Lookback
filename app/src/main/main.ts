@@ -9,6 +9,7 @@ import { newRequestId, parseStorage, rateMessage, refusal, SAVE_TIMEOUT_MS, save
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
+import { validPosition } from "./ingest";
 import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
 import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
@@ -514,7 +515,7 @@ function registerIpc(): void {
     const r = typeof report === "object" && report !== null ? (report as Record<string, unknown>) : {};
     const statuses = ["idle", "loading", "playing", "paused", "ended", "error"];
     const status = typeof r["status"] === "string" && statuses.includes(r["status"]) ? (r["status"] as ViewerReport["status"]) : "idle";
-    viewer.report({ status, rect: validRect(r["rect"]) });
+    viewer.report({ status, rect: validRect(r["rect"]), position: validPosition(r["position"]) });
   });
   on("viewer:toggle-panel", fromViewer, () => viewer.togglePanel());
 }

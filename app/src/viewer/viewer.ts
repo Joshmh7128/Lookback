@@ -2,7 +2,7 @@
 // own embedded player (YouTube IFrame Player API, Twitch embed) and tells the
 // main process what is playing and where the player is. It never reads the
 // player's pixels itself: the main process captures the page.
-import type { EmbedSource, IngestState, PlaybackStatus, ViewerApi } from "../shared/api";
+import type { EmbedSource, IngestState, PlaybackStatus, PlayerPosition, ViewerApi } from "../shared/api";
 
 declare global {
   interface Window {
@@ -16,6 +16,10 @@ declare global {
 // The small parts of the two player APIs this page uses.
 interface YouTubePlayer {
   destroy(): void;
+  getCurrentTime?(): number;
+  getPlaybackRate?(): number;
+  seekTo?(seconds: number, allowSeekAhead: boolean): void;
+  playVideo?(): void;
 }
 interface YouTubeNamespace {
   Player: new (el: HTMLElement, options: Record<string, unknown>) => YouTubePlayer;
@@ -23,6 +27,15 @@ interface YouTubeNamespace {
 interface TwitchPlayer {
   addEventListener(event: string, listener: () => void): void;
   setVideo?(id: string, t: number): void;
+  getCurrentTime?(): number;
+  seek?(seconds: number): void;
+  play?(): void;
+}
+
+/** What the page asks of whichever player is mounted, through that player's own API. */
+interface PlayerControl {
+  position(): PlayerPosition | null;
+  seek(seconds: number): void;
 }
 interface TwitchPlayerClass {
   new (el: HTMLElement | string, options: Record<string, unknown>): TwitchPlayer;
@@ -46,6 +59,19 @@ let current: EmbedSource | null = null;
 let status: PlaybackStatus = "idle";
 let teardown: (() => void) | null = null;
 let heartbeat: number | null = null;
+let control: PlayerControl | null = null;
+
+function position(): PlayerPosition | null {
+  try {
+    return control?.position() ?? null;
+  } catch {
+    return null; // the player's API is not ready yet
+  }
+}
+
+function sendReport(): void {
+  api.report({ status, rect: rect(), position: position() });
+}
 
 function rect(): { x: number; y: number; width: number; height: number } | null {
   if (!current) return null;
@@ -56,11 +82,12 @@ function rect(): { x: number; y: number; width: number; height: number } | null 
 function setStatus(next: PlaybackStatus, text?: string): void {
   status = next;
   statusLine.textContent = text ?? next;
-  api.report({ status, rect: rect() });
+  sendReport();
   // While playing, report about once a second so the shell picks up layout
-  // changes and can reconnect the ingest if the recorder restarted.
+  // changes, can reconnect the ingest if the recorder restarted, and the
+  // recorder knows where the player is in the video.
   if (status === "playing" && heartbeat === null) {
-    heartbeat = window.setInterval(() => api.report({ status, rect: rect() }), 1000);
+    heartbeat = window.setInterval(sendReport, 1000);
   } else if (status !== "playing" && heartbeat !== null) {
     window.clearInterval(heartbeat);
     heartbeat = null;
@@ -100,6 +127,7 @@ function youTubeApi(): Promise<YouTubeNamespace> {
 function freshMount(): HTMLDivElement {
   teardown?.();
   teardown = null;
+  control = null;
   box.querySelector("#player")?.remove();
   box.querySelectorAll("iframe").forEach((f) => f.remove());
   const mount = document.createElement("div");
@@ -142,6 +170,16 @@ async function playYouTube(mount: HTMLDivElement, source: Extract<EmbedSource, {
     },
   });
   teardown = () => player.destroy();
+  control = {
+    position: () =>
+      typeof player.getCurrentTime === "function"
+        ? { seconds: player.getCurrentTime(), rate: player.getPlaybackRate?.() ?? 1, seekable: true }
+        : null,
+    seek: (seconds) => {
+      player.seekTo?.(seconds, true);
+      player.playVideo?.();
+    },
+  };
 }
 
 async function playTwitch(mount: HTMLDivElement, source: Extract<EmbedSource, { platform: "twitch" }>): Promise<void> {
@@ -158,6 +196,15 @@ async function playTwitch(mount: HTMLDivElement, source: Extract<EmbedSource, { 
   player.addEventListener(Player.ENDED, () => setStatus("ended"));
   player.addEventListener(Player.OFFLINE, () => setStatus("ended", "the channel is offline"));
   teardown = () => mount.replaceChildren();
+  const live = source.kind === "channel";
+  control = {
+    position: () => (typeof player.getCurrentTime === "function" ? { seconds: player.getCurrentTime(), rate: 1, seekable: !live } : null),
+    seek: (seconds) => {
+      if (live) return;
+      player.seek?.(seconds);
+      player.play?.();
+    },
+  };
 }
 
 function stop(): void {
@@ -185,10 +232,18 @@ $<HTMLFormElement>("open-form").addEventListener("submit", (e) => {
 profileSelect.addEventListener("change", () => {
   // A profile change starts a new analysis session on the next frame.
   api.select(current, profileSelect.value);
-  if (status === "playing") api.report({ status, rect: rect() });
+  if (status === "playing") sendReport();
 });
 $<HTMLButtonElement>("panel").addEventListener("click", () => api.togglePanel());
-window.addEventListener("resize", () => api.report({ status, rect: rect() }));
+window.addEventListener("resize", sendReport);
+api.onSeek((seconds) => {
+  // A replay from the calibration panel: the player itself goes back to the moment.
+  try {
+    control?.seek(seconds);
+  } catch {
+    // the player is gone or not ready; the next replay will try again
+  }
+});
 api.onOpen((source) => void play(source));
 api.onIngest((state: IngestState) => {
   ingestBadge.className = `ingest ${state.status}`;

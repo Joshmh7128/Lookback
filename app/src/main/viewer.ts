@@ -17,8 +17,12 @@ import type { ViewerServer } from "./viewer-server";
 // frames, crops them to the player element, scales them to 384x216 BGRA and
 // streams them to the recorder's /ingest at 30 fps. Frames live only in
 // memory on their way to the socket; nothing on this path touches disk, and
-// the video's id is never logged. No audio is sent: the only audio the shell
-// could tap is the whole system mix.
+// the video's id is never logged. No audio is sent: the recorder hears the
+// player itself, by process loopback of the shell's own process tree.
+//
+// The page also reports the player's own position, which goes to the recorder
+// with the frames; the recorder can send a seek back, and the page then asks
+// the player to go to that moment (a replay from the calibration panel).
 
 const PANEL_WIDTH = 460;
 /** After an ingest connection fails, wait this long before trying again. */
@@ -185,6 +189,10 @@ export class ViewerController extends EventEmitter<ViewerEvents> {
       this.endIngest(report.status);
     }
 
+    if (report.position) {
+      this.ingest?.sendPosition(report.position, report.status === "playing");
+    }
+
     if (was === "playing" && report.status !== "playing") {
       this.throttle.reset();
     }
@@ -219,6 +227,12 @@ export class ViewerController extends EventEmitter<ViewerEvents> {
 
     const session = new IngestSession(info.ingest, info.token, { platform: this.source.platform, videoRef: videoRef(this.source), profile: this.profile });
     this.ingest = session;
+    session.on("seek", (seconds) => {
+      const contents = this.player?.webContents;
+      if (this.ingest === session && contents && !contents.isDestroyed()) {
+        contents.send("viewer:seek", seconds);
+      }
+    });
     session.on("state", (state) => {
       if (this.ingest !== session) {
         return;

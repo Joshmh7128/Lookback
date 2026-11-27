@@ -159,6 +159,15 @@ public sealed class ClipperCheck
         }
     }
 
+    /// <summary>One candidate as the check shows it, or null.</summary>
+    public CheckCandidate? Get(string candidateId)
+    {
+        lock (_lock)
+        {
+            return _candidates.TryGetValue(candidateId, out Entry? e) ? e.View() : null;
+        }
+    }
+
     /// <summary>The newest <paramref name="count"/> candidates, newest first.</summary>
     public IReadOnlyList<CheckCandidate> Recent(int count)
     {

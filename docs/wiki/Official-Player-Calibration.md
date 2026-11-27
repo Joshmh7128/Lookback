@@ -99,7 +99,27 @@ video and:
   Click a star again to clear it;
 - **press M** (or *Missed a highlight*) when you see a highlight, so the check
   can tell whether the clipper finds it. A mark counts as found when any
-  candidate's window covers it, within 2 s.
+  candidate's window covers it, within 2 s;
+- **press ▶** beside a candidate to watch it again: the player itself goes
+  back to the moment (see [Replaying a moment](#replaying-a-moment)).
+
+### Replaying a moment
+
+Nothing of the video is recorded, so a candidate cannot be played from a
+file. Instead the player goes back to it. The viewer reports the player's own
+position (its API's current time, playback rate, and whether it can seek)
+about once a second and on every change. The recorder keeps those reports in
+memory with the frames' clock, so each candidate's **At** column shows where
+it is in the video (1:03, not "6 s after you pressed Play"), through pauses,
+skips and changes of speed. **▶** sends `seek` back to the viewer on the
+ingest socket, and the page calls the player's own `seekTo` and play
+(`seek` and `play` for a Twitch video).
+
+A live Twitch channel cannot go back, so it shows no ▶. Positions are never
+written: they go when the player stops, like everything else here. Checked
+on AETHER through the real recorder and panel: a scripted viewer reporting a
+video started at 0:57 showed its candidate at 1:03, and ▶ sent it
+`{"type":"seek","seconds":63}`.
 
 The panel shows, live:
 
@@ -193,6 +213,8 @@ All binary values are little-endian. Same token and Origin checks as `/events`.
 | text | `{"type":"start","platform":"youtube"\|"twitch","videoRef":"…","profile":"cs2"}`; `profile` is optional |
 | binary kind 1 | `byte 1, int64 µs since start, uint16 width, uint16 height, BGRA8 pixels` (384x216 preferred; other sizes are scaled) |
 | binary kind 2 | `byte 2, int64 µs, uint32 sample rate, float32 mono PCM`; accepted and ignored (the recorder captures the player's sound itself) |
+| text | `{"type":"position","t":µs since start,"video":seconds,"rate":1,"playing":true,"seekable":true}`: the player's own position, about once a second and on every change; in memory only |
+| text, from the recorder | `{"type":"seek","seconds":S}`: go back to that moment (▶ in the panel) |
 | text | `{"type":"stop"}` |
 
 ## Limits

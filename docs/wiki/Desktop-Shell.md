@@ -159,6 +159,11 @@ for going through candidates quickly:
    (unrated, rated, 4–5, 3, 1–2), QA or saved clips; sort by time, score or
    stars.
 
+YouTube and Twitch sessions are listed too, but nothing of them is recorded:
+the preview says to replay the moment in the viewer (▶ in its panel), and
+their stars are replaced by a pointer to the panel, where ratings of watched
+videos are saved as numbers only.
+
 Previews are streamed by the main process over a private
 `lookback-media://` scheme with HTTP byte ranges (`media.ts`). Only files the
 shell itself opened, or that the recorder reported as saved clips, are
@@ -268,6 +273,12 @@ sequenceDiagram
   start message was sent.
 - **Back-pressure.** A frame is dropped, not queued, when more than 4 MB is
   buffered on the socket; the viewer shows sent and dropped counts.
+- **Position and replay.** The page reports the player's own position
+  (`getCurrentTime`, playback rate, and whether it can seek) with its status,
+  and the main process sends it to `/ingest`. When the recorder sends
+  `{"type":"seek"}` back (▶ in the panel), the page asks the player to go
+  there with the player's own API. See
+  [Replaying a moment](Official-Player-Calibration#replaying-a-moment).
 - **Lifecycle.** Paused or buffering sends nothing; ended, idle, error, a new
   source, a new profile or closing the window sends stop. If the recorder
   restarts, the next once-a-second report from the page reconnects (at most
@@ -306,7 +317,7 @@ npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=over
 |---|---|
 | `handshake` | Ready/profiler parsing, loopback checks, the token never in an error, line splitting |
 | `recorder` | A fake child's handshake gives `ready`; token never in state or log; exit, timeout and spawn failures |
-| `ingest` | Byte layout of kind-1 frames, the start message, start/stop on the socket, drop under back-pressure |
+| `ingest` | Byte layout of kind-1 frames, the start message, start/stop on the socket, drop under back-pressure; position messages, checked positions and seeks, seeks passed on only while the session is open |
 | `frames` | 30 fps from 60/144 Hz and jittery 30 Hz sources, no burst after a stall, crop scaling and clamping |
 | `library` | Sessions, marks, candidates, QA, saved clips, 0–5 star ratings surviving re-sends, acks marking them stored, `clip.rating` envelopes, previewable sessions, caps, junk ignored |
 | `control` | The `rate`/`analyze` messages, ack parsing, footage-request checks, request/ack over the stream with timeouts and drops |

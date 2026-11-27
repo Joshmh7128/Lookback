@@ -47,6 +47,8 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
     private readonly CalibrationProbe _probe;
     private readonly Lock _gate = new();
     private readonly Lock _audioGate = new();
+    private readonly Lock _positionGate = new();
+    private readonly List<PositionAnchor> _anchors = [];
     private readonly string _baseId;
     private readonly ProfileCatalog _catalog;
     private Pipeline? _pipeline;
@@ -54,6 +56,12 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
     private int _generation;
     private long _audioHops;
     private Pipeline? _audioSchemaFor;
+
+    /// <summary>Position reports kept (about 5 h at one a second); the oldest half goes when full.</summary>
+    public const int MaxPositionReports = 20_000;
+
+    /// <summary>The player's own position at a capture time, as the viewer reported it.</summary>
+    private readonly record struct PositionAnchor(long Qpc, double Video, double Rate, bool Playing);
 
     private sealed record Pipeline(
         string SessionId, SessionStarted Started, EnvelopeFactory Factory, VideoSignalBank Bank, SignalPublisher Publisher,
@@ -96,6 +104,21 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
 
     /// <summary>True once the player's sound has reached the analysis: the clipper and the check have audio.</summary>
     public bool HasAudio => AudioHops > 0;
+
+    /// <summary>True when the player can go back to a moment (a video, not a live channel), as it last reported.</summary>
+    public bool Seekable { get; private set; }
+
+    /// <summary>True once the viewer has reported the player's position.</summary>
+    public bool HasPosition
+    {
+        get
+        {
+            lock (_positionGate)
+            {
+                return _anchors.Count > 0;
+            }
+        }
+    }
 
     /// <summary>Seconds of the player's sound analysed so far.</summary>
     public double AudioSeconds => (double)AudioHops * _format.HopSamples / _format.SampleRate;
@@ -247,6 +270,75 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Where the player was at <paramref name="microseconds"/> since the start
+    /// (the frames' clock): its own position in the video, its playback rate,
+    /// whether it was playing, and whether it can seek. Kept in memory to map a
+    /// candidate to the moment in the video for a replay; never stored.
+    /// Reports out of time order, or with impossible values, are ignored.
+    /// </summary>
+    public void OnPosition(long microseconds, double videoSeconds, double rate, bool playing, bool seekable)
+    {
+        if (!double.IsFinite(videoSeconds) || videoSeconds < 0 || !double.IsFinite(rate) || rate <= 0 || rate > 16)
+        {
+            return;
+        }
+
+        long qpc = _originQpc + QpcTime.Rescale(microseconds, 1_000_000, _clock.Frequency);
+        lock (_positionGate)
+        {
+            if (_anchors.Count > 0 && qpc < _anchors[^1].Qpc)
+            {
+                return;
+            }
+
+            if (_anchors.Count >= MaxPositionReports)
+            {
+                _anchors.RemoveRange(0, MaxPositionReports / 2);
+            }
+
+            _anchors.Add(new PositionAnchor(qpc, videoSeconds, rate, playing));
+            Seekable = seekable;
+        }
+    }
+
+    /// <summary>
+    /// The video's own time at capture time <paramref name="qpc"/>: from the
+    /// last report at or before it, advanced at its rate while it was playing
+    /// (a seek or pause shows up as the next report). Before the first report,
+    /// counted back from it. Null until the player has reported.
+    /// </summary>
+    public double? VideoSecondsAt(long qpc)
+    {
+        lock (_positionGate)
+        {
+            if (_anchors.Count == 0)
+            {
+                return null;
+            }
+
+            int lo = 0, hi = _anchors.Count - 1, found = -1;
+            while (lo <= hi)
+            {
+                int mid = (lo + hi) / 2;
+                if (_anchors[mid].Qpc <= qpc)
+                {
+                    found = mid;
+                    lo = mid + 1;
+                }
+                else
+                {
+                    hi = mid - 1;
+                }
+            }
+
+            PositionAnchor a = _anchors[Math.Max(found, 0)];
+            double since = (double)(qpc - a.Qpc) / _clock.Frequency;
+            double video = found < 0 || a.Playing ? a.Video + (a.Rate * since) : a.Video;
+            return Math.Max(0, video);
+        }
+    }
+
     /// <summary>The user saw <paramref name="eventName"/> now.</summary>
     public void Mark(string eventName)
     {
@@ -278,6 +370,10 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         await StopPipelineAsync(old, "player stopped").ConfigureAwait(false);
         _probe.ClearMarks();
         Check.Reset(); // nothing of the video outlives the player
+        lock (_positionGate)
+        {
+            _anchors.Clear();
+        }
     }
 
     private async Task StopPipelineAsync(Pipeline? p, string reason)

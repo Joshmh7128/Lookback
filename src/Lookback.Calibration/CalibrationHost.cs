@@ -55,6 +55,8 @@ public sealed record CalibrationHostOptions
 /// then binary little-endian messages <c>byte kind, int64 microseconds</c> followed, for
 /// kind 1 (video), by <c>uint16 width, uint16 height, BGRA8 pixels</c>; then a text <c>{"type":"stop"}</c>.
 /// Kind 2 (audio) is accepted and ignored: the player's sound comes from <see cref="CalibrationHostOptions.PlayerAudio"/>.
+/// A text <c>{"type":"position","t":microseconds,"video":seconds,"rate":1,"playing":true,"seekable":true}</c> reports the
+/// player's own position (in memory only); the host sends <c>{"type":"seek","seconds":s}</c> back to replay a candidate.
 /// Frames are read into one pooled buffer and analysed in place.
 /// </summary>
 public sealed class CalibrationHost : IAsyncDisposable
@@ -72,6 +74,8 @@ public sealed class CalibrationHost : IAsyncDisposable
     private readonly Func<SessionStarted, Action<AudioBlock>, IDisposable?>? _playerAudio;
     private IDisposable? _audio;
     private string? _audioNote;
+    private readonly SemaphoreSlim _ingestSend = new(1, 1);
+    private WebSocket? _ingestSocket;
     private readonly ProfileCatalog _builtIn;
     private readonly Lock _gate = new();
     private OfficialPlayerSession? _session;
@@ -196,6 +200,7 @@ public sealed class CalibrationHost : IAsyncDisposable
     private async Task IngestAsync(WebSocket socket, CancellationToken ct)
     {
         byte[] buffer = ArrayPool<byte>.Shared.Rent(MaxMessage);
+        Volatile.Write(ref _ingestSocket, socket); // the viewer: replays are sent back on it
         try
         {
             while (socket.State == WebSocketState.Open)
@@ -231,6 +236,14 @@ public sealed class CalibrationHost : IAsyncDisposable
                         case "stop":
                             await StopAsync().ConfigureAwait(false);
                             break;
+                        case "position":
+                            // The player's own position, for replays; in memory only.
+                            if (Session is { } playing && Number(msg!["t"]) is { } t && Number(msg["video"]) is { } video)
+                            {
+                                playing.OnPosition((long)Math.Round(t), video, Number(msg["rate"]) ?? 1, msg["playing"]?.GetValueKind() == JsonValueKind.True, msg["seekable"]?.GetValueKind() == JsonValueKind.True);
+                            }
+
+                            break;
                         default:
                             break;
                     }
@@ -255,6 +268,7 @@ public sealed class CalibrationHost : IAsyncDisposable
         }
         finally
         {
+            Interlocked.CompareExchange(ref _ingestSocket, null, socket);
             Array.Clear(buffer, 0, Math.Min(buffer.Length, MaxMessage)); // no frame outlives the connection, even in the pool
             ArrayPool<byte>.Shared.Return(buffer);
             await StopAsync().ConfigureAwait(false);
@@ -355,6 +369,20 @@ public sealed class CalibrationHost : IAsyncDisposable
             case "check-reset":
                 session.Check.Reset();
                 return Ok("check-reset");
+            case "replay":
+            {
+                // The player goes back to the moment itself; nothing of the video is kept to replay it.
+                string candidateId = (string?)msg!["candidateId"] ?? throw new ArgumentException("replay needs a candidateId.");
+                Check.CheckCandidate c = session.Check.Get(candidateId) ?? throw new KeyNotFoundException("No such candidate in the check.");
+                if (!session.Seekable)
+                {
+                    throw new InvalidOperationException("This player cannot go back (a live channel), so the moment cannot be replayed.");
+                }
+
+                double seconds = session.VideoSecondsAt(c.StartQpc) ?? throw new InvalidOperationException("The player has not reported where it is yet; try again in a second.");
+                await SendToViewerAsync(JsonSerializer.Serialize(new { type = "seek", seconds = Math.Round(seconds, 2) }, Json)).ConfigureAwait(false);
+                return Ok("replay");
+            }
             case "save":
                 if (_writer is null)
                 {
@@ -373,6 +401,32 @@ public sealed class CalibrationHost : IAsyncDisposable
     }
 
     private static string Ok(string what) => JsonSerializer.Serialize(new { type = "ok", what }, Json);
+
+    private static double? Number(JsonNode? n) =>
+        n is JsonValue v && v.TryGetValue(out double d) && double.IsFinite(d) ? d : null;
+
+    /// <summary>A text message to the viewer on its ingest socket; gives up after 2 s rather than wait on it.</summary>
+    private async Task SendToViewerAsync(string json)
+    {
+        WebSocket socket = Volatile.Read(ref _ingestSocket) ?? throw new InvalidOperationException("The viewer is not connected.");
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        try
+        {
+            await _ingestSend.WaitAsync(timeout.Token).ConfigureAwait(false);
+            try
+            {
+                await socket.SendAsync(Encoding.UTF8.GetBytes(json), WebSocketMessageType.Text, endOfMessage: true, timeout.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                _ingestSend.Release();
+            }
+        }
+        catch (Exception e) when (e is OperationCanceledException or WebSocketException or ObjectDisposedException)
+        {
+            throw new InvalidOperationException("The viewer did not take the replay; is it still open?", e);
+        }
+    }
 
     private (bool Stored, string? Reason) SaveRating(OfficialPlayerSession session, string candidateId, int stars)
     {
@@ -442,7 +496,7 @@ public sealed class CalibrationHost : IAsyncDisposable
         state["frames"] = s.VideoFrames;
         state["audioSeconds"] = Math.Round(s.AudioSeconds, 1);
         state["audioNote"] = _audioNote;
-        state["check"] = Check(s, _ratings is not null);
+        state["check"] = Check(s, _ratings is not null, s.Seekable && s.HasPosition && Volatile.Read(ref _ingestSocket) is not null);
         CalibrationProbe probe = s.Probe;
         state["grid"] = new JsonObject { ["cols"] = probe.Columns, ["rows"] = probe.Rows, ["static"] = Cells(probe.StaticCells()) };
         IReadOnlyDictionary<string, int> marks = probe.MarkCounts();
@@ -490,7 +544,7 @@ public sealed class CalibrationHost : IAsyncDisposable
     }
 
     /// <summary>The clipper check's view: the newest candidates (times in playback seconds) and the scores so far.</summary>
-    private static JsonObject Check(OfficialPlayerSession s, bool saving)
+    private static JsonObject Check(OfficialPlayerSession s, bool saving, bool canReplay)
     {
         double freq = s.Check.Frequency;
         double At(long qpc) => Math.Round((qpc - s.OriginQpc) / freq, 1);
@@ -508,6 +562,7 @@ public sealed class CalibrationHost : IAsyncDisposable
                 ["qa"] = c.QaPassed,
                 ["stars"] = c.Stars,
                 ["saved"] = c.Saved,
+                ["video"] = s.VideoSecondsAt(c.StartQpc) is { } v ? Math.Round(v, 1) : null, // where it is in the video, when the player reported
             });
         }
 
@@ -518,6 +573,7 @@ public sealed class CalibrationHost : IAsyncDisposable
                 ? "Your ratings are saved to train the scorer: the stars and each candidate's numbers (its features and score), never the video, its address or any time in it. Missed-highlight marks and these scores stay in memory and are cleared when the player stops."
                 : "Nothing here is stored: ratings and marks live in memory and are cleared when the player stops (saving ratings is off).",
             ["saving"] = saving,
+            ["canReplay"] = canReplay,
             ["recent"] = recent,
             ["stats"] = JsonSerializer.SerializeToNode(st, Json),
         };
@@ -527,5 +583,9 @@ public sealed class CalibrationHost : IAsyncDisposable
 
     private static JsonArray Cells(float[] cells) => new([.. cells.Select(c => (JsonNode)Math.Round(c, 2))]);
 
-    public async ValueTask DisposeAsync() => await StopAsync().ConfigureAwait(false);
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync().ConfigureAwait(false);
+        _ingestSend.Dispose();
+    }
 }
