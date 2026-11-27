@@ -8,6 +8,7 @@
   "displayName": "VALORANT",
   "version": 1,
   "level": "game",
+  "tags": ["shooter", "tactical", "hero", "anti-cheat"],
   "executables": ["VALORANT-Win64-Shipping.exe"],
   "capturePolicy": {
     "allowPresentHook": false,

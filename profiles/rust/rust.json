@@ -8,6 +8,7 @@
   "displayName": "Rust",
   "version": 1,
   "level": "game",
+  "tags": ["shooter", "survival", "open-world", "anti-cheat"],
   "executables": ["RustClient.exe"],
   "capturePolicy": {
     "allowPresentHook": false,

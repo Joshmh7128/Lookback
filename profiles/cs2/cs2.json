@@ -9,6 +9,7 @@
   "displayName": "Counter-Strike 2",
   "version": 1,
   "level": "game",
+  "tags": ["shooter", "tactical", "anti-cheat"],
   "executables": ["cs2.exe"],
   "capturePolicy": {
     "allowPresentHook": false,

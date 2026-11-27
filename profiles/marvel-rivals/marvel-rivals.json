@@ -6,6 +6,7 @@
   "displayName": "Marvel Rivals",
   "version": 1,
   "level": "game",
+  "tags": ["shooter", "hero", "anti-cheat"],
   // Verify the name against your install.
   "executables": ["Marvel-Win64-Shipping.exe"],
   "capturePolicy": {

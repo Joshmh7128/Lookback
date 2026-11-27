@@ -8,6 +8,7 @@
   "displayName": "Fortnite",
   "version": 1,
   "level": "game",
+  "tags": ["shooter", "battle-royale", "building", "anti-cheat"],
   "executables": ["FortniteClient-Win64-Shipping.exe"],
   "capturePolicy": {
     "allowPresentHook": false,
