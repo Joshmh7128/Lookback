@@ -1,0 +1,53 @@
+{
+  // Playing the killer: chase, down and hook survivors. Detected from a learned
+  // visual fingerprint (the killer's power gauge and first-person view);
+  // choose by hand with --profile dead-by-daylight.killer until then.
+  "id": "dead-by-daylight.killer",
+  "displayName": "Dead by Daylight: Killer",
+  "version": 1,
+  "parent": "dead-by-daylight",
+  "level": "subgame",
+  "tags": ["horror"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "killer_power", "x": 0.80, "y": 0.68, "w": 0.19, "h": 0.09, "purpose": "The killer's power gauge or charges, above the perks." }
+  ],
+  "events": [
+    {
+      // A down, hook or kill: from the killer's side, the status area is the score.
+      "name": "status_change",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.status.activity", "rise": 0.04 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 800, "add": 0.15 } ],
+      "clip": { "preMs": 15000, "postMs": 3000 }
+    },
+    {
+      // The killer's power used: its gauge empties.
+      "name": "power_used",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "region.killer_power.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "flash.brighten", "above": 0.05, "withinMs": 500, "add": 0.1 } ],
+      "clip": { "preMs": 5000, "postMs": 5000 }
+    },
+    {
+      // Stunned by a pallet or a flashlight: the view jerks or whites out.
+      "name": "stunned",
+      "weight": 0.7,
+      "baseConfidence": 0.4,
+      "cooldownMs": 4000,
+      "whenAny": [
+        { "signal": "flash.brighten", "above": 0.1 },
+        { "signal": "motion.coverage", "above": 0.75 }
+      ],
+      "boosts": [ { "signal": "audio.peak_db", "above": -6, "withinMs": 300, "add": 0.2 } ],
+      "clip": { "preMs": 10000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "snowball", "of": "status_change", "atLeast": 3, "withinMs": 45000, "weight": 2.5, "clip": { "preMs": 30000, "postMs": 4000 } }
+  ]
+}

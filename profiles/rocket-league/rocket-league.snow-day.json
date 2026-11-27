@@ -1,0 +1,12 @@
+{
+  // Snow Day: hockey with a puck. Same scoreboard, feed and notices.
+  // Stub ready for a learned fingerprint; choose by hand with --profile rocket-league.snow-day.
+  "id": "rocket-league.snow-day",
+  "displayName": "Rocket League: Snow Day",
+  "version": 1,
+  "parent": "rocket-league",
+  "level": "mode",
+  "tags": ["sports"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": []
+}

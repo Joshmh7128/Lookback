@@ -1,0 +1,27 @@
+{
+  // Rumble: random power-ups (spikes, grappling hook, haymaker, freeze...).
+  // Stub ready for a learned fingerprint (the power-up slot is the obvious one);
+  // choose by hand with --profile rocket-league.rumble.
+  "id": "rocket-league.rumble",
+  "displayName": "Rocket League: Rumble",
+  "version": 1,
+  "parent": "rocket-league",
+  "level": "mode",
+  "tags": ["sports", "party"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Power-up slot position is an estimate; calibrate against your own footage." },
+  "regions": [
+    { "name": "rumble_item", "x": 0.86, "y": 0.58, "w": 0.12, "h": 0.12, "purpose": "Current power-up icon, above the boost meter." }
+  ],
+  "events": [
+    {
+      // A power-up used: its icon empties, usually with a distinctive sound.
+      "name": "power_up_used",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "region.rumble_item.activity", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.15 } ],
+      "clip": { "preMs": 4000, "postMs": 4000 }
+    }
+  ]
+}

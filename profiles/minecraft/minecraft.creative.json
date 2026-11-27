@@ -1,0 +1,14 @@
+{
+  // Creative: no hearts, hunger or experience, nothing to die from. What is
+  // worth keeping is the build: explosions and big reveals. The missing vitals
+  // are what the learned fingerprint should pick up.
+  "id": "minecraft.creative",
+  "displayName": "Minecraft: Creative",
+  "version": 1,
+  "parent": "minecraft",
+  "level": "mode",
+  "tags": ["building"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "disable": ["death", "damage_taken", "level_up"],
+  "events": []
+}

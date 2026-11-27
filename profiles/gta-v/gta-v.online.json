@@ -1,0 +1,46 @@
+{
+  // GTA Online: other players, kill feed notices on the left, jobs and heists.
+  // Detected from a learned visual fingerprint; until then choose it by hand
+  // with --profile gta-v.online. (The launcher's -StraightIntoFreemode argument
+  // is not used as a hint: a hint fixes the sub-game for the whole session, and
+  // players move between Online and story mode without restarting.)
+  "id": "gta-v.online",
+  "displayName": "GTA Online",
+  "version": 1,
+  "parent": "gta-v",
+  "level": "subgame",
+  "tags": ["pvp", "co-op", "online"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "online_feed",    "x": 0.01, "y": 0.45, "w": 0.24, "h": 0.25, "purpose": "Notification feed above the radar: 'You killed X', 'X killed you', jobs and invites." },
+    { "name": "online_reward",  "x": 0.30, "y": 0.10, "w": 0.40, "h": 0.12, "purpose": "RP and rank-up messages near the top centre." }
+  ],
+  "events": [
+    {
+      // A kill or death of another player, announced in the feed above the radar.
+      "name": "player_kill",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1000,
+      "when": [ { "signal": "region.online_feed.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.2 },
+        { "signal": "flash.brighten", "above": 0.05, "withinMs": 1500, "add": 0.1 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // Rank up: a banner at the top with a fanfare.
+      "name": "rank_up",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 15000,
+      "when": [ { "signal": "region.online_reward.activity", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.15 } ],
+      "clip": { "preMs": 6000, "postMs": 4000 }
+    }
+  ],
+  "composites": [
+    { "name": "online_multikill", "of": "player_kill", "atLeast": 2, "withinMs": 6000, "weight": 2.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  // Grand Theft Auto V: open world, story mode and GTA Online in one executable.
+  // The game level covers what both share: the minimap, wanted level, money,
+  // weapon and the big centre banners (WASTED, BUSTED, MISSION PASSED).
+  // Everything is recognised from the screen and the sound.
+  "id": "gta-v",
+  "displayName": "Grand Theft Auto V",
+  "version": 1,
+  "level": "game",
+  "tags": ["open-world", "action", "driving"],
+  "executables": ["GTA5.exe", "GTA5_Enhanced.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "GTA Online runs anti-cheat (BattlEye): external capture only. No injection, no memory reads, no scripting hooks, in either story mode or Online."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9 with the default safe zone. Changing Display > Safezone Size moves every corner element inward; calibrate with: analyze <footage> --profile gta-v."
+  },
+  "regions": [
+    { "name": "minimap",      "x": 0.01, "y": 0.73, "w": 0.17, "h": 0.24, "purpose": "Radar. Flashes red and blue while police are chasing you." },
+    { "name": "wanted_stars", "x": 0.80, "y": 0.03, "w": 0.19, "h": 0.06, "purpose": "Wanted level stars; they appear, gain a star or flash as police search." },
+    { "name": "money",        "x": 0.80, "y": 0.09, "w": 0.19, "h": 0.06, "purpose": "Cash; it appears and ticks when you are paid or spend." },
+    { "name": "weapon",       "x": 0.80, "y": 0.15, "w": 0.19, "h": 0.07, "purpose": "Weapon and ammo, shown while aiming or switching." },
+    { "name": "banner",       "x": 0.15, "y": 0.35, "w": 0.70, "h": 0.25, "purpose": "Large centre text: WASTED, BUSTED, MISSION PASSED, MISSION FAILED." },
+    { "name": "view",         "x": 0.20, "y": 0.20, "w": 0.60, "h": 0.60, "purpose": "The middle of the picture, used to see the whole screen go grey on WASTED and BUSTED." },
+    { "name": "help_text",    "x": 0.01, "y": 0.01, "w": 0.30, "h": 0.12, "purpose": "Help and objective prompts in the top left." },
+    { "name": "subtitles",    "x": 0.20, "y": 0.86, "w": 0.60, "h": 0.10, "purpose": "Mission dialogue subtitles and objective text." }
+  ],
+  "events": [
+    {
+      // WASTED or BUSTED: the picture drains to grey and the banner appears with a heavy sound.
+      "name": "wasted",
+      "weight": 0.9,
+      "baseConfidence": 0.5,
+      "cooldownMs": 10000,
+      "when": [
+        { "signal": "region.view.saturation", "below": 0.08 },
+        { "signal": "region.banner.activity", "rise": 0.04 }
+      ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 600, "add": 0.2 } ],
+      "clip": { "preMs": 15000, "postMs": 3000 }
+    },
+    {
+      // MISSION PASSED (or FAILED): a bright banner in the middle with the mission jingle.
+      "name": "mission_result",
+      "weight": 1.0,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.08 },
+        { "signal": "region.banner.luma", "above": 0.35 },
+        { "signal": "region.view.saturation", "above": 0.08 }
+      ],
+      "boosts": [ { "signal": "audio.rms_db", "above": -25, "withinMs": 1000, "add": 0.15 } ],
+      "clip": { "preMs": 20000, "postMs": 4000 }
+    },
+    {
+      // Wanted level appears or goes up: the stars change.
+      "name": "wanted_level_change",
+      "weight": 0.6,
+      "baseConfidence": 0.5,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "region.wanted_stars.activity", "rise": 0.04 } ],
+      "clip": { "preMs": 8000, "postMs": 4000 }
+    },
+    {
+      // A police chase: the radar flashes red.
+      "name": "police_chase",
+      "weight": 0.5,
+      "baseConfidence": 0.5,
+      "cooldownMs": 8000,
+      "when": [ { "signal": "region.minimap.red", "rise": 0.08 } ],
+      "boosts": [ { "signal": "motion.energy", "above": 0.08, "withinMs": 1000, "add": 0.15 } ],
+      "clip": { "preMs": 10000, "postMs": 6000 }
+    },
+    {
+      // Explosion or crash: a bright flash with a sharp, loud sound.
+      "name": "explosion",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "flash.brighten", "above": 0.08 } ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 200, "add": 0.25 },
+        { "signal": "audio.peak_db", "above": -6, "withinMs": 300, "add": 0.15 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 4000 }
+    },
+    {
+      // Paid: the cash counter appears and ticks.
+      "name": "cash_change",
+      "weight": 0.3,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.money.activity", "rise": 0.05 } ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    },
+    {
+      // Taking heavy damage: red at the screen edge.
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.5,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 4000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "mayhem", "of": "explosion", "atLeast": 3, "withinMs": 8000, "weight": 2.0, "clip": { "preMs": 8000, "postMs": 5000 } },
+    { "name": "escalating_chase", "of": "wanted_level_change", "atLeast": 3, "withinMs": 60000, "weight": 1.5, "clip": { "preMs": 20000, "postMs": 5000 } }
+  ]
+}

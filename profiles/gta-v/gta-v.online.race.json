@@ -1,0 +1,40 @@
+{
+  // Races: position and lap counters, checkpoints, the finish.
+  // Stub ready for a learned fingerprint; choose by hand with --profile gta-v.online.race.
+  "id": "gta-v.online.race",
+  "displayName": "GTA Online: Race",
+  "version": 1,
+  "parent": "gta-v.online",
+  "level": "mode",
+  "tags": ["racing", "pvp"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "race_position", "x": 0.82, "y": 0.80, "w": 0.17, "h": 0.17, "purpose": "Position, lap and time in the bottom right." }
+  ],
+  "disable": ["wanted_level_change", "police_chase", "cash_change"],
+  "events": [
+    {
+      // Overtake or lost a place: the position number changes.
+      "name": "position_change",
+      "weight": 0.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.race_position.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "motion.energy", "above": 0.08, "withinMs": 1000, "add": 0.1 } ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // A crash at speed: a big sudden picture change with a loud impact.
+      "name": "crash",
+      "weight": 0.7,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "motion.coverage", "above": 0.6 } ],
+      "boosts": [ { "signal": "audio.peak_db", "above": -6, "withinMs": 300, "add": 0.25 } ],
+      "clip": { "preMs": 6000, "postMs": 4000 }
+    }
+  ],
+  "composites": [
+    { "name": "charge_through_field", "of": "position_change", "atLeast": 3, "withinMs": 20000, "weight": 2.0, "clip": { "preMs": 20000, "postMs": 3000 } }
+  ]
+}

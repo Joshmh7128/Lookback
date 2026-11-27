@@ -1,0 +1,42 @@
+{
+  // Bed Wars, a server minigame (as on Hypixel): protect your bed, break the
+  // others', fight to be the last team. Detected from a learned visual
+  // fingerprint (the team sidebar and the shop items in the hotbar). Chat lines
+  // in Java's logs/latest.log are not used as a hint, because a hint fixes the
+  // sub-game for the rest of the session and players hop between minigames.
+  "id": "minecraft.bedwars",
+  "displayName": "Minecraft: Bed Wars",
+  "version": 1,
+  "parent": "minecraft",
+  "level": "subgame",
+  "tags": ["minigame", "pvp", "teams"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Uses the game's title, chat and sidebar regions; no fingerprint yet." },
+  "events": [
+    {
+      // A bed is destroyed: a big centre title, a loud sound, the sidebar changes.
+      "name": "bed_destroyed",
+      "weight": 1.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.title.activity", "rise": 0.06 } ],
+      "boosts": [
+        { "signal": "region.sidebar.activity", "above": 0.02, "withinMs": 1500, "add": 0.2 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.15 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 3000 }
+    },
+    {
+      // A kill or final kill announced in chat, with the hit sound.
+      "name": "kill",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 800,
+      "when": [ { "signal": "region.chat.activity", "rise": 0.04 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.25 } ],
+      "clip": { "preMs": 8000, "postMs": 2000 }
+    }
+  ],
+  "composites": [
+    { "name": "bedwars_multikill", "of": "kill", "atLeast": 3, "withinMs": 10000, "weight": 2.5, "clip": { "preMs": 12000, "postMs": 3000 } }
+  ]
+}

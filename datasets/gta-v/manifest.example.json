@@ -1,0 +1,46 @@
+{
+  // GTA V. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // gta-v tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/gta-v/manifest.json
+  //   lookback-testbench dataset datasets/gta-v/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "gta-v",
+  "entries": [
+    {
+      "file": "media/story-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "gta-v.story",
+      "labels": [ { "event": "mission_result", "at": 212.0 }, { "event": "wasted", "at": 95.5 } ],
+      "clips": [ { "start": 200, "end": 216 } ]
+    },
+    {
+      "file": "media/online-heist-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "gta-v.online.heist",
+      "labels": [ { "event": "player_kill", "at": 41.2 }, { "event": "player_kill", "at": 43.0 }, { "event": "online_multikill", "at": 43.0 } ],
+      "clips": [ { "start": 34, "end": 47 } ]
+    },
+    {
+      "file": "media/online-race-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "gta-v.online.race",
+      "labels": [ { "event": "position_change", "at": 18.4 }, { "event": "crash", "at": 63.1 } ],
+      "clips": [ { "start": 55, "end": 68 } ]
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "gta-v",
+      "labels": []
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  // League of Legends. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // league-of-legends tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/league-of-legends/manifest.json
+  //   lookback-testbench dataset datasets/league-of-legends/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "league-of-legends",
+  "entries": [
+    {
+      "file": "media/rift-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "league-of-legends.summoners-rift",
+      "labels": [ { "event": "champion_kill", "at": 842.5 }, { "event": "champion_kill", "at": 848.0 }, { "event": "multikill", "at": 848.0 }, { "event": "death", "at": 1203.0 } ],
+      "clips": [ { "start": 832, "end": 852 } ]
+    },
+    {
+      "file": "media/aram-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "league-of-legends.aram",
+      "labels": [ { "event": "team_fight", "at": 310.0 } ],
+      "clips": [ { "start": 295, "end": 320 } ]
+    },
+    {
+      "file": "media/arena-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "league-of-legends.arena",
+      "labels": [ { "event": "round_result", "at": 140.0 } ],
+      "clips": []
+    },
+    {
+      "file": "media/tft-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "league-of-legends.tft",
+      "labels": [ { "event": "combat_result", "at": 420.0 } ],
+      "clips": []
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "league-of-legends",
+      "labels": []
+    }
+  ]
+}

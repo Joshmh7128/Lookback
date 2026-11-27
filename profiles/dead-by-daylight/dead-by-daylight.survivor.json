@@ -1,0 +1,41 @@
+{
+  // Playing a survivor: repair generators, hit skill checks, loop the killer,
+  // escape. Detected from a learned visual fingerprint (the skill-check area and
+  // the survivor's own health state); choose by hand with --profile
+  // dead-by-daylight.survivor until then.
+  "id": "dead-by-daylight.survivor",
+  "displayName": "Dead by Daylight: Survivor",
+  "version": 1,
+  "parent": "dead-by-daylight",
+  "level": "subgame",
+  "tags": ["horror"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "skill_check", "x": 0.44, "y": 0.38, "w": 0.12, "h": 0.22, "purpose": "The skill-check circle in the centre of the screen." }
+  ],
+  "events": [
+    {
+      // A skill check: the circle appears with its warning tick. Common, so low weight.
+      "name": "skill_check",
+      "weight": 0.1,
+      "baseConfidence": 0.5,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.skill_check.activity", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.1 } ],
+      "clip": { "preMs": 3000, "postMs": 2000 }
+    },
+    {
+      // Hurt by the killer: red at the edges, a scream.
+      "name": "hit_by_killer",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "boosts": [ { "signal": "audio.peak_db", "above": -6, "withinMs": 400, "add": 0.2 } ],
+      "clip": { "preMs": 12000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "repair_pressure", "of": "skill_check", "atLeast": 4, "withinMs": 20000, "weight": 0.8, "clip": { "preMs": 15000, "postMs": 3000 } }
+  ]
+}

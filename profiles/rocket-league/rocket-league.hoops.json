@@ -1,0 +1,12 @@
+{
+  // Hoops: a basketball court. Goals, saves and demolitions read the same as Soccar.
+  // Stub ready for a learned fingerprint; choose by hand with --profile rocket-league.hoops.
+  "id": "rocket-league.hoops",
+  "displayName": "Rocket League: Hoops",
+  "version": 1,
+  "parent": "rocket-league",
+  "level": "mode",
+  "tags": ["sports"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": []
+}

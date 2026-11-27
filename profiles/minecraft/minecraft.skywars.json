@@ -1,0 +1,40 @@
+{
+  // SkyWars, a server minigame: islands in the void, last player standing.
+  // Detected from a learned visual fingerprint; see minecraft.bedwars for why
+  // chat lines are not used as a hint.
+  "id": "minecraft.skywars",
+  "displayName": "Minecraft: SkyWars",
+  "version": 1,
+  "parent": "minecraft",
+  "level": "subgame",
+  "tags": ["minigame", "pvp", "battle-royale"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Uses the game's title, chat and sidebar regions; no fingerprint yet." },
+  "events": [
+    {
+      // A kill (often a knock into the void) announced in chat with the hit sound.
+      "name": "kill",
+      "weight": 1.0,
+      "baseConfidence": 0.4,
+      "cooldownMs": 800,
+      "when": [ { "signal": "region.chat.activity", "rise": 0.04 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.25 } ],
+      "clip": { "preMs": 8000, "postMs": 2000 }
+    },
+    {
+      // Win: VICTORY in the centre, often with fireworks.
+      "name": "victory",
+      "weight": 2.0,
+      "baseConfidence": 0.4,
+      "cooldownMs": 60000,
+      "when": [
+        { "signal": "region.title.activity", "rise": 0.08 },
+        { "signal": "region.title.luma", "above": 0.3 }
+      ],
+      "boosts": [ { "signal": "flash.brighten", "above": 0.05, "withinMs": 3000, "add": 0.2 } ],
+      "clip": { "preMs": 20000, "postMs": 6000 }
+    }
+  ],
+  "composites": [
+    { "name": "skywars_multikill", "of": "kill", "atLeast": 2, "withinMs": 8000, "weight": 2.5, "clip": { "preMs": 10000, "postMs": 3000 } }
+  ]
+}

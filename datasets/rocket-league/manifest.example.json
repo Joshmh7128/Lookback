@@ -1,0 +1,46 @@
+{
+  // Rocket League. Copy to manifest.json next to your footage; file paths are relative
+  // to this file. Media is never committed (see .gitignore): only manifests are.
+  // The times below are placeholders showing the shape, not real labels.
+  //
+  // profile: the deepest profile each file shows. One manifest covers the whole
+  // rocket-league tree, so fingerprints can be learned for every sub-game and mode:
+  //   lookback-testbench fingerprint datasets/rocket-league/manifest.json
+  //   lookback-testbench dataset datasets/rocket-league/manifest.json --profiles fingerprint-out/learned
+  // Third-party footage needs retention permissioned or open-license and a permissionRef.
+  "game": "rocket-league",
+  "entries": [
+    {
+      "file": "media/soccar-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "rocket-league.soccar",
+      "labels": [ { "event": "goal", "at": 74.6 }, { "event": "stat_notice", "at": 31.2 }, { "event": "demolition", "at": 120.4 } ],
+      "clips": [ { "start": 64, "end": 78 } ]
+    },
+    {
+      "file": "media/rumble-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "rocket-league.rumble",
+      "labels": [ { "event": "power_up_used", "at": 22.0 } ],
+      "clips": []
+    },
+    {
+      "file": "media/hoops-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "rocket-league.hoops",
+      "labels": [ { "event": "goal", "at": 51.0 } ],
+      "clips": [ { "start": 41, "end": 54 } ]
+    },
+    {
+      "file": "media/permissioned-excerpt-01.mp4",
+      "source": "excerpt shared by its creator",
+      "retention": "permissioned",
+      "permissionRef": "where the written permission is kept, with its date",
+      "profile": "rocket-league",
+      "labels": []
+    }
+  ]
+}

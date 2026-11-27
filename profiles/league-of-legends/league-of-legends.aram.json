@@ -1,0 +1,33 @@
+{
+  // ARAM on the Howling Abyss: one lane, constant fighting, so a single kill
+  // matters less and a team fight matters more. Detected from the map in the
+  // game client's log: Map12 (verify against your own log).
+  "id": "league-of-legends.aram",
+  "displayName": "League of Legends: ARAM",
+  "version": 1,
+  "parent": "league-of-legends",
+  "level": "mode",
+  "tags": ["moba", "casual"],
+  "ids": { "league.map": ["12"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions." },
+  "events": [
+    {
+      "name": "champion_kill",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1000,
+      "when": [
+        { "signal": "region.kda.activity", "rise": 0.04 },
+        { "signal": "region.view.saturation", "above": 0.08 }
+      ],
+      "boosts": [
+        { "signal": "region.announcement.activity", "above": 0.03, "withinMs": 1500, "add": 0.2 },
+        { "signal": "region.kill_feed.activity", "above": 0.03, "withinMs": 1000, "add": 0.1 }
+      ],
+      "clip": { "preMs": 10000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "team_fight", "of": "announcement", "atLeast": 3, "withinMs": 12000, "weight": 2.0, "clip": { "preMs": 15000, "postMs": 4000 } }
+  ]
+}

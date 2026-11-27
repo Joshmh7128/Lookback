@@ -1,0 +1,15 @@
+{
+  // Summoner's Rift: normals, ranked, Swiftplay. The game's rules as they are.
+  // Picked by the game's id hint from the map named in the game client's own log
+  // (Riot Games/League of Legends/Logs/GameLogs/<session>/*r3dlog.txt): Map11.
+  // Verify the line against your own log; the regex accepts "Map11" anywhere.
+  "id": "league-of-legends.summoners-rift",
+  "displayName": "League of Legends: Summoner's Rift",
+  "version": 1,
+  "parent": "league-of-legends",
+  "level": "mode",
+  "tags": ["moba"],
+  "ids": { "league.map": ["11"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions." },
+  "events": []
+}

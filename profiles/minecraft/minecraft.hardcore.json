@@ -1,0 +1,36 @@
+{
+  // Hardcore: one life. The hearts are drawn differently, which is what the
+  // learned fingerprint should pick up. A death ends the world, so it is the
+  // moment to keep.
+  "id": "minecraft.hardcore",
+  "displayName": "Minecraft: Hardcore",
+  "version": 1,
+  "parent": "minecraft",
+  "level": "mode",
+  "tags": ["survival", "permadeath"],
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Inherits the game's regions; no fingerprint yet." },
+  "events": [
+    {
+      // Death in hardcore: 'Game over!' on the red death screen.
+      "name": "death",
+      "weight": 2.5,
+      "baseConfidence": 0.5,
+      "cooldownMs": 10000,
+      "when": [
+        { "signal": "region.view.red", "above": 0.15 },
+        { "signal": "region.title.activity", "rise": 0.05 }
+      ],
+      "clip": { "preMs": 30000, "postMs": 3000 }
+    },
+    {
+      // Every hit matters more with one life.
+      "name": "damage_taken",
+      "weight": 0.4,
+      "baseConfidence": 0.45,
+      "cooldownMs": 1000,
+      "when": [ { "signal": "region.vitals.activity", "rise": 0.05 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 200, "add": 0.15 } ],
+      "clip": { "preMs": 5000, "postMs": 2000 }
+    }
+  ]
+}
