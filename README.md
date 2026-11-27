@@ -38,7 +38,12 @@ The full walkthrough, with expected output and troubleshooting, is
   fingerprints learned from labelled footage and clip candidates built from
   the events.
 
-Live capture, the clipper and the Electron shell come in later milestones.
+- **Clipper v1 (M2):** per-game robust normalisation of the signals, an
+  excitement curve with weights as data, peaks with hysteresis, fusion with
+  the profile's events into one candidate set, and QA gates on every
+  candidate (`src/Lookback.Clipper`).
+
+Live capture and the Electron shell come in later milestones.
 
 ## Build and test
 
@@ -69,6 +74,7 @@ src/Lookback.Stream/      pipes, WebSocket bridge, session log
 src/Lookback.Media/       analysis format, ffmpeg FileSource
 src/Lookback.Signals/     video and audio signals
 src/Lookback.Profiles/    game profiles: regions, rules, event detector
+src/Lookback.Clipper/     excitement curve, peaks, candidates, QA gates
 profiles/                 game profiles as JSON
 datasets/                 per-game dataset manifests (no media)
 src/Lookback.Recorder/    service host

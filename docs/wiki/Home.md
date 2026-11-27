@@ -28,6 +28,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Signals Library](Signals-Library) | Every video and audio signal, how it is computed and why |
 | [Profiles and Local Datasets](Local-Datasets) | Profile structure, and how the local dataset is built, weighted, stored and compared |
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
+| [Clipper](Clipper) | Signals and events to clip candidates: normalisation, the excitement curve, peaks, fusion, QA gates |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
@@ -41,7 +42,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M1 | FileSource, video and audio signals, testbench and timeline viewer | Done (GPU downscale moves to M3 with live capture) |
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
-| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
+| M2 | Game identifier, Clipper v1, rating UI, official-player viewer | In progress: [Clipper v1](Clipper) built (curve, peaks, fusion with profile events, QA gates) |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | Planned |
 | M4 | Training, ONNX scoring, calibration | Planned |
 | M5 | Transcode, VMAF report, audio checks | Planned |

@@ -391,9 +391,10 @@ lock, and publishes `game.event` and `signals.rules` envelopes stamped with
 the moment's own QPC (not the time of publication). From the bus they fan out
 to:
 
-- the **clipper** (M2), which weighs named moments alongside the generic
-  excitement curve and cuts clips from the RAM replay ring using the event's
-  suggested window;
+- the **[clipper](Clipper)** (M2), which fuses named moments with peaks of
+  the generic excitement curve into clip candidates, using each event's
+  suggested window, and checks each candidate (cutting from the RAM replay
+  ring comes with the recorder wiring);
 - the **live profiler** page, over the loopback WebSocket bridge, which draws
   each event at its `at_qpc` on the session's own clock;
 - other processes over named pipes;

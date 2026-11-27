@@ -132,7 +132,15 @@ external capture only, and every experience inherits it.
 
 ## Clip candidates
 
-The runner turns events into `ClipCandidate`s on `clip.candidate`:
+With the [clipper](Clipper) running (the testbench always runs it), events
+are fused with peaks of the game-agnostic excitement curve into one
+deduplicated candidate set, each candidate with a QA report; the clipper
+page describes how. A profile's optional `clipper` block (below) tunes that
+curve for the game, and children inherit it.
+
+On its own (`ProfileRunner(..., publishCandidates: true)`, the default, as
+the official-player calibration runs it), the profile runner turns events
+into `ClipCandidate`s itself:
 
 - Events whose clip windows overlap, or come within 1.5 s, merge into one
   candidate, up to 60 s long. A team fight with five eliminations becomes one
@@ -248,9 +256,17 @@ a rule did or did not fire.
   ],
   "composites": [
     { "name": "multikill", "of": "elimination", "atLeast": 2, "withinMs": 4000, "weight": 2.5 }
-  ]
+  ],
+  "clipper": {                             // optional: tunes the clipper's excitement curve for this game
+    "components": [ { "signal": "region.kill_feed.activity", "weight": 1.5 } ],
+    "high": 1.8, "low": 0.9, "preMs": 8000, "postMs": 3000
+  }
 }
 ```
+
+The `clipper` block is described on the [Clipper](Clipper#weights-are-data)
+page. Anything it leaves out comes from the parent profile, then from the
+clipper's defaults.
 
 A condition sets exactly one of:
 
