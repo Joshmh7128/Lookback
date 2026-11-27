@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
 import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
@@ -44,6 +45,8 @@ const SMOKE_PROFILE = argValue("smoke-profile") ?? "generic";
 const SMOKE_SUPERVISE = process.argv.includes("--smoke-supervise");
 /** With --smoke, feed synthetic storage reports (near the clips budget, then full) and check the window's warnings. */
 const SMOKE_STORAGE = process.argv.includes("--smoke-storage");
+/** With --smoke, let the recorder record the repo's stand-in game window and drive Save on its live session. */
+const SMOKE_LIVE = process.argv.includes("--smoke-live");
 /** With --smoke, also wait for this many clip candidates before rating one through the window. */
 const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
@@ -111,7 +114,20 @@ function findRepoRoot(start: string): string | null {
 
 function startRecorder(): RecorderState {
   const ctx = locate();
-  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: datasetsFolder(settings, ctx), parentPid: process.pid });
+  // Smoke runs keep everything the recorder writes (ratings, recordings, clips)
+  // in their own userData, never in the checkout or the user's store.
+  const smokeDir = SMOKE ? join(app.getPath("userData"), "smoke-recorder") : null;
+  const args = recorderArgs(settings, { profilesDir: profilesFolder(settings, ctx), datasetsDir: smokeDir ? join(smokeDir, "datasets") : datasetsFolder(settings, ctx), parentPid: process.pid });
+  if (smokeDir) {
+    mkdirSync(smokeDir, { recursive: true });
+    args.push(`--Recorder:StoreDirectory=${join(smokeDir, "store")}`);
+    if (SMOKE_LIVE) {
+      const detection = join(smokeDir, "detection.json");
+      writeFileSync(detection, JSON.stringify({ allow: [{ exe: "lookback-testwindow.exe", profile: "generic" }] }));
+      args.push(`--Recorder:DetectionSettings=${detection}`);
+    }
+  }
+
   const command = locateTool(RECORDER, settings.recorderPath, ctx, args);
   if (!command) {
     recorder.reportFailure("Lookback.Recorder was not found. Build it with `dotnet build Lookback.slnx -c Release`, or set its path in Settings.");
@@ -555,6 +571,56 @@ function runSmoke(): void {
       .finally(() => app.exit(ok ? 0 : 1));
   };
 
+  // The live run: start the stand-in game, wait for its LIVE_GAME session,
+  // then press Save in the window. That window rarely gives the clipper a
+  // candidate, so the run adds one to the shell's library only; the recorder
+  // does not know it and refuses the save, which proves the whole path from
+  // the button to the recorder's answer on screen.
+  const smokeLive = async (base: Record<string, unknown>): Promise<{ ok: boolean; detail: Record<string, unknown> }> => {
+    const exe = repoRoot ? join(repoRoot, "tests", "Lookback.Detection.TestWindow", "bin", "Release", "net10.0-windows10.0.22621.0", "lookback-testwindow.exe") : "";
+    if (!exe || !existsSync(exe)) return { ok: false, detail: { ...base, reason: "lookback-testwindow.exe is not built" } };
+    testWindow = spawn(exe, ["Lookback smoke", "60"], { stdio: ["pipe", "ignore", "ignore"], windowsHide: false });
+    const wait = async (check: () => boolean, ms: number): Promise<boolean> => {
+      const end = Date.now() + ms;
+      while (!check()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      return true;
+    };
+    const live = (): ReturnType<Library["snapshot"]>["sessions"][number] | undefined => library.snapshot().sessions.find((s) => s.sourceKind === "live_game");
+    if (!(await wait(() => live() !== undefined, 45_000))) return { ok: false, detail: { ...base, reason: "no LIVE_GAME session for the test window", log: recorder.logTail.slice(-15) } };
+    const session = live()!;
+    const at = session.startQpc + 5 * (session.qpcFrequency || 1e7);
+    stream.emit("envelope", {
+      qpc: String(at),
+      sessionId: session.id,
+      topic: "clip.candidate",
+      clipCandidate: { candidateId: "smoke-candidate", startQpc: String(session.startQpc), endQpc: String(at), peakQpc: String(at), heuristicScore: 0.5, reasons: ["smoke"] },
+    });
+    await new Promise((r) => setTimeout(r, 600));
+    const contents = mainWindow!.webContents;
+    const clicked: unknown = await contents.executeJavaScript(
+      `(() => { document.querySelector('#tabs button[data-tab="library"]').click();
+        const s = [...document.querySelectorAll("#lib-sessions button")].find((b) => b.textContent.includes(${JSON.stringify(session.title || "")}) && b.textContent.includes("live game"));
+        if (s) s.click();
+        return true; })()`,
+      true,
+    );
+    await new Promise((r) => setTimeout(r, 400));
+    const pressed: unknown = await contents.executeJavaScript(`(() => { const b = [...document.querySelectorAll("#lib-rows button")].find((x) => x.textContent === "Save"); if (!b) return false; b.click(); return true; })()`, true);
+    const refused = await wait(() => library.candidateOf(session.id, "smoke-candidate")?.saveNote !== null && library.candidateOf(session.id, "smoke-candidate")?.saveNote !== undefined, 35_000);
+    await new Promise((r) => setTimeout(r, 400));
+    const shown: unknown = await contents.executeJavaScript(`(() => [...document.querySelectorAll("#lib-rows .save-note")].map((n) => n.textContent))()`, false);
+    await wait(() => storage !== null, 12_000);
+    const note = library.candidateOf(session.id, "smoke-candidate")?.saveNote ?? null;
+    return {
+      ok: clicked === true && pressed === true && refused && Array.isArray(shown) && shown.length > 0,
+      detail: { ...base, session: { title: session.title, retention: session.retention, sourceKind: session.sourceKind }, saveButton: pressed, saveNote: note, shown, storage },
+    };
+  };
+
   let rendererReady = false;
   ipcMain.once("lookback:rendered", (event) => {
     if (fromMain(event)) rendererReady = true;
@@ -564,6 +630,8 @@ function runSmoke(): void {
   let footageOpened = false;
   let killed: { pid: number | null; endpoint: string | null } | null = null;
   let storageStep = 0;
+  let liveStep = 0;
+  let testWindow: ChildProcess | null = null;
   const timer = setInterval(() => {
     const state = recorder.state;
     // In the supervise run the exit is the point; the supervisor brings it back.
@@ -576,6 +644,23 @@ function runSmoke(): void {
     const base = { recorder: state.status, stream: stream.state.status, received: stream.state.received, renderer: rendererReady };
     const up = state.status === "ready" && stream.state.status === "open" && rendererReady;
     const candidates = library.snapshot().sessions.reduce((n, x) => n + x.candidates.length, 0);
+    if (SMOKE_LIVE) {
+      if (!up || liveStep > 0) return;
+      liveStep = 1;
+      clearInterval(timer);
+      void smokeLive(base).then(
+        (r) => {
+          testWindow?.stdin?.end();
+          finish(r.ok, r.detail);
+        },
+        (err: unknown) => {
+          testWindow?.stdin?.end();
+          finish(false, { ...base, reason: err instanceof Error ? err.message : String(err), log: recorder.logTail.slice(-15) });
+        },
+      );
+      return;
+    }
+
     if (SMOKE_STORAGE) {
       if (!up || storageStep > 0) return;
       storageStep = 1;

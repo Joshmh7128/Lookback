@@ -315,10 +315,19 @@ reports whether the recorder stored the rating). `--smoke-supervise` kills
 the recorder once it is up and passes when the supervisor has it ready again
 on a new handshake. `--smoke-storage` feeds synthetic storage reports (near
 the clips budget, then full) and checks the banner, the blocking notice and
-the Settings line. Set
+the Settings line. `--smoke-live` lets the recorder record the repo's stand-in
+game (`lookback-testwindow.exe`, allowed through a scratch detection list),
+waits for its LIVE_GAME session, adds a candidate to the shell's library only
+and presses Save in the window; the recorder does not know that candidate and
+refuses it, and the run passes when the refusal shows under the button (a
+real save was verified in the recorder's own CaptureServiceTests). Every smoke
+run points the recorder's ratings and recordings at a folder in its userData,
+never the checkout or the user's store. Set
 `LOOKBACK_USER_DATA` to keep a run's userData in a scratch folder. CI runs the
 unit tests on Linux and Windows, and on Windows also builds the recorder,
-runs the integration tests and both smoke runs.
+runs the integration tests and the startup, viewer, supervise and storage
+smoke runs (the footage and live runs need ffmpeg footage and a capturable
+desktop, so they are run by hand).
 
 ## Limits and next steps
 
