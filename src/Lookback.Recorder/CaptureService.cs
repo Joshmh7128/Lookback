@@ -105,16 +105,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            ClipCandidate? candidate = _sessions.Candidate(sessionId, candidateId);
-            if (candidate is null)
+            if (Refusal(sessionId, candidateId, out ClipCandidate? candidate) is { } refused)
             {
-                return new SaveResult(null, _sessions.Session(sessionId) is null ? "unknown-session" : "unknown-candidate", $"No candidate '{candidateId}' in session '{sessionId}'.");
-            }
-
-            SessionStarted? started = _sessions.Session(sessionId);
-            if (started is null || !RetentionRules.CanPersist(started))
-            {
-                return new SaveResult(null, "ephemeral", "This session is ephemeral: nothing from it is saved.");
+                return refused;
             }
 
             StorageStatus status = Status();
@@ -123,22 +116,10 @@ internal sealed partial class CaptureService : IAsyncDisposable
                 return new SaveResult(null, "clips-full", $"Saved clips have reached their {_options.ClipsBudgetGB:0.#} GB budget; delete some to save more.");
             }
 
-            long from = (long)candidate.StartQpc, to = (long)candidate.EndQpc;
-            ClipSource? clip = null;
-            if (_live?.Game.Id == sessionId && _live.Ring.TrySnapshot(from, to, out ClipSource fromRam))
+            long from = (long)candidate!.StartQpc, to = (long)candidate.EndQpc;
+            if (Read(sessionId, from, to, out SaveResult? gone) is not { } clip)
             {
-                clip = fromRam;
-            }
-            else if (_store.TryReadClip(sessionId, from, to, out ClipSource fromDisk))
-            {
-                clip = fromDisk;
-            }
-
-            if (clip is null)
-            {
-                return new SaveResult(null, "unsupported", started.SourceKind == SourceKind.LiveGame
-                    ? "The recording no longer covers that moment."
-                    : "Only live recordings can be saved as clips; footage files are already on disk.");
+                return gone!.Value;
             }
 
             string path = _store.SaveClip(sessionId, clip, from, to);
@@ -157,6 +138,75 @@ internal sealed partial class CaptureService : IAsyncDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>
+    /// A temporary preview of a candidate's window, to watch it without saving
+    /// it (<see cref="SegmentStore.WritePreview"/>): the same checks and sources
+    /// as <see cref="SaveAsync"/>, but it keeps nothing. It pins no footage, uses
+    /// no clips budget, and old previews are deleted.
+    /// </summary>
+    public async Task<SaveResult> PreviewAsync(string sessionId, string candidateId)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Refusal(sessionId, candidateId, out ClipCandidate? candidate) is { } refused)
+            {
+                return refused;
+            }
+
+            long from = (long)candidate!.StartQpc, to = (long)candidate.EndQpc;
+            if (Read(sessionId, from, to, out SaveResult? gone) is not { } clip)
+            {
+                return gone!.Value;
+            }
+
+            return new SaveResult(_store.WritePreview(sessionId, candidateId, clip), null, null);
+        }
+        catch (IOException ex)
+        {
+            return new SaveResult(null, "bad-request", $"The preview could not be written: {ex.Message}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Why a candidate cannot be cut at all: unknown, or from a session that may not persist. Null when it can.</summary>
+    private SaveResult? Refusal(string sessionId, string candidateId, out ClipCandidate? candidate)
+    {
+        candidate = _sessions.Candidate(sessionId, candidateId);
+        if (candidate is null)
+        {
+            return new SaveResult(null, _sessions.Session(sessionId) is null ? "unknown-session" : "unknown-candidate", $"No candidate '{candidateId}' in session '{sessionId}'.");
+        }
+
+        SessionStarted? started = _sessions.Session(sessionId);
+        return started is null || !RetentionRules.CanPersist(started)
+            ? new SaveResult(null, "ephemeral", "This session is ephemeral: nothing from it is saved.")
+            : null;
+    }
+
+    /// <summary>The recording of [from, to]: the RAM ring while the session is live, else its segments on disk.</summary>
+    private ClipSource? Read(string sessionId, long from, long to, out SaveResult? gone)
+    {
+        gone = null;
+        if (_live?.Game.Id == sessionId && _live.Ring.TrySnapshot(from, to, out ClipSource fromRam))
+        {
+            return fromRam;
+        }
+
+        if (_store.TryReadClip(sessionId, from, to, out ClipSource fromDisk))
+        {
+            return fromDisk;
+        }
+
+        gone = new SaveResult(null, "unsupported", _sessions.Session(sessionId)?.SourceKind == SourceKind.LiveGame
+            ? "The recording no longer covers that moment."
+            : "Only live recordings can be cut into clips; footage files are already on disk.");
+        return null;
     }
 
     /// <summary>The two budgets now: saved clips (never swept) and session footage.</summary>

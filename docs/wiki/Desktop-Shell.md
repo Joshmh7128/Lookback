@@ -174,8 +174,19 @@ renderer's CSP allows media from that scheme only.
 
 When the recorder records a game it detects, its LIVE_GAME session (titled
 with the game) lists candidates from the clipper like footage does. A live
-recording has no file the shell may read, so its candidates are previewed
-from their **saved clip**: press **Save** on a candidate (or <kbd>S</kbd>).
+recording has no file of its own, so selecting a candidate asks the recorder
+for a **preview**: the shell sends `preview` and the recorder cuts the
+candidate's window from its footage, with no re-encode, into
+`store/previews/` and acks with the path, which the preview plays (up to 15 s;
+usually well under a second). A preview is not a saved clip: it pins no
+footage, uses no clips budget, is reused when watched again, and is deleted
+after a day unwatched or when previews pass 1 GB, least recently watched
+first. It works for as long as the footage holds the moment (24 h after the
+session, within the footage budget), and while the recorder that recorded
+the session is running: a restarted recorder no longer lists an earlier
+session's candidates.
+
+To keep a moment, press **Save** on a candidate (or <kbd>S</kbd>).
 The shell sends `save` and waits up to 30 s (the recorder cuts the clip from
 its recording); the ack's `path` and the `clip.saved` envelope fill in the
 clip, the row shows its file name and **Show file**, and the preview plays it.
@@ -209,6 +220,7 @@ token and Origin checks:
 | `{"type":"rate","id","sessionId","candidateId","stars":0..5}` | Rate a candidate; 0 clears |
 | `{"type":"analyze","id","path","profile"?,"retention":"owned\|permissioned\|open-license","permissionRef"?}` | Analyse a footage file; `permissionRef` required unless owned |
 | `{"type":"save","id","sessionId","candidateId"}` | Cut a live recording's candidate into a clip under the recorder's clips budget |
+| `{"type":"preview","id","sessionId","candidateId"}` | Cut a temporary preview of a live recording's candidate to watch it, outside the clips budget; the ack carries its path |
 
 The recorder answers the sending client only with
 `{"type":"ack","id","ok":true}` or

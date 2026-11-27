@@ -49,7 +49,9 @@ video to leak. In the recorder, `CaptureService` records live games (always
 `owned`), into `%LOCALAPPDATA%\Lookback\store` by default: session footage
 under a 20 GB budget (oldest unpinned segments evicted first, unused ones
 swept 24 h after the session) and saved clips under a separate 10 GB budget
-that is never swept. At the clips budget saving is refused rather than
+that is never swept. Temporary previews (a candidate cut so it can be watched
+without saving it) go in `previews/`, bounded at 1 GB and a day unwatched, and
+only from sessions that may persist. At the clips budget saving is refused rather than
 deleting anything; the UI is warned at 90 %.
 
 ### Ratings and the learned scorer (M4)

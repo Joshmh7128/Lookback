@@ -339,6 +339,13 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | `ResamplerTests.cs` | 5 tests | A unity ratio is a two-frame delay; 44.1, 96 and 47.99 kHz resample to 48 kHz keeping pitch, level and length; surround downmix cannot clip and drops LFE; PCM16, PCM24 and float decode |
 | `PolicyTests.cs` | 5 tests | Process loopback is tried from 19041; official player: never system loopback, encoder or mic, process loopback on Windows 10 with no fallback; a live game gets process loopback on Windows 10 with a fallback, and system loopback before 19041 (and says so); ephemeral is analysis only; invalid retention is refused |
 
+## `Lookback.Replay.Tests`: previews
+
+| File | Test | What it proves |
+|---|---|---|
+| `StoreTests.cs` | `A_preview_is_a_temporary_cut_that_keeps_nothing_and_stays_within_its_budget` | A preview goes to `previews/` with a safe file name, pins nothing, writes no clip, leaves no `.part`, and is reused (and marked recent) when watched again; unknown sessions get none |
+| | `Previews_past_their_budget_or_age_are_deleted_least_recently_watched_first` | Past the preview budget the least recently watched goes first; a day unwatched is deleted whatever the budget |
+
 ## `Lookback.Calibration.Tests`: the clipper check
 
 | File | Test | What it proves |
@@ -364,7 +371,8 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | | `Malformed_commands_get_bad_request` | Bad stars, missing fields, unknown types, non-JSON and non-objects all get `bad-request` |
 | | `Save_is_refused_until_live_capture_lands` | `save` acks `unsupported` |
 | | `Analyze_refuses_what_it_cannot_run` | Relative or missing paths, unknown profiles, permissioned footage without a reference, unknown retention |
-| `CaptureServiceTests.cs` | `A_detected_game_is_recorded_a_candidate_is_saved_and_exit_ends_the_session` | Windows with a GPU: our stand-in game window, allowed through a temporary detection list, is detected and recorded; a candidate's window is saved and probes as a 3.5–7 s clip with video; storage status counts the clip and the footage; the clipper reads the live signals (its excitement curve is published) and the video schema follows `SessionStarted` for late joiners; closing the window ends the session. Skips when a real game is running, since the recorder records that one instead |
+| | `Preview_needs_a_candidate_and_live_capture` | `preview` without a candidate is a bad request; without live capture it is unsupported |
+| `CaptureServiceTests.cs` | `A_detected_game_is_recorded_a_candidate_is_saved_and_exit_ends_the_session` | Windows with a GPU: our stand-in game window, allowed through a temporary detection list, is detected and recorded; a candidate's window is saved and probes as a 3.5–7 s clip with video; storage status counts the clip and the footage; the clipper reads the live signals (its excitement curve is published) and the video schema follows `SessionStarted` for late joiners; a preview of the candidate probes as video and is reused; closing the window ends the session. Skips when a real game is running, since the recorder records that one instead |
 | `LiveSchemaTests.cs` | `A_clipper_created_after_the_analyzer_reads_frames_only_once_the_schemas_are_published_again` | No GPU: a clipper subscribed after the live analyzer named its signals reads nothing until `LiveAnalyzer.PublishSchemas`, then publishes its curve. This is why the live recorder fired no game events and proposed no candidates before the fix |
 | | `Footage_is_analysed_into_a_file_session_whose_candidates_can_be_rated` | A generated clip becomes a FILE session titled with its exact path, with candidates and no `signals.*` envelopes on the bus; one of its candidates is then rated and stored |
 

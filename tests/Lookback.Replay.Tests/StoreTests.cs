@@ -154,4 +154,72 @@ public sealed class StoreTests : IDisposable
         Assert.False(File.Exists(Path.Combine(store.SessionsRoot, "b", "seg-000002.m4s")));
         Assert.Single(Directory.GetFiles(store.ClipsRoot)); // clips are never swept
     }
+
+    [Fact]
+    public async Task A_preview_is_a_temporary_cut_that_keeps_nothing_and_stays_within_its_budget()
+    {
+        SegmentStore store = SegmentStore.Open(new StoreOptions { Root = _root });
+        using ReplayRing ring = NewRing();
+        SessionRecording rec = store.BeginSession("s1", Owned(), 0, ring);
+        for (int s = 0; s < 10; s++)
+        {
+            Feed(ring, s, s + 1);
+            rec.Pump();
+        }
+
+        await rec.DisposeAsync();
+        Assert.True(store.TryReadClip("s1", 3 * Freq, 6 * Freq, out ClipSource clip));
+
+        // Written under previews/, not clips/, and it pins no footage.
+        string path = store.WritePreview("s1", "live-1/c:7", clip);
+        Assert.Equal(store.PreviewsRoot, Path.GetDirectoryName(path));
+        Assert.Equal("s1-live-1_c_7.mp4", Path.GetFileName(path)); // ids become safe file names
+        Assert.False(Directory.Exists(store.ClipsRoot));
+        Assert.Empty(SessionManifest.Load(rec.Folder).Pins);
+        Assert.True(new FileInfo(path).Length > 0);
+        Assert.Empty(Directory.EnumerateFiles(store.PreviewsRoot, "*.part"));
+
+        // Watching it again reuses the file.
+        DateTime first = File.GetLastWriteTimeUtc(path);
+        File.SetLastWriteTimeUtc(path, first.AddMinutes(-5));
+        Assert.Equal(path, store.WritePreview("s1", "live-1/c:7", clip));
+        Assert.True(File.GetLastWriteTimeUtc(path) > first.AddMinutes(-1), "watching again marks it recent");
+
+        // Unknown sessions get nothing.
+        Assert.Throws<InvalidOperationException>(() => store.WritePreview("nope", "c1", clip));
+    }
+
+    [Fact]
+    public async Task Previews_past_their_budget_or_age_are_deleted_least_recently_watched_first()
+    {
+        using ReplayRing ring = NewRing();
+        SegmentStore probe = SegmentStore.Open(new StoreOptions { Root = _root });
+        SessionRecording rec = probe.BeginSession("s1", Owned(), 0, ring);
+        for (int s = 0; s < 6; s++)
+        {
+            Feed(ring, s, s + 1);
+            rec.Pump();
+        }
+
+        await rec.DisposeAsync();
+        Assert.True(probe.TryReadClip("s1", 0, 4 * Freq, out ClipSource clip));
+        string a = probe.WritePreview("s1", "a", clip);
+        long size = new FileInfo(a).Length;
+
+        // Room for two previews: writing a third deletes the least recently watched.
+        SegmentStore store = SegmentStore.Open(new StoreOptions { Root = _root, PreviewBudgetBytes = (2 * size) + (size / 2) });
+        File.SetLastWriteTimeUtc(a, DateTime.UtcNow.AddMinutes(-10));
+        string b = store.WritePreview("s1", "b", clip);
+        File.SetLastWriteTimeUtc(b, DateTime.UtcNow.AddMinutes(-5));
+        string c = store.WritePreview("s1", "c", clip);
+        Assert.False(File.Exists(a));
+        Assert.True(File.Exists(b));
+        Assert.True(File.Exists(c));
+
+        // A day unwatched is too old, whatever the budget.
+        File.SetLastWriteTimeUtc(b, DateTime.UtcNow.AddHours(-25));
+        store.TrimPreviews(keep: null, DateTime.UtcNow);
+        Assert.False(File.Exists(b));
+        Assert.True(File.Exists(c));
+    }
 }

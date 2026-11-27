@@ -130,6 +130,13 @@ public sealed class CaptureServiceTests : IAsyncDisposable
             double duration = double.Parse(streams.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)[^1], CultureInfo.InvariantCulture);
             Assert.InRange(duration, 3.5, 7.0); // starts on the keyframe at or before the window (2 s GOP)
 
+            // A preview of the same window: watchable without saving, outside the clips budget, pinning nothing.
+            SaveResult preview = await capture.PreviewAsync(sessionId, "t1");
+            Assert.True(preview.Path is not null, $"{preview.Error}: {preview.Message}");
+            Assert.Equal("previews", Path.GetFileName(Path.GetDirectoryName(preview.Path)));
+            Assert.Contains("video", Run(FfmpegLocator.FindFfprobe()!, $"-v error -show_entries stream=codec_type -of csv=p=0 \"{preview.Path}\""), StringComparison.Ordinal);
+            Assert.Equal(preview.Path, (await capture.PreviewAsync(sessionId, "t1")).Path); // reused
+
             StorageStatus status = capture.Status();
             Assert.True(status.ClipsBytes > 0);
             Assert.False(status.ClipsFull);

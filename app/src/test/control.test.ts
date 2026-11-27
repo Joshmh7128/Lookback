@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeMessage, parseAck, parseStorage, rateMessage, refusal, saveMessage, validFootageRequest } from "../main/control";
+import { analyzeMessage, parseAck, parseStorage, previewMessage, previewPath, rateMessage, refusal, saveMessage, validFootageRequest } from "../main/control";
 import { StreamClient } from "../main/stream";
 import { socketFactory } from "./fakes";
 
@@ -80,4 +80,14 @@ test("no ack in time, a closed stream, or no stream at all resolve null", async 
   f.sockets[0]!.drop(1006);
   assert.equal(await dropped, null);
   client.disconnect();
+});
+
+test("a preview request names the candidate, and only a previews-folder .mp4 from an ok ack is played", () => {
+  assert.deepEqual(JSON.parse(previewMessage("r1", "live-overwatch-1", "c7")), { type: "preview", id: "r1", sessionId: "live-overwatch-1", candidateId: "c7" });
+  const windows = ["C:", "Users", "u", "AppData", "Local", "Lookback", "store", "previews", "live-1-c7.mp4"].join("\\");
+  assert.equal(previewPath({ ok: true, path: windows }), windows);
+  assert.equal(previewPath({ ok: true, path: "/home/u/store/previews/live-1-c7.mp4" }), "/home/u/store/previews/live-1-c7.mp4");
+  for (const bad of [null, { ok: false, path: "/s/previews/a.mp4" }, { ok: true, path: null }, { ok: true, path: "/s/clips/a.mp4" }, { ok: true, path: "/s/previews/a.exe" }]) {
+    assert.equal(previewPath(bad), null, JSON.stringify(bad));
+  }
 });

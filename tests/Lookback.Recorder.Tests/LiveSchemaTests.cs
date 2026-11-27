@@ -76,9 +76,17 @@ public sealed class LiveSchemaTests
         await FeedAsync(60);
         Assert.Equal(0, CurveFrames(curve));
 
-        // Named again: from here on the clipper reads the signals and publishes its curve.
+        // Named again: from here on the clipper reads the signals and publishes its curve. The
+        // analysis worker runs below normal priority, so on a busy machine keep feeding and wait
+        // for the curve (up to 10 s) rather than trusting one fixed delay.
         analyzer.PublishSchemas();
-        await FeedAsync(60);
-        Assert.True(CurveFrames(curve) > 0, "the clipper still cannot read the signals");
+        int read = 0;
+        for (var waited = System.Diagnostics.Stopwatch.StartNew(); read == 0 && waited.Elapsed < TimeSpan.FromSeconds(10);)
+        {
+            await FeedAsync(30);
+            read += CurveFrames(curve);
+        }
+
+        Assert.True(read > 0, "the clipper still cannot read the signals");
     }
 }
