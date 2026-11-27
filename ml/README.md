@@ -3,7 +3,10 @@
 Trains the model `Lookback.Scoring.LearnedClipScorer` runs: L2 logistic
 regression on clip features and 1-5 star content ratings, per-game Platt
 calibration, ONNX export, and a held-out evaluation against the heuristic.
-Everything runs locally on ratings stored under `datasets/<game>/ratings.jsonl`.
+Everything runs locally on ratings stored under `datasets/<game>/ratings.jsonl`
+(your footage) and `datasets/<game>/check-ratings.jsonl` (your clipper-check
+ratings of watched videos: the stars and the candidate's numbers, nothing of
+the video; `--no-check-ratings` leaves them out).
 
 ```powershell
 python -m venv .venv
@@ -14,4 +17,5 @@ python -m venv .venv
 
 Full guide: the wiki page `docs/wiki/Clip-Scoring.md`. Training refuses
 ratings from sessions that may not be stored (official players, other
-ephemeral sessions) and data too small or one-sided to learn from.
+ephemeral sessions), check ratings that carry anything but numbers, and data
+too small or one-sided to learn from.

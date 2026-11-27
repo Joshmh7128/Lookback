@@ -196,4 +196,95 @@ public sealed class RatingStoreTests : IDisposable
     [InlineData("", null)]
     [InlineData(".x", null)]
     public void Game_of_a_profile_is_its_root(string profile, string? game) => Assert.Equal(game, RatingStore.GameOf(profile));
+
+    // ---- Clipper-check ratings: the user's own ratings of a watched video, numbers only ----
+
+    private static SessionStarted Player() => new() { SourceKind = SourceKind.OfficialPlayer, Retention = Retention.Ephemeral, QpcFrequency = TestData.Frequency };
+
+    /// <summary>The input behind ml/tests/data/check_rating_sample.jsonl.</summary>
+    private static CheckRatingInput CheckInput(string runId = "check-0123456789abcdef0123456789abcdef", string platform = "youtube", int stars = 5, string? profile = "cs2.competitive") => new()
+    {
+        RunId = runId,
+        Ordinal = 3,
+        Profile = profile,
+        Platform = platform,
+        Stars = stars,
+        HeuristicScore = 0.75f,
+        ClipperFeatures = new Dictionary<string, float>
+        {
+            ["score.heuristic"] = 0.75f,
+            ["window.seconds"] = 8,
+            ["window.peak_position"] = 0.5f,
+            ["events.count"] = 2,
+            ["events.kinds"] = 1,
+            ["events.score_sum"] = 1.5f,
+            ["events.score_max"] = 1,
+            ["z_mean.motion.energy"] = 2.5f,
+            ["z_mean.audio.rms_db"] = 1.25f, // no audio stream: stored as missing
+            ["qa.silent"] = 1,                // likewise
+            ["curve.max"] = 3,
+        },
+    };
+
+    [Fact]
+    public void A_check_rating_keeps_the_stars_and_numbers_and_nothing_of_the_video()
+    {
+        RatingWriteResult r = Store().AppendCheck(Player(), CheckInput());
+
+        Assert.True(r.Written, r.Reason);
+        Assert.Equal(Path.Combine(_root, "cs2", RatingStore.CheckFileName), r.Path);
+        Assert.False(File.Exists(Store().PathFor("cs2")), "check ratings never mix into ratings.jsonl");
+        RatingRecord row = Assert.Single(Store().ReadChecks("cs2").Records);
+        Assert.Equal("check-0123456789abcdef0123456789abcdef", row.SessionId);
+        Assert.Equal("c3", row.CandidateId);
+        Assert.Equal((0UL, 0UL, 0UL, 0UL), (row.StartQpc, row.EndQpc, row.PeakQpc, row.QpcFrequency));
+        Assert.Equal(("ephemeral", "official-player", RatingStore.CheckDerivedWrite, "youtube"), (row.Retention, row.SourceKind, row.DerivedWrite, row.Platform));
+        Assert.Equal(2.5f, row.Features[ClipFeatureSchema.IndexOf(ClipFeatureSchema.MotionZ)]);
+        Assert.All(ClipFeatureSchema.AudioDerived, a => Assert.Null(row.Features[ClipFeatureSchema.IndexOf(a)]));
+
+        // The exact line the ml tests read.
+        string sample = File.ReadAllText(Path.Combine(TestData.Fixtures, "check_rating_sample.jsonl")).ReplaceLineEndings("\n");
+        Assert.Equal(sample, File.ReadAllText(r.Path!));
+    }
+
+    [Fact]
+    public void The_generic_curve_files_under_generic_and_a_clear_is_a_new_line()
+    {
+        RatingStore store = Store();
+        Assert.True(store.AppendCheck(Player(), CheckInput(profile: null)).Written);
+        Assert.True(store.AppendCheck(Player(), CheckInput(profile: null, stars: 0)).Written);
+
+        IReadOnlyList<RatingRecord> lines = store.ReadChecks("generic").Records;
+        Assert.Equal(2, lines.Count);
+        Assert.Empty(RatingStore.Current(lines)); // the clear wins
+    }
+
+    public static TheoryData<string, string, int> BadCheckInputs => new()
+    {
+        { "official-youtube-1a2b3c", "youtube", 4 },                   // not a random run id
+        { "check-ABCDEFGHIJKLMNOPQRSTUVWXYZ012345", "youtube", 4 },   // not hex: could carry a video id
+        { "check-0123456789abcdef0123456789abcdef", "vimeo", 4 },
+        { "check-0123456789abcdef0123456789abcdef", "youtube", 6 },
+    };
+
+    [Theory]
+    [MemberData(nameof(BadCheckInputs))]
+    public void Check_ratings_that_could_carry_more_are_refused(string runId, string platform, int stars)
+    {
+        RatingWriteResult r = Store().AppendCheck(Player(), CheckInput(runId, platform, stars));
+
+        Assert.False(r.Written);
+        Assert.NotNull(r.Reason);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
+    }
+
+    [Fact]
+    public void Check_ratings_need_a_valid_official_player_session()
+    {
+        Assert.False(Store().AppendCheck(null, CheckInput()).Written);
+        Assert.False(Store().AppendCheck(TestData.Session(), CheckInput()).Written); // owned footage is rated with Append
+        Assert.False(Store().AppendCheck(new SessionStarted { SourceKind = SourceKind.OfficialPlayer, Retention = Retention.Owned }, CheckInput()).Written);
+        Assert.False(Store().Append(Player(), TestData.Rating(), TestData.Candidate(), "shell").Written); // the session itself still never persists
+        Assert.Empty(Directory.EnumerateFileSystemEntries(_root));
+    }
 }

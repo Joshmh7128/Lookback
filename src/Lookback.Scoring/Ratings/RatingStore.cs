@@ -18,6 +18,37 @@ public sealed record RatingWriteResult(bool Written, string? Reason, RatingRecor
     internal static RatingWriteResult Refused(string reason) => new(false, reason, null, null);
 }
 
+/// <summary>
+/// The user's rating of one clipper-check candidate (a video they only watched),
+/// with what training can learn from: its heuristic score and the clipper's named
+/// features. Nothing here identifies the video or a moment in it.
+/// </summary>
+public sealed record CheckRatingInput
+{
+    /// <summary>Random per player run, <c>check-</c> and 32 hex digits (<see cref="RatingStore.NewRunId"/>); groups the run's ratings for cross-validation.</summary>
+    public required string RunId { get; init; }
+
+    /// <summary>The candidate's place in the run (0, 1, 2...), so a re-rating replaces the earlier one.</summary>
+    public required int Ordinal { get; init; }
+
+    /// <summary>The profile the clipper ran on, for example <c>cs2.competitive</c>; null or empty for the generic curve.</summary>
+    public string? Profile { get; init; }
+
+    /// <summary><c>youtube</c> or <c>twitch</c>.</summary>
+    public required string Platform { get; init; }
+
+    /// <summary>1 to 5, or 0 to clear.</summary>
+    public required int Stars { get; init; }
+
+    public float HeuristicScore { get; init; }
+
+    /// <summary>The clipper's named features (<c>clipper-features/1</c>); null leaves only the heuristic score.</summary>
+    public IReadOnlyDictionary<string, float>? ClipperFeatures { get; init; }
+
+    /// <summary>The session had no audio stream: audio features are stored as missing.</summary>
+    public bool VideoOnly { get; init; } = true;
+}
+
 /// <summary>Every readable line of a ratings file, and how many were not.</summary>
 public sealed record RatingReadResult(IReadOnlyList<RatingRecord> Records, int SkippedLines);
 
@@ -28,10 +59,25 @@ public sealed record RatingReadResult(IReadOnlyList<RatingRecord> Records, int S
 /// <see cref="RetentionRules.CanPersist"/> about the rated session, so a
 /// rating of an official-player or other ephemeral session is refused and
 /// never becomes training data. Thread-safe; safe to share across sinks.
+/// <para>
+/// The one write from an ephemeral session is <see cref="AppendCheck"/>: the
+/// user's own rating of a clipper-check candidate, kept apart in
+/// <c>&lt;game&gt;/check-ratings.jsonl</c>, holding the stars and the candidate's
+/// numbers only (see <see cref="DerivedWriteKind.UserRatingWithFeatures"/>).
+/// </para>
 /// </summary>
 public sealed partial class RatingStore
 {
     public const string FileName = "ratings.jsonl";
+
+    /// <summary>The clipper check's ratings of watched videos, beside <see cref="FileName"/>.</summary>
+    public const string CheckFileName = "check-ratings.jsonl";
+
+    /// <summary><see cref="RatingRecord.DerivedWrite"/> of a clipper-check rating.</summary>
+    public const string CheckDerivedWrite = "user-rating-with-features";
+
+    /// <summary><see cref="RatingRecord.Source"/> of a clipper-check rating.</summary>
+    public const string CheckSource = "clipper-check";
 
     internal static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -62,6 +108,12 @@ public sealed partial class RatingStore
 
         return Path.Combine(DatasetRoot, game, FileName);
     }
+
+    /// <summary>The clipper-check ratings file of <paramref name="game"/>.</summary>
+    public string CheckPathFor(string game) => Path.Combine(Path.GetDirectoryName(PathFor(game))!, CheckFileName);
+
+    /// <summary>A fresh random run id for <see cref="CheckRatingInput.RunId"/>.</summary>
+    public static string NewRunId() => "check-" + Guid.NewGuid().ToString("N");
 
     /// <summary>
     /// Persists <paramref name="rating"/> of a candidate from the session
@@ -110,9 +162,107 @@ public sealed partial class RatingStore
 
         RatingRecord record = Build(session, rating, candidate, profile, game, source);
         string path = PathFor(game);
-        string line = JsonSerializer.Serialize(record, Json) + "\n";
-        byte[] bytes = Encoding.UTF8.GetBytes(line);
+        AppendLine(path, record);
+        return new RatingWriteResult(true, null, record, path);
+    }
 
+    /// <summary>
+    /// Persists the user's rating of a clipper-check candidate from an
+    /// official-player session, or refuses it with a reason. The line holds the
+    /// stars, the profile, the platform, the heuristic score and the candidate's
+    /// <c>clip-features/1</c> vector; its times are 0 and its session is the random
+    /// run id, so nothing in it identifies the video or a moment in it. Gated by
+    /// <see cref="RetentionRules.ValidateDerived"/> with
+    /// <see cref="DerivedWriteKind.UserRatingWithFeatures"/>.
+    /// </summary>
+    public RatingWriteResult AppendCheck(SessionStarted? session, CheckRatingInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        if (session is null)
+        {
+            return RatingWriteResult.Refused("The player session is unknown, so its retention cannot be checked.");
+        }
+
+        if (RetentionRules.ValidateDerived(session, DerivedWriteKind.UserRatingWithFeatures, userConfirmed: true) is { } refused)
+        {
+            return RatingWriteResult.Refused(refused);
+        }
+
+        if (session.SourceKind != SourceKind.OfficialPlayer)
+        {
+            return RatingWriteResult.Refused("Clipper-check ratings come from the official player; footage you own is rated with Append.");
+        }
+
+        if (!RunIdPattern().IsMatch(input.RunId))
+        {
+            return RatingWriteResult.Refused("The run id must be random (check- and 32 hex digits), never anything from the video.");
+        }
+
+        if (input.Platform is not ("youtube" or "twitch"))
+        {
+            return RatingWriteResult.Refused($"Platform must be youtube or twitch, got '{input.Platform}'.");
+        }
+
+        if (input.Stars is < 0 or > 5 || input.Ordinal < 0)
+        {
+            return RatingWriteResult.Refused($"Stars are 0 to 5 and the ordinal is not negative, got {input.Stars} and {input.Ordinal}.");
+        }
+
+        string profile = string.IsNullOrWhiteSpace(input.Profile) ? "generic" : input.Profile;
+        if (GameOf(profile) is not { } game)
+        {
+            return RatingWriteResult.Refused($"'{profile}' is not a profile id.");
+        }
+
+        float[] features = input.ClipperFeatures is null ? Floor(input.HeuristicScore) : ClipperFeatureMap.FromClipper(input.ClipperFeatures);
+        if (input.VideoOnly)
+        {
+            foreach (string audio in ClipFeatureSchema.AudioDerived)
+            {
+                features[ClipFeatureSchema.IndexOf(audio)] = float.NaN;
+            }
+        }
+
+        var record = new RatingRecord
+        {
+            Game = game,
+            Profile = profile,
+            SessionId = input.RunId,
+            CandidateId = $"c{input.Ordinal}",
+            Stars = input.Stars,
+            Label = RatingRecord.LabelFor(input.Stars),
+            Retention = Kebab(session.Retention.ToString()),
+            SourceKind = Kebab(session.SourceKind.ToString()),
+            HeuristicScore = input.HeuristicScore,
+            FeatureSchema = ClipFeatureSchema.Id,
+            Features = [.. features.Select(f => float.IsFinite(f) ? f : (float?)null)],
+            RatedAt = _time.GetUtcNow(),
+            Source = CheckSource,
+            DerivedWrite = CheckDerivedWrite,
+            Platform = input.Platform,
+        };
+
+        string path = CheckPathFor(game);
+        AppendLine(path, record);
+        return new RatingWriteResult(true, null, record, path);
+    }
+
+    /// <summary>Reads every line of <paramref name="game"/>'s ratings. A missing file is empty; unreadable lines (a torn last write) are skipped and counted.</summary>
+    public RatingReadResult Read(string game) => ReadFile(PathFor(game));
+
+    /// <summary>Reads every line of <paramref name="game"/>'s clipper-check ratings, like <see cref="Read"/>.</summary>
+    public RatingReadResult ReadChecks(string game) => ReadFile(CheckPathFor(game));
+
+    private static float[] Floor(float heuristic)
+    {
+        float[] v = ClipFeatureSchema.Empty();
+        v[ClipFeatureSchema.IndexOf(ClipFeatureSchema.HeuristicScore)] = heuristic;
+        return v;
+    }
+
+    private static void AppendLine(string path, RatingRecord record)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(record, Json) + "\n");
         Lock gate = FileLocks.GetOrAdd(path, _ => new Lock());
         lock (gate)
         {
@@ -121,14 +271,10 @@ public sealed partial class RatingStore
             stream.Write(bytes); // one write per line, so a reader never sees half of two lines
             stream.Flush(flushToDisk: true);
         }
-
-        return new RatingWriteResult(true, null, record, path);
     }
 
-    /// <summary>Reads every line of <paramref name="game"/>'s ratings. A missing file is empty; unreadable lines (a torn last write) are skipped and counted.</summary>
-    public RatingReadResult Read(string game)
+    private static RatingReadResult ReadFile(string path)
     {
-        string path = PathFor(game);
         if (!File.Exists(path))
         {
             return new RatingReadResult([], 0);
@@ -249,4 +395,7 @@ public sealed partial class RatingStore
 
     [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex GameIdPattern();
+
+    [GeneratedRegex("^check-[0-9a-f]{32}$", RegexOptions.CultureInvariant)]
+    private static partial Regex RunIdPattern();
 }

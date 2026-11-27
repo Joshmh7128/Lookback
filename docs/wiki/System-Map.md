@@ -51,7 +51,9 @@ region and threshold numbers you confirm, through
 `RetentionRules.ValidateDerived`. `RatingStore` writes ratings only for
 sessions that may persist, so official-player footage never becomes training
 data. The [clipper check](Official-Player-Calibration#clipper-check-how-accurate-is-the-clipper)
-scores the clipper on a watched video, but its ratings stay in memory. Ratings are 1–5 stars on content (is this moment a highlight);
+scores the clipper on a watched video; your ratings there are kept as numbers
+only (stars and the candidate's features, never the video) in
+`check-ratings.jsonl` and train the scorer too. Ratings are 1–5 stars on content (is this moment a highlight);
 video quality is measured automatically, not rated. The shell sends each
 rating to the recorder and shows it as stored once the recorder acks it; a
 refused or unanswered rating stays in the shell's memory.
@@ -66,7 +68,7 @@ refused or unanswered rating stays in the shell's memory.
 | Profile tree, detector, candidates, learned fingerprints | Profiles · `profiles/` | Done |
 | Testbench CLI, timeline viewer, dataset browser, live profiler | Testbench · Profiler | Done |
 | Official-player calibration, recorder side | Calibration | Done |
-| Clipper check: rate the clipper's candidates on a video you are watching; precision, recall, per-reason scores, all in memory | Calibration · calibration panel | Done |
+| Clipper check: rate the clipper's candidates on a video you are watching; precision, recall, per-reason scores in memory; your ratings saved as numbers only for training | Calibration · calibration panel · Scoring | Done |
 | Replay ring, fMP4 muxer, clip writer, segment store, cache sweeper | Replay | Done |
 | Governor policy and runtime controller | Governor | Done |
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |

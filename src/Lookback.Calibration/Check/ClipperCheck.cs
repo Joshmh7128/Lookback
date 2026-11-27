@@ -1,10 +1,11 @@
 using Lookback.Contracts.V1;
 using Lookback.Core.Time;
+using Lookback.Scoring.Ratings;
 
 namespace Lookback.Calibration.Check;
 
-/// <summary>A clipper candidate as the check shows it.</summary>
-public sealed record CheckCandidate(string Id, long StartQpc, long EndQpc, long PeakQpc, float Score, IReadOnlyList<string> Reasons, bool QaPassed, int Stars);
+/// <summary>A clipper candidate as the check shows it. <paramref name="Saved"/> is null until a rating was saved or refused.</summary>
+public sealed record CheckCandidate(string Id, long StartQpc, long EndQpc, long PeakQpc, float Score, IReadOnlyList<string> Reasons, bool QaPassed, int Stars, bool? Saved = null);
 
 /// <summary>One reason the clipper gave (an event name, or <c>excitement</c> for the curve), with how its candidates were judged.</summary>
 public sealed record ReasonScore(string Reason, int Candidates, int Judged, double? MeanStars, double? Precision);
@@ -27,10 +28,10 @@ public sealed record CheckStats(
 /// <summary>
 /// The clipper check: rate the clipper's candidates on a video you are only
 /// watching (an official YouTube or Twitch player) and see how accurate it
-/// is. Everything lives in memory for the session and is dropped when the
-/// player stops or the check is reset: no candidate, judgment, mark, time or
-/// video id is ever written. Ratings that train the scorer come only from
-/// footage you own (<c>RatingStore</c>); this is evaluation, not training data.
+/// is. The check itself lives in memory and is dropped when the player stops
+/// or the check is reset. What may leave it is your rating, through
+/// <see cref="RatingFor"/> and <c>RatingStore.AppendCheck</c>: the stars and the
+/// candidate's numbers, under a random run id, never a time or the video.
 /// </summary>
 public sealed class ClipperCheck
 {
@@ -42,6 +43,7 @@ public sealed class ClipperCheck
     private readonly List<string> _order = [];
     private readonly List<long> _marks = [];
     private readonly long _tolerance;
+    private int _next;
 
     /// <param name="frequency">QPC ticks per second of the session clock.</param>
     /// <param name="tolerance">How far outside a candidate's window a marked moment still counts as covered. 2 s by default.</param>
@@ -54,8 +56,11 @@ public sealed class ClipperCheck
 
     public long Frequency { get; }
 
-    /// <summary>A candidate the clipper proposed (and its QA report).</summary>
-    public void Add(ClipCandidate candidate, QaReport? qa)
+    /// <summary>Random per run (<c>check-</c> and 32 hex digits); a reset starts a new run. Saved ratings carry it instead of anything from the video.</summary>
+    public string RunId { get; private set; } = RatingStore.NewRunId();
+
+    /// <summary>A candidate the clipper proposed, its QA report and the clipper's named features.</summary>
+    public void Add(ClipCandidate candidate, QaReport? qa, IReadOnlyDictionary<string, float>? features = null)
     {
         ArgumentNullException.ThrowIfNull(candidate);
         lock (_lock)
@@ -65,8 +70,48 @@ public sealed class ClipperCheck
                 return;
             }
 
-            _candidates[candidate.CandidateId] = new Entry(candidate, qa?.Passed ?? true);
+            _candidates[candidate.CandidateId] = new Entry(candidate, qa?.Passed ?? true, _next++, features);
             _order.Add(candidate.CandidateId);
+        }
+    }
+
+    /// <summary>
+    /// What may be saved of a rating: the stars, the candidate's heuristic score
+    /// and features, its place in this run and the run id. Null when the check
+    /// has no such candidate. <paramref name="profile"/> applies when the
+    /// candidate names none.
+    /// </summary>
+    public CheckRatingInput? RatingFor(string candidateId, int stars, string platform, string? profile)
+    {
+        lock (_lock)
+        {
+            if (!_candidates.TryGetValue(candidateId, out Entry? e))
+            {
+                return null;
+            }
+
+            return new CheckRatingInput
+            {
+                RunId = RunId,
+                Ordinal = e.Ordinal,
+                Profile = e.Candidate.GameProfile is { Length: > 0 } p ? p : profile,
+                Platform = platform,
+                Stars = stars,
+                HeuristicScore = e.Candidate.HeuristicScore,
+                ClipperFeatures = e.Features,
+            };
+        }
+    }
+
+    /// <summary>Records whether the candidate's latest rating was saved.</summary>
+    public void MarkSaved(string candidateId, bool saved)
+    {
+        lock (_lock)
+        {
+            if (_candidates.TryGetValue(candidateId, out Entry? e))
+            {
+                e.Saved = saved;
+            }
         }
     }
 
@@ -99,7 +144,7 @@ public sealed class ClipperCheck
         }
     }
 
-    /// <summary>Forgets everything.</summary>
+    /// <summary>Forgets everything and starts a new run. Ratings already saved stay saved.</summary>
     public void Reset()
     {
         lock (_lock)
@@ -107,6 +152,8 @@ public sealed class ClipperCheck
             _candidates.Clear();
             _order.Clear();
             _marks.Clear();
+            _next = 0;
+            RunId = RatingStore.NewRunId();
         }
     }
 
@@ -179,13 +226,19 @@ public sealed class ClipperCheck
 
     private static double? Mean(List<Entry> judged) => judged.Count == 0 ? null : judged.Average(e => (double)e.Stars);
 
-    private sealed class Entry(ClipCandidate candidate, bool qaPassed)
+    private sealed class Entry(ClipCandidate candidate, bool qaPassed, int ordinal, IReadOnlyDictionary<string, float>? features)
     {
         public ClipCandidate Candidate { get; } = candidate;
 
         public bool QaPassed { get; } = qaPassed;
 
+        public int Ordinal { get; } = ordinal;
+
+        public IReadOnlyDictionary<string, float>? Features { get; } = features;
+
         public int Stars { get; set; }
+
+        public bool? Saved { get; set; }
 
         /// <summary>"impact ×1 (best confidence 0.70)" → "impact"; "excitement ×1 (…)" → "excitement".</summary>
         public IEnumerable<string> ReasonNames => Candidate.Reasons
@@ -194,6 +247,6 @@ public sealed class ClipperCheck
             .Distinct(StringComparer.Ordinal);
 
         public CheckCandidate View() => new(Candidate.CandidateId, (long)Candidate.StartQpc, (long)Candidate.EndQpc, (long)Candidate.PeakQpc,
-            Candidate.HeuristicScore, [.. Candidate.Reasons], QaPassed, Stars);
+            Candidate.HeuristicScore, [.. Candidate.Reasons], QaPassed, Stars, Saved);
     }
 }

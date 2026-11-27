@@ -9,6 +9,7 @@ using Lookback.Calibration.Profiles;
 using Lookback.Core.Bus;
 using Lookback.Core.Time;
 using Lookback.Profiles.Model;
+using Lookback.Scoring.Ratings;
 using Lookback.Stream.SessionLog;
 using Lookback.Stream.WebSockets;
 
@@ -23,6 +24,13 @@ public sealed record CalibrationHostOptions
     /// built-in profiles with saving off.
     /// </summary>
     public string? ProfilesDirectory { get; init; }
+
+    /// <summary>
+    /// Where the clipper check saves your ratings for training the scorer:
+    /// stars and each candidate's numbers, never the video
+    /// (<see cref="RatingStore.AppendCheck"/>). Null keeps ratings in memory only.
+    /// </summary>
+    public RatingStore? Ratings { get; init; }
 }
 
 /// <summary>
@@ -47,6 +55,7 @@ public sealed class CalibrationHost : IAsyncDisposable
     private readonly IEventBus _bus;
     private readonly IClock _clock;
     private readonly CalibrationWriter? _writer;
+    private readonly RatingStore? _ratings;
     private readonly ProfileCatalog _builtIn;
     private readonly Lock _gate = new();
     private OfficialPlayerSession? _session;
@@ -59,6 +68,7 @@ public sealed class CalibrationHost : IAsyncDisposable
         _clock = clock ?? SystemClock.Instance;
         options ??= new CalibrationHostOptions();
         _writer = options.ProfilesDirectory is null ? null : new CalibrationWriter(options.ProfilesDirectory);
+        _ratings = options.Ratings;
         _builtIn = ProfileCatalog.BuiltIn;
     }
 
@@ -269,13 +279,18 @@ public sealed class CalibrationHost : IAsyncDisposable
                 await session.ApplyAsync(Edits(msg!)).ConfigureAwait(false);
                 return Ok("apply");
             case "judge":
-                // In memory only: a rating of a video you are watching is never stored.
-                if (!session.Check.Judge((string?)msg!["candidateId"] ?? throw new ArgumentException("judge needs a candidateId."), msg["stars"]?.GetValue<int>() ?? throw new ArgumentException("judge needs stars (0 to 5).")))
+            {
+                string candidateId = (string?)msg!["candidateId"] ?? throw new ArgumentException("judge needs a candidateId.");
+                int stars = msg["stars"]?.GetValue<int>() ?? throw new ArgumentException("judge needs stars (0 to 5).");
+                if (!session.Check.Judge(candidateId, stars))
                 {
                     throw new KeyNotFoundException("No such candidate in the check.");
                 }
 
-                return Ok("judge");
+                // Your rating is yours: it is saved with the candidate's numbers, never the video.
+                (bool stored, string? reason) = SaveRating(session, candidateId, stars);
+                return JsonSerializer.Serialize(new { type = "ok", what = "judge", stored, reason }, Json);
+            }
             case "missed":
                 session.MarkMissed();
                 return Ok("missed");
@@ -300,6 +315,32 @@ public sealed class CalibrationHost : IAsyncDisposable
     }
 
     private static string Ok(string what) => JsonSerializer.Serialize(new { type = "ok", what }, Json);
+
+    private (bool Stored, string? Reason) SaveRating(OfficialPlayerSession session, string candidateId, int stars)
+    {
+        if (_ratings is null)
+        {
+            return (false, "Saving ratings is off: they stay in memory.");
+        }
+
+        if (session.Check.RatingFor(candidateId, stars, session.Platform, session.ProfileId) is not { } input)
+        {
+            return (false, "The candidate is no longer in the check.");
+        }
+
+        RatingWriteResult result;
+        try
+        {
+            result = _ratings.AppendCheck(session.Started, input);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            result = new RatingWriteResult(false, $"Could not write the rating: {e.Message}", null, null);
+        }
+
+        session.Check.MarkSaved(candidateId, result.Written);
+        return (result.Written, result.Reason);
+    }
 
     // {"regions":{"kill_feed":{"x":..,"y":..,"w":..,"h":..}},"thresholds":[{"owner":"cs2","event":"elimination","index":0,"value":0.02}]}
     private static CalibrationEdits Edits(JsonNode msg)
@@ -341,7 +382,7 @@ public sealed class CalibrationHost : IAsyncDisposable
 
         state["profile"] = s.ProfileId;
         state["frames"] = s.VideoFrames;
-        state["check"] = Check(s);
+        state["check"] = Check(s, _ratings is not null);
         CalibrationProbe probe = s.Probe;
         state["grid"] = new JsonObject { ["cols"] = probe.Columns, ["rows"] = probe.Rows, ["static"] = Cells(probe.StaticCells()) };
         IReadOnlyDictionary<string, int> marks = probe.MarkCounts();
@@ -389,7 +430,7 @@ public sealed class CalibrationHost : IAsyncDisposable
     }
 
     /// <summary>The clipper check's view: the newest candidates (times in playback seconds) and the scores so far.</summary>
-    private static JsonObject Check(OfficialPlayerSession s)
+    private static JsonObject Check(OfficialPlayerSession s, bool saving)
     {
         double freq = s.Check.Frequency;
         double At(long qpc) => Math.Round((qpc - s.OriginQpc) / freq, 1);
@@ -406,13 +447,17 @@ public sealed class CalibrationHost : IAsyncDisposable
                 ["reasons"] = new JsonArray([.. c.Reasons.Select(r => (JsonNode)r)]),
                 ["qa"] = c.QaPassed,
                 ["stars"] = c.Stars,
+                ["saved"] = c.Saved,
             });
         }
 
         Check.CheckStats st = s.Check.Stats();
         return new JsonObject
         {
-            ["note"] = "Nothing here is stored: judgments and marks live in memory and are cleared when the player stops. Ratings that train the scorer come only from your own footage.",
+            ["note"] = saving
+                ? "Your ratings are saved to train the scorer: the stars and each candidate's numbers (its features and score), never the video, its address or any time in it. Missed-highlight marks and these scores stay in memory and are cleared when the player stops."
+                : "Nothing here is stored: ratings and marks live in memory and are cleared when the player stops (saving ratings is off).",
+            ["saving"] = saving,
             ["recent"] = recent,
             ["stats"] = JsonSerializer.SerializeToNode(st, Json),
         };
