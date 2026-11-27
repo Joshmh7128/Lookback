@@ -41,6 +41,35 @@ public sealed class RecorderOptions
     /// <summary>Accept control commands (<c>rate</c>, <c>analyze</c>, <c>save</c>) on <c>/events</c>. On by default.</summary>
     public bool Control { get; set; } = true;
 
+    /// <summary>
+    /// Record games automatically: detection starts a capture session for
+    /// every allowed game it sees start (one at a time). On by default on Windows.
+    /// </summary>
+    public bool Capture { get; set; } = OperatingSystem.IsWindows();
+
+    /// <summary>Session footage and saved clips: <c>&lt;dir&gt;/sessions</c> and <c>&lt;dir&gt;/clips</c>. Unset: <c>%LOCALAPPDATA%\Lookback\store</c>.</summary>
+    public string? StoreDirectory { get; set; }
+
+    /// <summary>Saved clips may use this much (never swept; saving is refused at the cap). 10 GB by default.</summary>
+    public double ClipsBudgetGB { get; set; } = 10;
+
+    /// <summary>Warn (in <c>recorder.storage</c>) once saved clips reach this fraction of their budget.</summary>
+    public double ClipsWarnFraction { get; set; } = 0.9;
+
+    /// <summary>Session footage (2 s segments) may use at most this much; the governor may pick less. 20 GB by default.</summary>
+    public double FootageBudgetGB { get; set; } = 20;
+
+    /// <summary>Record the microphone as its own track. Off by default.</summary>
+    public bool Microphone { get; set; }
+
+    /// <summary>Game detection's allow/deny list. Unset: <c>%LOCALAPPDATA%\Lookback\detection.json</c>.</summary>
+    public string? DetectionSettings { get; set; }
+
+    /// <summary>The store folder in effect.</summary>
+    public string ResolvedStoreDirectory => StoreDirectory is { Length: > 0 } s
+        ? Path.GetFullPath(s)
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lookback", "store");
+
     /// <summary>The ratings folder in effect.</summary>
     public string ResolvedDatasetsDirectory => DatasetsDirectory is { Length: > 0 } d
         ? Path.GetFullPath(d)

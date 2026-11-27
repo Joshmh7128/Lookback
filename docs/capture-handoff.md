@@ -24,7 +24,8 @@ design, what has landed and what's next. Update it with every PR on this work.
 | AAC encode (`MfAacEncoder`: Microsoft AAC MFT, sync, 48 kHz stereo, float→PCM16, 128/160/192 kbps, raw access units, ASC from `MF_MT_USER_DATA`, sample-count timeline with gap fill and trim) | `Lookback.Encode` (Windows) | **Done**, tested on AETHER and the Windows CI runner (ring → `ClipWriter` → ffprobe `aac,48000,2`, decoded onset within 0.1 ms of its QPC, 0 B per call) |
 | WASAPI endpoint loopback (silence keep-alive), process loopback (build 20348+, runtime check, falls back to the endpoint where allowed), mic track; QPC via `SampleClock`, drift-following resample to 48 kHz stereo, hops through `LiveAudioAssembler`, re-open on default-device change; `AudioCapturePolicy` (official player: never system loopback, encoder or mic); `lookback-capture audio` | `Lookback.Audio`, `Lookback.Capture.Cli` (Windows) | **Done**, verified on AETHER (Realtek loopback hears a rendered 997 Hz tone, clock fit within 2 ppm, 0 B per packet, Yeti mic streams, re-open gap ~30 ms filled). Process loopback written, never run (needs 20348+) |
 | Recorder control commands on `/events` (`rate`, `analyze`, `save` refused until live capture), parent-exit | `Lookback.Recorder`, `Lookback.Stream` | **Done**, tested end to end against the built recorder |
-| Recorder live capture wiring (`CaptureService`), `save` | `Lookback.Recorder` | Next |
+| Recorder live capture (`CaptureService`), `save`, storage budgets and `recorder.storage` | `Lookback.Recorder` | **Done**, verified on AETHER with the stand-in game window |
+| Governor runtime controller in live sessions; testbench multi-recorder mode | `Lookback.Recorder` | Next |
 | Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
 
 ## Data flow
@@ -162,8 +163,13 @@ governor probe (step 5, `claude/governor-probe`).
    once per capture target at session start. See the wiki's Resource Governor page.
 6. Recorder wiring. **Control commands done** (`ControlService`,
    `SessionDirectory`, `FootageSessions`, `ParentWatcher`; the bridge's
-   `WebSocketBridgeOptions.Control` hook). Still to do: `CaptureService` and
-   `save`.
+   `WebSocketBridgeOptions.Control` hook). **Live capture done**
+   (`CaptureService`: detection → probe and plan → capture, encode, audio,
+   ring, store, profile + clipper; `save`; 20 GB footage and 10 GB clip
+   budgets with `recorder.storage`). Still to do: wire `GovernorController`
+   (step the tier down under pressure) into live sessions, and a testbench
+   mode that runs several recorders at once with a lower tier and a larger
+   footage budget.
    Message the Electron thread before touching the contract. Ephemeral
    sessions never create the encoder, ring or store.
    Agreed with the shell session (2026-11-27); `rate` and `analyze` are built, `save` waits for `CaptureService`.

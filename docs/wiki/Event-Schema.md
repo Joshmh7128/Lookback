@@ -239,6 +239,7 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `qa.report` | `QaReport`, right after its candidate (source `clipper`) |
 | `clip.saved` | `ClipSaved` |
 | `clip.rating` | `ClipRating`: a person's 1 to 5 star content rating of a candidate |
+| `recorder.storage` | `StorageStatus` (Envelope field 21): saved-clip and footage bytes against their budgets, the near-limit and full flags, volume free space; every 10 s and after each save |
 
 Subscriptions use patterns: an exact name, `*` for everything, or a prefix
 ending in `.*`. `Topics.Matches("signals.*", "signals.video")` is true;
