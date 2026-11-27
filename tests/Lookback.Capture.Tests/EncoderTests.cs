@@ -30,6 +30,7 @@ public class EncoderTests(ITestOutputHelper output)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Media Foundation is Windows only");
         SkipWithoutFfmpeg();
+        SkipWithoutMediaFoundation();
         using GpuDevice gpu = GpuDevice.CreateWarp();
         EncodeAndCheck(gpu, CodecKind.H264, hardware: false);
     }
@@ -51,11 +52,24 @@ public class EncoderTests(ITestOutputHelper output)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Media Foundation is Windows only");
         SkipWithoutFfmpeg();
-        using GpuDevice? gpu = TryHardwareDevice();
-        Assert.SkipWhen(gpu is null, "no hardware adapter");
         MediaFoundation.Startup();
-        Assert.SkipWhen(MfVideoEncoder.List(codec, gpu!.Luid, hardware: true).Count == 0, $"no hardware {codec} encoder on {gpu.Name}");
-        EncodeAndCheck(gpu, codec, hardware: true);
+
+        // Every adapter that drives a display: AETHER has NVENC on the RTX and AMF on the iGPU.
+        int ran = 0;
+        foreach (long luid in Targets.CaptureTarget.Outputs().Select(o => o.Luid).Distinct())
+        {
+            using GpuDevice gpu = GpuDevice.Create(luid);
+            if (MfVideoEncoder.List(codec, gpu.Luid, hardware: true).Count == 0)
+            {
+                output.WriteLine($"no hardware {codec} encoder on {gpu.Name}");
+                continue;
+            }
+
+            EncodeAndCheck(gpu, codec, hardware: true);
+            ran++;
+        }
+
+        Assert.SkipWhen(ran == 0, $"no hardware {codec} encoder on any adapter");
     }
 
     private static GpuDevice? TryHardwareDevice()
@@ -68,6 +82,21 @@ public class EncoderTests(ITestOutputHelper output)
         {
             return null;
         }
+    }
+
+    /// <summary>Server SKUs without the Media Foundation feature have no MFTs at all.</summary>
+    private static void SkipWithoutMediaFoundation()
+    {
+        try
+        {
+            MediaFoundation.Startup();
+        }
+        catch (Exception ex) when (ex is SharpGen.Runtime.SharpGenException or DllNotFoundException)
+        {
+            Assert.Skip($"Media Foundation unavailable: {ex.Message}");
+        }
+
+        Assert.SkipWhen(MfVideoEncoder.List(CodecKind.H264, luid: null, hardware: false).Count == 0, "no software H.264 MFT");
     }
 
     private static void SkipWithoutFfmpeg() =>
