@@ -148,7 +148,23 @@ Rebase on main before merging; they touch this file's rows too.
    `clip.saved`. Ratings persist through the M4 `RatingStore` only when
    `RetentionRules.CanPersist` allows; official-player sessions get
    `ephemeral` and nothing is written. The shell keeps ratings in memory
-   when there is no ack within ~2 s or the ack is `ok:false`.
+   when there is no ack within ~2 s or the ack is `ok:false`. `stars` is
+   1–5 for content ("is this a highlight"), 0 clears.
+   Also agreed:
+   `{"type":"analyze","id":"…","path":"<absolute path>","profile":"<optional>","retention":"owned|permissioned|open-license","permissionRef":"<unless owned>"}`.
+   The recorder acks, then runs FootageAnalyzer + ProfileRunner (with
+   `publishCandidates: false`) + `ClipperRunner` on the file and publishes
+   a normal FILE session on `/events` (SessionStarted with `title` = exactly
+   the path sent, which the shell uses to link previews, then `game.event`,
+   `clip.candidate`, `qa.report`, SessionEnded; no signal frames to the
+   shell). `RetentionRules.Validate` applies. Until this exists the shell
+   falls back to `lookback-testbench live <file> --pipe <recorder pipe>`.
+   Hosting the clipper (branch `claude/clipper-v1`): with a profile,
+   `new ProfileRunner(bus, catalog, gameId, method, sessionId, freq, publishCandidates: false)`
+   and `new ClipperRunner(bus, catalog, gameId, sessionId, freq)`; for an
+   unknown game `new ClipperRunner(bus, sessionId, freq)`. Dispose the
+   ProfileRunner first at session end. Game detection (`Lookback.Detection`)
+   and M4's `RatingStore`/`RatingSink` plug in here too.
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with
