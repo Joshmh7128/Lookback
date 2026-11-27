@@ -37,6 +37,10 @@ src/
   Lookback.Detection.Cli/     lookback-detect bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
+native/                       C++20, CMake, MSVC (Windows): build with native/build.ps1
+  include/                    lookback_hook_protocol.h, the shared-memory protocol
+  hook/                       lookback-hook.dll: the present hook (test apps only)
+  testapps/                   lookback-testapp-d3d11/-d3d12: the hook's only targets
 tests/
   Lookback.Core.Tests/
   Lookback.Stream.Tests/
@@ -47,7 +51,7 @@ tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
   Lookback.Governor.Windows.Tests/  runs the probe on the machine (Windows only)
-  Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
+  Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock, present hook (skip elsewhere)
   Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
   Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
   Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
@@ -61,7 +65,7 @@ docs/
   architecture.md             repository summary
   wiki/                       source of this wiki
 .github/workflows/
-  ci.yml                      build + test on Windows and Linux; ml job (pytest) on Linux
+  ci.yml                      build + test on Windows and Linux; ml job (pytest) on Linux; native build + hook tests
   wiki.yml                    publishes docs/wiki to the GitHub wiki
 ```
 
@@ -117,18 +121,20 @@ flowchart TB
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
 | `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
-| `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
+| `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Hook/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion; `Hook/` is the [present hook](Present-Hook)'s receiver, channel and allowlisted injector |
 | `Lookback.Encode` | `MfVideoEncoder.cs`, `MfAacEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
 | `Lookback.Audio` | `WasapiSource.cs`, `AudioCapturePolicy.cs`, `StereoResampler.cs`, `PcmFormat.cs`, `RenderStream.cs`, `Interop/*` | [Live audio](Live-Capture#live-audio) on Windows: what a session may capture, WASAPI capture stamped in QPC, 48 kHz stereo for the AAC encoder (`Lookback.Encode`) and hops for the live analyzer |
-| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `AudioBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `audio` captures live audio on its own |
+| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `AudioBench.cs`, `HookBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `audio` captures live audio on its own; `--hook-testapp` runs the present hook on a test app |
 | `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
 | `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
 | `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
+| `native/hook` | `hook.cpp`, `capture_d3d11.cpp`, `capture_d3d12.cpp` | The [present hook](Present-Hook): vtable patch, keyed-mutex (D3D11) and fence + copy-queue (D3D12) hand-over, device-loss watcher |
+| `native/testapps` | `common/testapp.h`, `d3d11/main.cpp`, `d3d12/main.cpp` | Frame-numbered test pattern at a set rate, resize and device-recreation switches, the `LookbackTestAppMarker` export |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Quality`, `Lookback.Memory`, `native/hook`. (`Lookback.Gpu` folded into
+`Lookback.Quality`, `Lookback.Memory`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`; `app/` and `ml/` exist now.)
 
 ```mermaid

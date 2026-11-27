@@ -14,7 +14,7 @@ this page explains what runs today.
 
 ```mermaid
 flowchart LR
-    SRC["Capture source<br/>WGC · DXGI duplication"] -- "BGRA texture + QPC<br/>(irregular)" --> TAP{{LiveCaptureSession}}
+    SRC["Capture source<br/>WGC · DXGI duplication · present hook (test apps)"] -- "BGRA texture + QPC<br/>(irregular)" --> TAP{{LiveCaptureSession}}
     TAP -- "≤ 30 fps" --> DS["GpuDownscaler<br/>384x216 compute"] --> LA[LiveAnalyzer] --> BUS((bus))
     TAP -- FrameTap --> NV["Nv12Converter<br/>video processor, encode size"]
     NV -- latest frame --> TK["EncodeTicker<br/>CFR clock at tier fps"]
@@ -24,7 +24,7 @@ flowchart LR
 
 | Stage | Type | What it does |
 |---|---|---|
-| Capture | `WgcCaptureSource`, `DxgiDuplicationSource` | Frames as GPU textures with their present/compose QPC. WGC only sends a frame when the window changes |
+| Capture | `WgcCaptureSource`, `DxgiDuplicationSource`, `HookCaptureSource` | Frames as GPU textures with their present/compose QPC. WGC only sends a frame when the window changes. The hook source delivers every present of our own test apps with the QPC of the `Present` call ([Present Hook](Present-Hook)) |
 | Analysis tap | `GpuDownscaler` → `LiveAnalyzer` | Letterboxed 384x216 BGRA, read back through a 3-deep staging ring, thinned to 30 fps |
 | Convert | `Nv12Converter` | D3D11 video processor: scale to the encode size, BT.709 limited range, letterboxed. Runs on the capture thread for every frame and keeps the latest result |
 | Clock | `EncodeTicker` | A high-resolution waitable timer at the tier's fps encodes the latest converted frame at every tick, repeating it when nothing new arrived |
@@ -266,6 +266,17 @@ restarts it. `Dispose` never waits more than a few seconds on an encoder.
 `EncodeTickerFaultTests` inject encoders that hang inside a call, accept
 frames but never output, or refuse all input, and check the swap, the tick
 grid, the blocklist, the fatal path and a prompt `Dispose`.
+
+## The present hook
+
+`CaptureBackend.Hook` with `LiveSessionOptions.HookTarget` (a test app that
+`HookInjector` launched) runs the same session over `HookCaptureSource`, so
+the analysis tap and the encode path are unchanged. Create the session's
+target with `HookedProcess.ToCaptureTarget(config)` so the device is on the
+hook's adapter. `lookback-capture --hook-testapp d3d11|d3d12` is the manual
+check; on AETHER both test apps arrive at their full rate (120 and 144 fps)
+with no hook drops, and NVENC encodes them at 60 fps with nothing busy. The
+design, sync model and allowlist are on [Present Hook](Present-Hook).
 
 ## Known issues
 

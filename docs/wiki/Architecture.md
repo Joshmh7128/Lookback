@@ -15,7 +15,11 @@ headless.
 flowchart LR
     subgraph Game["Game process"]
         G[Game renderer]
-        H["native/hook<br/>(C++, opt-in, M6)"]
+    end
+
+    subgraph TestApp["Our test app (never a game)"]
+        TA[Test renderer]
+        H["native/hook<br/>(C++, M6)"]
     end
 
     subgraph Recorder["Lookback.Recorder (C#)"]
@@ -51,7 +55,7 @@ flowchart LR
         UI[Library · timeline · rating · viewer]
     end
 
-    G -- present --> H -- shared texture + fence --> CAP
+    TA -- present --> H -- shared texture + fence --> CAP
     G -. WGC window capture .-> CAP
     DET --> CAP --> GPU --> ENC --> RING --> DISK
     AUD --> AAC --> RING
@@ -71,7 +75,7 @@ flowchart LR
 | `Lookback.Signals` | C# | Video, audio and input feature extraction; session feature log |
 | `Lookback.Clipper` | C# | Normalisation, excitement curve, candidates, scoring, QA ([Clipper](Clipper); runs beside the profile runner today, in the testbench and later in the recorder) |
 | `Lookback.Testbench` | C# CLI | Runs footage files through Signals and Clipper |
-| `native/hook` | C++ | Present hook for D3D11/D3D12; the only native code, because it lives inside the game |
+| `native/hook`, `native/testapps` | C++ | Present hook for D3D11/D3D12, the only native code because it lives inside the rendering process; and the two test apps that are its only permitted targets. Games are captured with WGC. See [Present Hook](Present-Hook) |
 | `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer ([Desktop Shell](Desktop-Shell)) |
 | `ml/` | Python | Offline training and ONNX export |
 

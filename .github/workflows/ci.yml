@@ -47,6 +47,28 @@ jobs:
       - run: dotnet build Lookback.slnx --no-restore -c Release
       - run: dotnet test --solution Lookback.slnx --no-build -c Release
 
+  # The present hook and the test apps it may run in (native/, C++20, MSVC,
+  # warnings as errors), then the hook tests against that build. Runners have
+  # no GPU, so the capture tests skip there; the allowlist, marker-export and
+  # protocol tests run. The capture tests run on AETHER (see docs/wiki/Testing.md).
+  native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build native (hook + test apps)
+        shell: pwsh
+        run: ./native/build.ps1 -Config Release
+      - run: dotnet build tests/Lookback.Capture.Tests -c Release
+      - run: dotnet test --project tests/Lookback.Capture.Tests --no-build -c Release -- --filter-class "*Hook*"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-bin
+          path: native/out/bin/Release/
+          retention-days: 7
+
   # The learned clip scorer's training code (ml/): data refusals, calibration,
   # metrics, ONNX export, and that the committed C# test fixture still
   # reproduces with ONNX Runtime. Python only, so Linux.

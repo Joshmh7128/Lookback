@@ -26,7 +26,7 @@ design, what has landed and what's next. Update it with every PR on this work.
 | Recorder control commands on `/events` (`rate`, `analyze`, `save` refused until live capture), parent-exit | `Lookback.Recorder`, `Lookback.Stream` | **Done**, tested end to end against the built recorder |
 | Recorder live capture (`CaptureService`), `save`, storage budgets and `recorder.storage` | `Lookback.Recorder` | **Done**, verified on AETHER with the stand-in game window |
 | Governor runtime controller in live sessions; testbench multi-recorder mode | `Lookback.Recorder` | Next |
-| Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
+| Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence + copy queue), test apps, an injector limited to them, `HookCaptureSource` | `native/hook`, `native/testapps`, `Lookback.Capture/Hook` | **Done**, tested on AETHER: both test apps at full rate (120/144 fps) with 0 hook drops, through the analysis tap and NVENC. Wiki: `Present-Hook.md` |
 
 ## Data flow
 
@@ -234,7 +234,8 @@ governor probe (step 5, `claude/governor-probe`).
    counts busy ticks. Call those helpers only when (re)targeting, never on a
    timer, and run the governor probe before the encoder starts. Detection
    gets adapter LUIDs from `QueryDisplayConfig` instead.
-7. Present-hook DLL (M6).
+7. ~~Present-hook DLL (M6)~~ **done** (test apps only; see the wiki's
+   Present-Hook page for the sync model, allowlist and limits).
 
 Windows projects target `net10.0-windows10.0.22621.0` with
 `SupportedOSPlatformVersion` 10.0.19041.0 and build on Linux with

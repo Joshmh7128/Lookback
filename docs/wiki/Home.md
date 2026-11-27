@@ -38,6 +38,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
 | [Game Detection](Game-Detection) | Which game is running: processes and windows only, the profile match, allow/deny lists, debounced start/focus/stop, the `lookback-detect` bench |
 | [Live Capture](Live-Capture) | WGC/DXGI capture, the analysis tap, NV12 + CFR encode clock, Media Foundation encoders, the `lookback-capture` bench |
+| [Present Hook](Present-Hook) | The D3D11/D3D12 present hook, limited to our own test apps: sync model, allowlist, frame accounting, limits |
 | [Testing](Testing) | What each test proves |
 
 ## Status
@@ -52,7 +53,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video and audio encode, ring, store, governor policy and probe done, no-deadlock encode path; recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |
-| M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |
+| M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | In progress: present hook (our test apps only) and DXGI duplication done; HDR encode planned |
 | M7 | Memory module (secondary) | Planned |
 
 ## The one-paragraph version

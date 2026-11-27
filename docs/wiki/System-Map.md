@@ -74,7 +74,7 @@ refused or unanswered rating stays in the shell's memory.
 | [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |
 | Game detection: process and window watcher, profile matching, allow/deny lists, debounced `GameLifecycle`, `lookback-detect` bench ([Game Detection](Game-Detection)) | Detection · Detection.Windows | Done (#20); the recorder wiring hosts it |
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference ([Clip Scoring](Clip-Scoring)) | Scoring · `ml/` | Done (#21, M4 plumbing); trained on synthetic data until real ratings exist |
-| Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
+| Present hook for our own test apps only, injector allowlist, hook capture source ([Present Hook](Present-Hook)) | `native/hook` · `native/testapps` · Capture | Done (#24) |
 | No-deadlock encode path: one device lock, stall watchdog, encoder fallback chain, blocklist, fail-fast | Core · Encode · Capture | Done (#22) |
 | Recorder control commands: `rate` (stored, broadcast), `analyze` (footage through profile + clipper), parent-exit | Recorder · Stream | Done |
 | Recorder live capture: detection → capture, encode, audio, ring, store, profile + clipper; `save`; storage budgets and `recorder.storage` | Recorder | Done |
