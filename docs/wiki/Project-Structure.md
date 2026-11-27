@@ -59,6 +59,8 @@ tests/
   Lookback.Testbench.Tests/
   Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
 ml/                           Python: train, calibrate, evaluate, export the learned scorer
+scripts/
+  showcase.ps1                one demo per component on generated footage (see Showcase)
 docs/
   architecture.md             repository summary
   wiki/                       source of this wiki

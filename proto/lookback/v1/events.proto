@@ -30,6 +30,7 @@ message Envelope {
     GameEvent game_event = 18;
     ProfileDetected profile_detected = 19;
     ClipRating clip_rating = 20;
+    StorageStatus storage_status = 21;
   }
 }
 
@@ -286,4 +287,23 @@ message ClipRating {
   string candidate_id = 1;
   string session_id = 2;
   uint32 stars = 3;
+}
+
+// ---------------------------------------------------------------- recorder
+
+// How full the recorder's two disk budgets are, on topic "recorder.storage":
+// saved clips (never swept; saving is refused at the budget) and session
+// footage (2 s segments; the oldest unpinned ones are evicted at the budget).
+// Published every few seconds while the recorder runs and after each save.
+message StorageStatus {
+  uint64 clips_bytes = 1;
+  uint64 clips_budget_bytes = 2;
+  uint64 footage_bytes = 3;
+  uint64 footage_budget_bytes = 4;
+  // Clips have reached the warning threshold (90% of the budget by default).
+  bool clips_near_limit = 5;
+  // Clips are at the budget: new saves are refused until some are deleted.
+  bool clips_full = 6;
+  // Free space on the store's volume.
+  uint64 volume_free_bytes = 7;
 }

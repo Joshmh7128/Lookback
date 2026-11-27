@@ -2,6 +2,7 @@ using System.Text.Json;
 using Lookback.Calibration;
 using Lookback.Core.Bus;
 using Lookback.Profiler;
+using Lookback.Scoring.Ratings;
 using Lookback.Stream.Pipes;
 using Lookback.Stream.WebSockets;
 using Microsoft.Extensions.Hosting;
@@ -24,6 +25,9 @@ internal sealed partial class StreamHostService(
     private PipeEventServer? _pipes;
     private WebSocketBridge? _bridge;
     private CalibrationHost? _calibration;
+    private SessionDirectory? _sessions;
+    private FootageSessions? _footage;
+    private CaptureService? _capture;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -35,11 +39,30 @@ internal sealed partial class StreamHostService(
         // Official-player sessions are ephemeral: the calibration host keeps
         // frames and features in memory and writes only numbers the user confirms.
         _calibration = o.OfficialPlayer ? new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = o.ProfilesDirectory }) : null;
+
+        // Control commands from the shell: ratings (stored behind RetentionRules) and footage analysis.
+        ControlService? control = null;
+        if (o.Control)
+        {
+            _sessions = new SessionDirectory(bus);
+            _footage = new FootageSessions(bus, logger);
+
+            // Live capture: game detection starts a recording for every allowed game (Windows only).
+            if (o.Capture && OperatingSystem.IsWindows())
+            {
+                _capture = CaptureService.Start(bus, o, _sessions, logger);
+            }
+
+            control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);
+            LogRatings(logger, o.ResolvedDatasetsDirectory);
+        }
+
         _bridge = new WebSocketBridge(bus, new WebSocketBridgeOptions
         {
             Port = o.WebSocketPort,
             Pages = [.. o.Profiler ? [ProfilerPage.Page] : Array.Empty<BridgePage>(), .. _calibration is null ? [] : new[] { CalibrationHost.Page }],
             Sockets = _calibration?.Sockets ?? [],
+            Control = control is null ? null : control.HandleAsync,
         });
         await _bridge.StartAsync(cancellationToken).ConfigureAwait(false);
 
@@ -72,6 +95,24 @@ internal sealed partial class StreamHostService(
             _bridge = null;
         }
 
+        if (_capture is not null)
+        {
+            await _capture.DisposeAsync().ConfigureAwait(false);
+            _capture = null;
+        }
+
+        if (_footage is not null)
+        {
+            await _footage.DisposeAsync().ConfigureAwait(false);
+            _footage = null;
+        }
+
+        if (_sessions is not null)
+        {
+            await _sessions.DisposeAsync().ConfigureAwait(false);
+            _sessions = null;
+        }
+
         if (_calibration is not null)
         {
             await _calibration.DisposeAsync().ConfigureAwait(false);
@@ -84,6 +125,9 @@ internal sealed partial class StreamHostService(
             _pipes = null;
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Ratings are stored under {Directory}")]
+    private static partial void LogRatings(ILogger logger, string directory);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Event stream up: pipe {Pipe}, WebSocket {Endpoint}")]
     private static partial void LogStarted(ILogger logger, string pipe, Uri endpoint);

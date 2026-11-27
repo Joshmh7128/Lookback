@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Quickstart](Quickstart)
+- [Showcase](Showcase)
 - [Desktop Shell](Desktop-Shell)
 - [Architecture](Architecture)
 - [System Map](System-Map)

@@ -22,10 +22,10 @@ endpoints. The bus is the only path out of the recorder: the pipe server is
 for the planned Signals and Clipper hosts, and the WebSocket bridge serves the
 shell. Capture and encode exist as libraries (driven today by
 `lookback-capture`), but the recorder does not create a capture session yet.
-The `rate · analyze · save → ack` messages are agreed with the shell; the
-shell already sends `rate` and `analyze` and falls back (ratings in memory,
-footage through `lookback-testbench live --pipe`) until the recorder answers.
-See [Desktop Shell](Desktop-Shell#control-commands-on-events-agreed-recorder-side-pending)
+The recorder answers the shell's `rate` and `analyze` commands with an ack:
+ratings are stored behind `RetentionRules` and broadcast as `clip.rating`, and
+footage is analysed in the recorder (profile + clipper on a private bus). `save`
+waits for live capture in the recorder. See [Recorder Host](Recorder-Host#control-commands)
 and the recorder-wiring step in `docs/capture-handoff.md`.
 
 ## Live capture: what runs inside one session
@@ -66,7 +66,7 @@ the shell's memory.
 | Governor policy and runtime controller | Governor | Done |
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
-| Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17); ratings in memory until the recorder stores them |
+| Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17) |
 | WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback untested (needs build 20348+) |
 | Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
 | [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |
@@ -74,7 +74,9 @@ the shell's memory.
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference ([Clip Scoring](Clip-Scoring)) | Scoring · `ml/` | Done (#21, M4 plumbing); trained on synthetic data until real ratings exist |
 | Present hook for our own test apps only, injector allowlist, hook capture source ([Present Hook](Present-Hook)) | `native/hook` · `native/testapps` · Capture | Done (#24) |
 | No-deadlock encode path: one device lock, stall watchdog, encoder fallback chain, blocklist, fail-fast | Core · Encode · Capture | Done (#22) |
-| Recorder wiring: CaptureService, `/events` rate · save · analyze with ack | Recorder | Next |
+| Recorder control commands: `rate` (stored, broadcast), `analyze` (footage through profile + clipper), parent-exit | Recorder · Stream | Done |
+| Recorder live capture: detection → capture, encode, audio, ring, store, profile + clipper; `save`; storage budgets and `recorder.storage` | Recorder | Done |
+| Governor runtime controller in live sessions; testbench multi-recorder mode | Recorder · Governor | Next |
 | Training the scorer on real ratings | `ml/` · Scoring | Planned (M4), needs ratings |
 | Quality reports: transcode, VMAF, audio checks | Quality | Planned (M5) |
 | HDR encode tone-map, AV1 muxing (`av1C`) | Encode · Replay | Planned (M6) |
@@ -90,8 +92,9 @@ the shell's memory.
    each with a QA report), which today runs in the testbench; official-player
    calibration still uses the profile runner's event-only candidates. Live
    sessions get them when the recorder wiring hosts the clipper.
-3. **Ratings are not stored.** The shell keeps them in memory until the
-   recorder accepts `rate` and the RatingStore lands.
+3. **Ratings are stored for footage, not yet for live play.** The recorder
+   stores `rate` for any session it has seen that may persist; live sessions
+   arrive with the capture wiring.
 4. **Live capture deadlock: fixed.** WGC delivers frames while holding the
    D3D11 device lock, and a second, managed lock taken in the other order
    deadlocked capture against the encoder. `GpuDevice` now has one lock (D3D11's

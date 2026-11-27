@@ -299,8 +299,10 @@ design, sync model and allowlist are on [Present Hook](Present-Hook).
 
 - Process loopback is written but has never run: AETHER is build 19045 and
   CI runners have no audio device.
-- Wiring into the recorder, with control commands on `/events`. See the
-  handoff's next steps.
+- The governor's runtime controller (stepping the tier down under pressure)
+  is built and tested but not wired into the recorder's sessions yet.
+- A testbench mode for several recorders at once (lower tier, larger footage
+  budget) is planned.
 - HDR sources reach the encoder as if SDR (the analysis tap handles them
   correctly); the encode tone-map comes with M6.
 - Governor tier changes (a new encoder and a new segment run) are designed
