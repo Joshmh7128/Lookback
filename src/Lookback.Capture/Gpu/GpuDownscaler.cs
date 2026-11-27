@@ -81,7 +81,7 @@ public sealed class GpuDownscaler : IDisposable
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(deliver);
-        lock (_gpu.Lock)
+        using (_gpu.Enter())
         {
             ID3D11DeviceContext ctx = _gpu.Context;
             int slot = _next;
@@ -129,7 +129,7 @@ public sealed class GpuDownscaler : IDisposable
     public void Flush(FrameReady deliver)
     {
         ArgumentNullException.ThrowIfNull(deliver);
-        lock (_gpu.Lock)
+        using (_gpu.Enter())
         {
             for (int k = 0; k < StagingDepth; k++)
             {
@@ -145,7 +145,7 @@ public sealed class GpuDownscaler : IDisposable
     /// <summary>Forgets the cached view (call when the capture source recreates its textures).</summary>
     public void ResetSource()
     {
-        lock (_gpu.Lock)
+        using (_gpu.Enter())
         {
             _srcView?.Dispose();
             _srcView = null;

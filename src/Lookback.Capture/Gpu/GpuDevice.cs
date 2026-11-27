@@ -9,8 +9,17 @@ namespace Lookback.Capture.Gpu;
 /// downscale, colour conversion and the encoder's DXGI device manager. It is
 /// created on the adapter that owns the captured output (AETHER drives
 /// monitors from both the RTX card and the iGPU), with BGRA and video
-/// support. The immediate context is not thread-safe; take
-/// <see cref="Lock"/> around any use of <see cref="Context"/>.
+/// support. Take <see cref="Enter"/> around any sequence of calls on
+/// <see cref="Context"/> that must not interleave with another thread's.
+/// <para>
+/// There is exactly one lock: D3D11's own multithread lock
+/// (<c>ID3D11Multithread::Enter</c>), which is recursive. A second, managed
+/// lock deadlocked live capture: WGC delivers frames from inside
+/// DirectComposition's flip processing, which already holds the device lock,
+/// so the capture callback took the managed lock second while the encode
+/// thread held the managed lock and waited for the device lock. With one lock
+/// there is no order to get wrong; the capture callback simply re-enters it.
+/// </para>
 /// </summary>
 public sealed class GpuDevice : IDisposable
 {
@@ -23,9 +32,11 @@ public sealed class GpuDevice : IDisposable
         Luid = luid;
         IsWarp = isWarp;
         Identity = isWarp ? "warp" : DescribeAdapter(adapter!);
-        using ID3D11Multithread mt = Context.QueryInterface<ID3D11Multithread>();
-        mt.SetMultithreadProtected(true); // the MF encoder uses the device from its own threads
+        _multithread = Context.QueryInterface<ID3D11Multithread>();
+        _multithread.SetMultithreadProtected(true); // the MF encoder and WGC use the device from their own threads
     }
+
+    private readonly ID3D11Multithread _multithread;
 
     /// <summary>
     /// "VEN_10DE&amp;DEV_2702 31.0.15.6094": vendor, device and user-mode driver
@@ -47,7 +58,22 @@ public sealed class GpuDevice : IDisposable
 
     public bool IsWarp { get; }
 
-    public Lock Lock { get; } = new();
+    /// <summary>Takes the device's lock until the returned scope is disposed: <c>using (gpu.Enter()) { ... }</c>. Recursive; allocates nothing.</summary>
+    public DeviceScope Enter()
+    {
+        _multithread.Enter();
+        return new DeviceScope(_multithread);
+    }
+
+    /// <summary>Holds the D3D11 device lock; see <see cref="Enter"/>.</summary>
+    public readonly struct DeviceScope : IDisposable
+    {
+        private readonly ID3D11Multithread? _owner;
+
+        internal DeviceScope(ID3D11Multithread owner) => _owner = owner;
+
+        public void Dispose() => _owner?.Leave();
+    }
 
     /// <summary>Creates a device on the adapter with <paramref name="luid"/>, or the default adapter when null.</summary>
     public static GpuDevice Create(long? luid = null)
@@ -111,6 +137,7 @@ public sealed class GpuDevice : IDisposable
 
     public void Dispose()
     {
+        _multithread.Dispose();
         Context.Dispose();
         Device.Dispose();
         Adapter?.Dispose();

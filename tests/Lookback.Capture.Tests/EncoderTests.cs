@@ -235,7 +235,7 @@ public class EncoderTests(ITestOutputHelper output)
                 }
             }
 
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.UpdateSubresource(_px, _bgra, 0, SrcW * 4, 0);
                 _nv12.Convert(_bgra);
@@ -275,7 +275,7 @@ public class EncoderTests(ITestOutputHelper output)
             }
 
             _px.AsSpan(W * H).Fill(128);
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.UpdateSubresource(_px, _tex, 0, W, 0);
             }

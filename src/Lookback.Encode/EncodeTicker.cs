@@ -206,7 +206,7 @@ public sealed partial class EncodeTicker : IDisposable
 
         // HDR sources are converted as if SDR until the M6 tone-map pass; the analysis tap handles them correctly.
         _captureBeat.Enter("waiting for the capture device", _clock.Now);
-        lock (_gpu!.Lock)
+        using (_gpu!.Enter())
         {
             _captureBeat.Enter("NV12 convert", _clock.Now);
             _nv12.Convert(texture);
@@ -465,7 +465,7 @@ public sealed partial class EncodeTicker : IDisposable
 
         if (_nv12 is not null)
         {
-            lock (_gpu!.Lock)
+            using (_gpu!.Enter())
             {
                 _nv12.Dispose();
             }

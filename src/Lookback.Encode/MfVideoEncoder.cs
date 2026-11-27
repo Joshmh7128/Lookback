@@ -21,12 +21,12 @@ public sealed record VideoEncoderSettings(CodecKind Codec, int Width, int Height
     public bool PreferHardware { get; init; } = true;
 
     /// <summary>
-    /// Experimental, off by default: run the encoder on its own D3D11 device
-    /// on the same adapter and hand frames over through a shared keyed-mutex
-    /// texture. In live WGC capture on AETHER this wedged the capture device
-    /// on both NVIDIA and AMD at the first handoff (the unit tests, without
-    /// WGC, pass), so the shared capture device plus the encode watchdog is
-    /// the default until the handoff is reworked.
+    /// Off by default: run the encoder on its own D3D11 device on the same
+    /// adapter and hand frames over through a shared keyed-mutex texture
+    /// (every wait times out), so an MFT holding its device lock can never
+    /// hold up capture. Verified live on NVENC and AMF; it costs one extra
+    /// NV12 copy per frame. The shared capture device is the default because
+    /// it is simpler and equally clean once there is a single device lock.
     /// </summary>
     public bool IsolateDevice { get; init; }
 
@@ -345,7 +345,7 @@ public sealed class MfVideoEncoder : IVideoEncoder
             else
             {
                 _phase = EncodePhase.WaitingForGpuLock;
-                lock (_gpu.Lock)
+                using (_gpu.Enter())
                 {
                     _phase = EncodePhase.Copying;
                     _gpu.Context.CopyResource(slot.Texture, nv12);
@@ -825,7 +825,7 @@ public sealed class MfVideoEncoder : IVideoEncoder
                 return false;
             }
 
-            lock (_capture.Lock)
+            using (_capture.Enter())
             {
                 if (Acquire(_captureKey, 0, WaitMs) != 0)
                 {
@@ -836,7 +836,7 @@ public sealed class MfVideoEncoder : IVideoEncoder
                 _captureKey.ReleaseSync(1);
             }
 
-            lock (_encoder.Lock)
+            using (_encoder.Enter())
             {
                 if (Acquire(_encoderKey, 1, WaitMs) != 0)
                 {

@@ -42,7 +42,7 @@ public class EncodeTickerTests(ITestOutputHelper output)
                 void Feed()
                 {
                     px.AsSpan().Fill((byte)(i++ * 7));
-                    lock (gpu.Lock)
+                    using (gpu.Enter())
                     {
                         gpu.Context.UpdateSubresource(px, bgra, 0, 1920 * 4, 0);
                     }
