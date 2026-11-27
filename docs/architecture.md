@@ -1,7 +1,8 @@
 # Lookback architecture
 
-This is the repository summary. The full design, with rationale and open
-questions, lives in the architecture doc shared in the project thread.
+This is the repository summary. In-depth pages with diagrams, one per
+component, are in [`docs/wiki/`](wiki/Home.md) and published to the GitHub
+wiki.
 
 ## Goal
 
