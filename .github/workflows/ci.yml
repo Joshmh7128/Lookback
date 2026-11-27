@@ -26,9 +26,23 @@ jobs:
       - name: Install ffmpeg (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # The Chocolatey community feed sometimes times out (HTTP 504) and choco
+      # then exits successfully with nothing installed. Retry, and fail this
+      # step, not the tests, if ffmpeg is still missing.
       - name: Install ffmpeg (Windows)
         if: runner.os == 'Windows'
-        run: choco install ffmpeg -y --no-progress
+        shell: pwsh
+        run: |
+          for ($i = 1; $i -le 4; $i++) {
+            choco install ffmpeg -y --no-progress
+            Import-Module "$env:ChocolateyInstall\helpers\chocolateyProfile.psm1"
+            refreshenv | Out-Null
+            if (Get-Command ffmpeg -ErrorAction SilentlyContinue) { ffmpeg -version | Select-Object -First 1; exit 0 }
+            Write-Host "ffmpeg not installed (attempt $i); retrying in $(15 * $i) s"
+            Start-Sleep -Seconds (15 * $i)
+          }
+          Write-Error "ffmpeg could not be installed from Chocolatey"
+          exit 1
       - run: dotnet restore Lookback.slnx
       - run: dotnet build Lookback.slnx --no-restore -c Release
       - run: dotnet test --solution Lookback.slnx --no-build -c Release
