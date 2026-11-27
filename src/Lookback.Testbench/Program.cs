@@ -228,12 +228,12 @@ static async Task<int> RobloxIdsAsync(Dictionary<string, string> flags, Cancella
     http.DefaultRequestHeaders.UserAgent.ParseAdd("lookback-testbench/1.0");
     bool write = flags.GetValueOrDefault("write") is "true" or "yes";
     var results = await Lookback.Testbench.Catalog.RobloxIdResolver.RunAsync(flags.GetValueOrDefault("dir", Path.Combine("profiles", "roblox")), write, http, ct);
-    Console.WriteLine($"{"profile",-42} {"universe",-12} {"root place",-12} {"playing",9}  name on Roblox (how found)");
+    Console.WriteLine($"{"profile",-42} {"universe",-12} {"root place",-16} {"playing",9}  name on Roblox (how found)");
     foreach (var r in results)
     {
         string flag = r.Problem is not null ? $"  PROBLEM: {r.Problem}" : r.NameMatches ? "" : "  CHECK: name differs";
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"{r.Profile,-42} {r.UniverseId?.ToString(CultureInfo.InvariantCulture) ?? "-",-12} {r.RootPlaceId?.ToString(CultureInfo.InvariantCulture) ?? "-",-12} {r.Playing,9}  {r.RobloxName} ({r.Source}){flag}"));
+            $"{r.Profile,-42} {r.UniverseId?.ToString(CultureInfo.InvariantCulture) ?? "-",-12} {r.RootPlaceId?.ToString(CultureInfo.InvariantCulture) ?? "-",-16} {r.Playing,9}  {r.RobloxName} ({r.Source}){flag}"));
     }
 
     Console.WriteLine(write ? "\nIds written for every profile whose name matched." : "\nDry run. Add --write true to write ids where the name matches.");

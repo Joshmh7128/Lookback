@@ -6,8 +6,8 @@
   "parent": "roblox",
   "level": "subgame",
   "tags": ["horror", "co-op"],
-  // Ids are unverified until "lookback-testbench roblox-ids" confirms them; the universe id is filled in by it.
-  "ids": { "roblox.place": ["6516141723"] },
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["2440500124"], "roblox.place": ["6516141723"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "No HUD regions yet; rules use whole-frame signals only." },
   "events": [
     {

@@ -1,14 +1,14 @@
 {
   // Slap players off the arena with gloves that each have an ability.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.slap-battles",
   "displayName": "Slap Battles",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["pvp", "physics"],
-  "ids": {},
+  "ids": { "roblox.universe": ["2380077519"], "roblox.place": ["6403373529"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "disable": [
     "impact",

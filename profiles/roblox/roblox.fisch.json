@@ -1,14 +1,14 @@
 {
   // Fishing: a reel minigame, then a catch card. Rare catches are the clips.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.fisch",
   "displayName": "Fisch",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["fishing", "collection"],
-  "ids": {},
+  "ids": { "roblox.universe": ["5750914919"], "roblox.place": ["16732694052"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

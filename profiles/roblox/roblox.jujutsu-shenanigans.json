@@ -1,14 +1,14 @@
 {
   // Arena fighting: combos, special moves and awakenings.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.jujutsu-shenanigans",
   "displayName": "Jujutsu Shenanigans",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["fighting", "pvp"],
-  "ids": {},
+  "ids": { "roblox.universe": ["3508322461"], "roblox.place": ["9391468976"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

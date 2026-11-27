@@ -7,8 +7,8 @@
   "parent": "roblox",
   "level": "subgame",
   "tags": ["shooter", "pvp"],
-  // Ids are unverified until "lookback-testbench roblox-ids" confirms them; the universe id is filled in by it.
-  "ids": { "roblox.place": ["286090429"] },
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["111958650"], "roblox.place": ["286090429"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
   "regions": [
     { "name": "arsenal_kill_feed", "x": 0.74, "y": 0.40, "w": 0.26, "h": 0.22, "purpose": "Kill feed on the right." },

@@ -1,14 +1,14 @@
 {
   // Arena duels, first to a set number of round wins.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.rivals",
   "displayName": "RIVALS",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["shooter", "pvp", "duels"],
-  "ids": {},
+  "ids": { "roblox.universe": ["6035872082"], "roblox.place": ["17625359962"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

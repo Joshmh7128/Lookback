@@ -1,14 +1,14 @@
 {
   // Buy, collect and steal characters from other players' bases.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.steal-a-brainrot",
   "displayName": "Steal a Brainrot",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["tycoon", "pvp"],
-  "ids": {},
+  "ids": { "roblox.universe": ["7709344486"], "roblox.place": ["109983668079237"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {
