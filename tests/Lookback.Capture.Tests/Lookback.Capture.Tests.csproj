@@ -15,5 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lookback.Capture\Lookback.Capture.csproj" />
+    <ProjectReference Include="..\..\src\Lookback.Encode\Lookback.Encode.csproj" />
   </ItemGroup>
 </Project>
