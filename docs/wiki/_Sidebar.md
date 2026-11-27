@@ -22,6 +22,7 @@
 - [Testbench](Testbench)
 - [Live Profiler](Live-Profiler)
 - [Official-Player Calibration](Official-Player-Calibration)
+- [Game Detection](Game-Detection)
 - [Live Capture](Live-Capture)
 - [Dataset Browser](Dataset-Browser)
 - [Testing](Testing)

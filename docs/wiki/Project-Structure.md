@@ -28,6 +28,9 @@ src/
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
+  Lookback.Detection/         game detection: matcher, debounced lifecycle, bus runner
+  Lookback.Detection.Windows/ process + window probe, capture target for a game (Windows)
+  Lookback.Detection.Cli/     lookback-detect bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
@@ -39,6 +42,9 @@ tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
+  Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
+  Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
+  Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
   Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
@@ -94,11 +100,14 @@ flowchart TB
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
 | `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
 | `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
+| `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
+| `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
+| `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Detection`, `Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
 `Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`.)
 
