@@ -24,6 +24,10 @@ cd app; npm ci; npm start
 # the desktop app: library, timeline, ratings, and "Open viewer" for official-player calibration
 ```
 
+Once it is cloned, `launch.bat` in the root updates `main`, builds, installs
+the app's packages and starts the desktop app in one step (`launch.bat --help`
+for its options).
+
 The full walkthrough, with expected output and troubleshooting, is
 [docs/wiki/Quickstart.md](docs/wiki/Quickstart.md).
 

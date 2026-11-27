@@ -150,6 +150,19 @@ Media files are never committed; only manifests are. See
 ## 8. Run the desktop app
 
 ```powershell
+.\launch.bat
+```
+
+`launch.bat` in the repository root does all of it in one step: it updates
+`main` from GitHub (only when `main` is checked out with no local changes),
+builds Release, runs `npm ci` in `app` when the packages are missing or
+`package-lock.json` changed, and starts the app. It stops with a message when
+something is missing (the .NET SDK, Node.js) or when Lookback from the same
+folder is already running, since the build cannot replace a running recorder.
+`launch.bat --no-pull`, `--no-build` and `--no-start` skip a step;
+`launch.bat --help` lists them. By hand:
+
+```powershell
 cd app
 npm ci
 npm start
@@ -209,5 +222,6 @@ exits with code 64.
 | Profiler page asks for a token | The link lost its `#token=…` part. Copy the whole printed link |
 | Profile events on a test clip | Expected: synthetic patterns trip HUD rules. Use real footage |
 | Desktop app says "Lookback.Recorder was not found" | Run `dotnet build Lookback.slnx -c Release` first, or set the recorder's path in Settings |
+| The viewer says "ingest off: the recorder has no ingest endpoint", or features you just pulled are missing | The app is running an older recorder build: it takes Release, then Debug, whatever was built last. Close the app and run `launch.bat`, which rebuilds before starting |
 | Viewer shows "ingest off" | The recorder is not running, or was started with `--Recorder:OfficialPlayer=false` |
 | Twitch player says the channel is offline | Pick a live channel or a `twitch.tv/videos/<id>` link |

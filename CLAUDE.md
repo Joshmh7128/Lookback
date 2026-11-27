@@ -11,3 +11,4 @@
 - Profiles form a tree (game, sub-game, mode) in `profiles/<game>/`. A child inherits and adds; it may only make the capture policy stricter. Sub-game detection reads only what the platform exposes outside the game process (launch arguments, window title, the launcher's own log) or the screen.
 - Dataset media is never committed: only `datasets/<game>/manifest*.json`, with provenance and a permission reference for third-party footage.
 - Original project: no other company's code, branding or assets.
+- `launch.bat` in the root updates, builds and starts the desktop app. Keep it current: a change to how Lookback is built or started (prerequisites, build steps, npm scripts, where the recorder is found or its flags) updates `launch.bat` and its notes in the same PR. Batch files are CRLF (`.gitattributes`); inside `for /f ('...')` write options without `=` (cmd splits on it).

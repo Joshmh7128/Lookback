@@ -35,6 +35,19 @@ flowchart LR
 ## Running it
 
 ```powershell
+.\launch.bat
+```
+
+`launch.bat` in the repository root does all of it in one step: it updates
+`main` from GitHub (only when `main` is checked out with no local changes),
+builds Release, runs `npm ci` in `app` when the packages are missing or
+`package-lock.json` changed, and starts the app. It stops with a message when
+something is missing (the .NET SDK, Node.js) or when Lookback from the same
+folder is already running, since the build cannot replace a running recorder.
+`launch.bat --no-pull`, `--no-build` and `--no-start` skip a step;
+`launch.bat --help` lists them. By hand, the same steps are:
+
+```powershell
 dotnet build Lookback.slnx -c Release
 cd app
 npm ci
