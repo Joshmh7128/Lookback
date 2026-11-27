@@ -36,9 +36,9 @@ An official-player session stops at the dashed red line: the converter,
 clock, encoders, ring and store are never created, so nothing exists that
 could reach disk. Every timestamp is raw QPC; media time is derived only when
 muxing. Measured on AETHER: WGC at 144 fps in, NVENC HEVC 1080p60 out at
-60.0 fps with no skipped ticks. AMF HEVC on the iGPU can deadlock with WGC
-because the encoder shares the capture device's lock; the fix in progress is a
-separate encoder device plus a stall watchdog. See [Live Capture](Live-Capture).
+60.0 fps with no skipped ticks. A lock-order inversion between WGC and the
+encoder used to deadlock capture; one device lock fixed it, and a watchdog now
+swaps stalled encoders or ends the recorder instead of hanging. See [Live Capture](Live-Capture).
 
 ## From signals to clips to a learned scorer
 
@@ -73,7 +73,7 @@ the shell's memory.
 | Game detection: process and window watcher, profile matching, `GameLifecycle` | Detection | In progress (M2) |
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference | Scoring · `ml/` | In progress (M4) |
 | Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
-| Encoder on its own D3D11 device, stall watchdog, fallback chain, fail-fast | Encode · Capture | In progress |
+| No-deadlock encode path: one device lock, stall watchdog, encoder fallback chain, blocklist, fail-fast | Core · Encode · Capture | Done (this PR) |
 | Recorder wiring: CaptureService, `/events` rate · save · analyze with ack | Recorder | Next |
 | Training the scorer on real ratings | `ml/` · Scoring | Planned (M4), needs ratings |
 | Quality reports: transcode, VMAF, audio checks | Quality | Planned (M5) |
@@ -91,10 +91,11 @@ the shell's memory.
    excitement curve arrives with Clipper v1.
 3. **Ratings are not stored.** The shell keeps them in memory until the
    recorder accepts `rate` and the RatingStore lands.
-4. **One device lock for capture and encoder.** AMF HEVC can deadlock with WGC
-   capture; the encoder is moving to its own device behind a watchdog that
-   falls back to other encoders, then software, and ends the recorder process
-   rather than hanging.
+4. **Live capture deadlock: fixed.** WGC delivers frames while holding the
+   D3D11 device lock, and a second, managed lock taken in the other order
+   deadlocked capture against the encoder. `GpuDevice` now has one lock (D3D11's
+   own), and a watchdog swaps stalled encoders or ends the recorder rather
+   than hanging. See [Live Capture](Live-Capture).
 5. **AV1 is capped.** The muxer has no `av1C` writer, so the governor tops out
    at HEVC; software and H.264 fallbacks cover machines without HEVC.
 6. **The pipe server has no consumers yet.** It is there for out-of-process

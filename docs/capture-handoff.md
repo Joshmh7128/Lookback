@@ -116,12 +116,15 @@ Rebase on main before merging; they touch this file's rows too.
 
 1. ~~Encoder test on Windows~~ **done** (`tests/Lookback.Capture.Tests/EncoderTests.cs`,
    every display adapter: NVENC and AMF on AETHER).
-   **Next here:** AMF HEVC can deadlock with live WGC capture on the iGPU
-   (see the wiki's Live-Capture known issues). Give the encoder its own D3D11
-   device on the same adapter, hand frames over through a shared keyed-mutex
-   NV12 texture, and add a stall watchdog that recreates the encoder. Also:
-   AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per busy tick
-   (force IDRs at GOP-aligned ticks).
+   ~~Live capture deadlock~~ **fixed**: a lock-order inversion between WGC's
+   flip thread (holds the D3D11 device lock, then took our managed lock) and
+   the encode ticker (the reverse). `GpuDevice` now has one lock, D3D11's own
+   (`using (gpu.Enter())`); never add a second lock around device use. A
+   `StallWatchdog` swaps stalled encoders down the fallback chain, blocklists
+   them per adapter/driver, and fails fast when nothing is left or capture is
+   wedged. Encoder-on-own-device (`IsolateDevice`) is verified and opt-in.
+   Still open: AMF HEVC ignores the CBR bitrate, and IDRs drift one frame per
+   busy tick (force IDRs at GOP-aligned ticks).
 2. ~~CFR ticker and `--encode`~~ **done** (`EncodeTicker`, `EncodeBench`).
 3. AAC encoder MFT (sync, 48 kHz stereo float→PCM16) fed from WASAPI.
 4. WASAPI endpoint loopback (no process loopback on 19045) + mic, through
