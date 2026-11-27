@@ -414,7 +414,12 @@ internal sealed partial class CaptureService : IAsyncDisposable
                     gameAac = audio.Encode && audio.Game is not null ? MfAacEncoder.Create(new AacEncoderSettings { Role = "game" }, ring, trackId: 2, freq) : null;
                     micAac = audio.Encode && audio.Microphone ? MfAacEncoder.Create(new AacEncoderSettings { Role = "mic" }, ring, trackId: 3, freq) : null;
                     LiveCaptureSession s0 = session;
-                    gameAudio = audio.Game is null ? null : WasapiSource.Start(AudioSourceOptions.ForGame(audio, game.Pid), gameAac is null ? null : gameAac.Encode, b => s0.Analyzer.SubmitAudio(b));
+                    ILogger log = owner._logger;
+                    string name = game.Match.DisplayName;
+                    gameAudio = audio.Game is null ? null : WasapiSource.Start(
+                        AudioSourceOptions.ForGame(audio, game.Pid) with { Log = line => LogAudioNote(log, name, line) }, // why it fell back to the endpoint
+                        gameAac is null ? null : gameAac.Encode,
+                        b => s0.Analyzer.SubmitAudio(b));
                     mic = audio.Microphone ? WasapiSource.Start(new AudioSourceOptions { Kind = AudioSourceKind.Microphone }, micAac is null ? null : micAac.Encode) : null;
                 }
                 catch (Exception ex) when (ex is InvalidOperationException or SharpGen.Runtime.SharpGenException or System.Runtime.InteropServices.COMException)
@@ -484,6 +489,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not start recording {Game}: {Reason}")]
     private static partial void LogStartFailed(ILogger logger, string game, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Audio for {Game}: {Line}")]
+    private static partial void LogAudioNote(ILogger logger, string game, string line);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Audio for {Game} did not start, recording video only: {Reason}")]
     private static partial void LogAudioFailed(ILogger logger, string game, string reason);

@@ -78,7 +78,10 @@ The viewer plays YouTube or Twitch videos through their official embedded
 players in a visible app window, played by you, with no ad blocking. Lookback
 captures that window the same way it captures a game and shows detected
 events live. The session is `OFFICIAL_PLAYER` + `EPHEMERAL`: features stay in
-memory and vanish when the session ends, and export is disabled. It
+memory and vanish when the session ends, and export is disabled. Its sound is
+heard by process loopback of the desktop shell's own process tree (never the
+whole system, so no other app is heard), analysed in memory and never encoded
+or stored. It
 demonstrates the pipeline on arbitrary footage; it is not a dataset source.
 
 ### Confirmed profile parameters
@@ -111,7 +114,7 @@ A line holds only:
 |---|---|
 | your stars and the soft label | the video's id, address or title |
 | the profile (`cs2.competitive`, or `generic`) and the platform (`youtube`, `twitch`) | any time in the video: start, end and peak are 0 |
-| the candidate's heuristic score and its 30 `clip-features/1` numbers (audio ones missing, as the viewer sends no audio) | frames, audio, thumbnails or signal series |
+| the candidate's heuristic score and its 30 `clip-features/1` numbers (audio ones missing when the player's sound was not heard) | frames, audio, thumbnails or signal series |
 | a random run id (`check-` and 32 hex digits) and the candidate's place in the run (`c0`, `c1`…) | the clipper's candidate id, which names the player session |
 | when you rated it (wall clock) | missed-highlight marks and the check's scores |
 

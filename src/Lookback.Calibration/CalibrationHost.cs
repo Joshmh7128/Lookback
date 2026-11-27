@@ -1,13 +1,16 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Net.WebSockets;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Lookback.Calibration.Probe;
 using Lookback.Calibration.Profiles;
 using Lookback.Core.Bus;
+using Lookback.Contracts.V1;
 using Lookback.Core.Time;
+using Lookback.Media.Frames;
 using Lookback.Profiles.Model;
 using Lookback.Scoring.Ratings;
 using Lookback.Stream.SessionLog;
@@ -31,6 +34,15 @@ public sealed record CalibrationHostOptions
     /// (<see cref="RatingStore.AppendCheck"/>). Null keeps ratings in memory only.
     /// </summary>
     public RatingStore? Ratings { get; init; }
+
+    /// <summary>
+    /// Starts hearing the player when one starts: given the session's header
+    /// and where to send each hop (mono, analysis rate, capture QPC), returns
+    /// what stops it, or null for none. The recorder captures the desktop
+    /// shell's own process tree with process loopback, never the whole system.
+    /// Null keeps the player video only.
+    /// </summary>
+    public Func<SessionStarted, Action<AudioBlock>, IDisposable?>? PlayerAudio { get; init; }
 }
 
 /// <summary>
@@ -42,7 +54,8 @@ public sealed record CalibrationHostOptions
 /// Wire format of <c>/ingest</c>: a text <c>{"type":"start","platform":"youtube"|"twitch","profile":"cs2"}</c>,
 /// then binary little-endian messages <c>byte kind, int64 microseconds</c> followed, for
 /// kind 1 (video), by <c>uint16 width, uint16 height, BGRA8 pixels</c>; then a text <c>{"type":"stop"}</c>.
-/// Kind 2 (audio) is accepted and ignored for now. Frames are read into one pooled buffer and analysed in place.
+/// Kind 2 (audio) is accepted and ignored: the player's sound comes from <see cref="CalibrationHostOptions.PlayerAudio"/>.
+/// Frames are read into one pooled buffer and analysed in place.
 /// </summary>
 public sealed class CalibrationHost : IAsyncDisposable
 {
@@ -56,6 +69,9 @@ public sealed class CalibrationHost : IAsyncDisposable
     private readonly IClock _clock;
     private readonly CalibrationWriter? _writer;
     private readonly RatingStore? _ratings;
+    private readonly Func<SessionStarted, Action<AudioBlock>, IDisposable?>? _playerAudio;
+    private IDisposable? _audio;
+    private string? _audioNote;
     private readonly ProfileCatalog _builtIn;
     private readonly Lock _gate = new();
     private OfficialPlayerSession? _session;
@@ -69,6 +85,7 @@ public sealed class CalibrationHost : IAsyncDisposable
         options ??= new CalibrationHostOptions();
         _writer = options.ProfilesDirectory is null ? null : new CalibrationWriter(options.ProfilesDirectory);
         _ratings = options.Ratings;
+        _playerAudio = options.PlayerAudio;
         _builtIn = ProfileCatalog.BuiltIn;
     }
 
@@ -106,29 +123,70 @@ public sealed class CalibrationHost : IAsyncDisposable
         await session.StartAsync(profile).ConfigureAwait(false);
         session.SetOrigin(_clock.Now);
         OfficialPlayerSession? old;
+        IDisposable? oldAudio;
         lock (_gate)
         {
             old = _session;
             _session = session;
+            oldAudio = _audio;
+            _audio = null;
         }
 
+        // Stop hearing the old player before it goes; never under a lock (stopping joins the audio thread).
+        oldAudio?.Dispose();
         if (old is not null)
         {
             await old.DisposeAsync().ConfigureAwait(false);
         }
 
+        StartAudio(session);
         return session;
+    }
+
+    private void StartAudio(OfficialPlayerSession session)
+    {
+        IDisposable? handle = null;
+        if (_playerAudio is null || session.Started is not { } started)
+        {
+            _audioNote = "video only: this host has no audio source for the player";
+            return;
+        }
+
+        try
+        {
+            handle = _playerAudio(started, session.OnAudio);
+            _audioNote = handle is null ? "video only: the player's sound cannot be isolated here" : null;
+        }
+        catch (Exception e) when (e is InvalidOperationException or ExternalException or IOException or UnauthorizedAccessException)
+        {
+            _audioNote = $"video only: {e.Message}";
+        }
+
+        lock (_gate)
+        {
+            if (ReferenceEquals(_session, session))
+            {
+                _audio = handle;
+                handle = null;
+            }
+        }
+
+        handle?.Dispose(); // the player changed meanwhile
     }
 
     public async Task StopAsync()
     {
         OfficialPlayerSession? old;
+        IDisposable? audio;
         lock (_gate)
         {
             old = _session;
             _session = null;
+            audio = _audio;
+            _audio = null;
         }
 
+        audio?.Dispose();
         if (old is not null)
         {
             await old.DisposeAsync().ConfigureAwait(false);
@@ -323,7 +381,7 @@ public sealed class CalibrationHost : IAsyncDisposable
             return (false, "Saving ratings is off: they stay in memory.");
         }
 
-        if (session.Check.RatingFor(candidateId, stars, session.Platform, session.ProfileId) is not { } input)
+        if (session.Check.RatingFor(candidateId, stars, session.Platform, session.ProfileId, videoOnly: !session.HasAudio) is not { } input)
         {
             return (false, "The candidate is no longer in the check.");
         }
@@ -382,6 +440,8 @@ public sealed class CalibrationHost : IAsyncDisposable
 
         state["profile"] = s.ProfileId;
         state["frames"] = s.VideoFrames;
+        state["audioSeconds"] = Math.Round(s.AudioSeconds, 1);
+        state["audioNote"] = _audioNote;
         state["check"] = Check(s, _ratings is not null);
         CalibrationProbe probe = s.Probe;
         state["grid"] = new JsonObject { ["cols"] = probe.Columns, ["rows"] = probe.Rows, ["static"] = Cells(probe.StaticCells()) };

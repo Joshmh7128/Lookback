@@ -160,7 +160,8 @@ function render() {
     sel.replaceChildren(el('option', { value: '' }, 'choose a profile'), ...state.profiles.map(p => el('option', { value: p }, p)));
   }
   if (document.activeElement !== sel) sel.value = state.profile || '';
-  $('status').textContent = state.playing ? `${state.frames || 0} frames analysed${state.canSave ? '' : ' · saving off (no profiles folder)'}${state.lastSaved ? ' · ' + state.lastSaved : ''}` : '';
+  const audio = state.audioSeconds > 0 ? `${Math.round(state.audioSeconds)} s of the player's sound` : (state.audioNote || 'video only');
+  $('status').textContent = state.playing ? `${state.frames || 0} frames analysed · ${audio}${state.canSave ? '' : ' · saving off (no profiles folder)'}${state.lastSaved ? ' · ' + state.lastSaved : ''}` : '';
   $('save').disabled = !state.canSave;
 
   const marks = $('marks'); marks.replaceChildren();
