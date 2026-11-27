@@ -16,7 +16,7 @@ public class DownscalerTests
             for (int x = 0; x < w; x++)
             {
                 int i = ((y * w) + x) * 4;
-                bool left = x < w / 2;
+                bool left = x < (w / 2) + 2; // off the 5:1 grid, so one output pixel straddles the seam
                 px[i] = left ? (byte)0 : (byte)255;     // B
                 px[i + 1] = 0;                           // G
                 px[i + 2] = left ? (byte)255 : (byte)0; // R

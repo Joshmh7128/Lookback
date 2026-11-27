@@ -16,6 +16,16 @@ using Lookback.Stream.WebSockets;
 
 static string? Arg(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
+if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
+{
+    Console.WriteLine("""
+        lookback-capture --list
+        lookback-capture (--window <title part> | --pid <pid> | --monitor <n>) [--seconds 15] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
+        Captures live and runs the signal pipeline. Nothing is written to disk.
+        """);
+    return 0;
+}
+
 if (args.Contains("--list"))
 {
     int n = 0;
@@ -64,6 +74,7 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
 {
     Console.WriteLine($"capturing {target.Description} with {session.Backend} on {session.AdapterName}; persist: {session.CanPersist}");
     var until = DateTime.UtcNow.AddSeconds(seconds);
+    SessionStats last = session.Stats;
     while (DateTime.UtcNow < until && session.StoppedReason is null)
     {
         await Task.Delay(1000);
@@ -80,7 +91,9 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
         }
 
         SessionStats st = session.Stats;
-        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {st.CaptureFps,6:F1} fps  analysis {st.AnalysisFps,5:F1} fps  dropped {st.AnalysisDropped}");
+        double dt = (st.Elapsed - last.Elapsed).TotalSeconds;
+        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {(st.Captured - last.Captured) / dt,6:F1} fps  analysis {(st.Analysed - last.Analysed) / dt,5:F1} fps  dropped {st.AnalysisDropped}");
+        last = st;
     }
 }
 
