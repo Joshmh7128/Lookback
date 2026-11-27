@@ -16,4 +16,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Lookback.Recorder\Lookback.Recorder.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The learned scorer the Python tests trained, for ClipScoringTests. -->
+    <None Include="..\Lookback.Scoring.Tests\Fixtures\model\*" Link="Fixtures\model\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

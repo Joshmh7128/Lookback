@@ -4,7 +4,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, test } from "node:test";
-import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs } from "../main/locate";
+import { datasetsFolder, defaultRatingsFolder, locateTool, modelFolder, profilesFolder, RECORDER, recorderArgs } from "../main/locate";
 import { listProfiles } from "../main/profiles";
 import { DEFAULT_SETTINGS, loadSettings, sanitizeSettings, saveSettings } from "../main/settings";
 import { resolveStatic } from "../main/static-files";
@@ -70,6 +70,10 @@ test("recorder arguments carry settings and the profiles folder, never a token",
   assert.equal(profilesFolder({ ...DEFAULT_SETTINGS }, ctx), join("R", "profiles"));
   assert.equal(profilesFolder({ ...DEFAULT_SETTINGS, profilesDir: "elsewhere" }, ctx), null);
   assert.equal(datasetsFolder({ ...DEFAULT_SETTINGS }, ctx), null);
+  // The checkout's trained scorer goes to the recorder whether or not it has been trained yet.
+  assert.equal(modelFolder(ctx), join("R", "ml", "out", "model"));
+  assert.equal(modelFolder({ repoRoot: null }), null);
+  assert.ok(recorderArgs({ ...DEFAULT_SETTINGS }, { modelDir: "D:/repo/ml/out/model" }).includes("--Recorder:ModelDirectory=D:/repo/ml/out/model"));
 });
 
 test("profile ids come from each file's id, skipping commented-out ones", () => {

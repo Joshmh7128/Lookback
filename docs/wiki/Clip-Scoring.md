@@ -12,7 +12,8 @@ on your machine: the ratings, the training and the inference.
 | Training, calibration, evaluation, ONNX export (`ml/`) | Built and tested on synthetic ratings |
 | `LearnedClipScorer` (ONNX Runtime, CPU) | Built, matched to Python by a committed fixture |
 | `lookback-testbench rate` | Built (terminal fallback) |
-| Rating UI in the Electron shell, recorder `rate` handling | M2, in progress elsewhere |
+| Rating UI in the Electron shell, recorder `rate` handling | Built |
+| Recorder: every candidate's `clip-features/1` attached, and scored by the model when there is one (`ClipScoring`) | Built: live recording and footage analysis |
 | Clipper-check ratings: your ratings of watched YouTube/Twitch videos, numbers only (`RatingStore.AppendCheck`) | Built |
 | Training on real ratings | Waits on your ratings (own footage, clipper check) |
 
@@ -303,6 +304,24 @@ real ratings.
 ```
 
 ## Scoring on the recorder
+
+The recorder does this for every candidate its clippers propose, in live
+recording and in footage analysis (`src/Lookback.Recorder/ClipScoring.cs`, one
+per recorder). Just before a candidate is published it attaches the
+candidate's `clip-features/1` vector, mapped from the clipper's named features.
+A rating of it is therefore stored with everything training reads, not only
+the three floor features. It then scores the candidate with the learned model
+when one covers its game. The model is loaded once, at start, from
+`Recorder:ModelDirectory`:
+
+| Where | Model folder |
+|---|---|
+| Desktop app in a checkout | `<checkout>/ml/out/model`, where `python -m lookback_ml.train` writes by default |
+| Recorder on its own | `%LOCALAPPDATA%\Lookback\model` |
+
+With no model there, the log says so and the heuristic scores stand; the
+features are attached either way. After training, restart the app (or the
+recorder) to load the new model.
 
 `LearnedClipScorer` loads `model.json` and `model.onnx` and runs the model with
 ONNX Runtime on the CPU execution provider, single-threaded: the model is a

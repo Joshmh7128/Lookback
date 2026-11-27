@@ -27,7 +27,7 @@ public sealed class ControlServiceTests : IAsyncDisposable
     public ControlServiceTests()
     {
         _sessions = new SessionDirectory(_bus);
-        _footage = new FootageSessions(_bus, NullLogger.Instance);
+        _footage = new FootageSessions(_bus, NullLogger.Instance, ClipScoring.HeuristicOnly());
         _control = new ControlService(_bus, _sessions, new RatingStore(Path.Combine(_dir, "datasets")), _footage, NullLogger.Instance);
     }
 
@@ -199,6 +199,13 @@ public sealed class ControlServiceTests : IAsyncDisposable
         JsonElement rated = await SendAsync(new { type = "rate", id = "r", sessionId, candidateId, stars = 4 });
         Assert.True(rated.GetProperty("ok").GetBoolean(), rated.ToString());
         Assert.Single(RatingFiles());
+
+        // The candidate left the clipper with its features, so the rating is stored with all of them,
+        // not only the three a bare candidate carries (heuristic score, length, peak position).
+        Assert.Equal(Lookback.Scoring.Features.ClipFeatureSchema.Count, candidates[0].Features.Count);
+        using JsonDocument line = JsonDocument.Parse(File.ReadAllLines(RatingFiles()[0])[^1]);
+        int known = line.RootElement.GetProperty("features").EnumerateArray().Count(v => v.ValueKind == JsonValueKind.Number);
+        Assert.True(known > 10, $"only {known} features stored with the rating"); 
     }
 
     /// <summary>A test pattern with a 0.2 s flash and a white-noise burst at each moment (as the clipper's footage tests make).</summary>

@@ -83,6 +83,8 @@ export interface RecorderExtras {
   datasetsDir?: string | null;
   /** The shell's pid: the recorder exits when the shell does, however it ends. */
   parentPid?: number | null;
+  /** The learned clip scorer (model.json, model.onnx); unset, the recorder uses %LOCALAPPDATA%/Lookback/model. */
+  modelDir?: string | null;
 }
 
 /**
@@ -104,6 +106,10 @@ export function recorderArgs(settings: Settings, extras: RecorderExtras = {}): s
     args.push(`--Recorder:DatasetsDirectory=${extras.datasetsDir}`);
   }
 
+  if (extras.modelDir) {
+    args.push(`--Recorder:ModelDirectory=${extras.modelDir}`);
+  }
+
   if (extras.parentPid && Number.isInteger(extras.parentPid) && extras.parentPid > 0) {
     args.push(`--Recorder:ParentProcessId=${extras.parentPid}`);
   }
@@ -120,6 +126,15 @@ export function defaultRatingsFolder(env: NodeJS.ProcessEnv): string {
 export function profilesFolder(settings: Settings, ctx: Pick<LocateContext, "repoRoot" | "exists">): string | null {
   const dir = settings.profilesDir || (ctx.repoRoot ? join(ctx.repoRoot, "profiles") : "");
   return dir && ctx.exists(dir) ? dir : null;
+}
+
+/**
+ * Where `ml/` writes the trained scorer in a checkout (`python -m lookback_ml.train`'s
+ * default --out). It may not exist yet: the recorder then keeps heuristic scores
+ * and picks the model up the next time it starts.
+ */
+export function modelFolder(ctx: Pick<LocateContext, "repoRoot">): string | null {
+  return ctx.repoRoot ? join(ctx.repoRoot, "ml", "out", "model") : null;
 }
 
 /** The datasets folder: the one in settings, else the repository's, else none. */

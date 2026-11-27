@@ -27,7 +27,7 @@ internal sealed record FootageRequest(string Path, string? Profile, Retention Re
 /// retention is validated before anything starts. At most two run at once,
 /// so a batch of files leaves room for live capture.
 /// </summary>
-internal sealed partial class FootageSessions(IEventBus bus, ILogger logger) : IAsyncDisposable
+internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, ClipScoring scoring) : IAsyncDisposable
 {
     public const long Frequency = 10_000_000;
     private static readonly string[] Forwarded = [Topics.Session, Topics.GameEvent, Topics.GameProfile, Topics.ClipCandidate, Topics.QaReport];
@@ -113,7 +113,9 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger) : I
 
             // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
             profile = startId is null ? null : new ProfileRunner(privateBus, catalog, startId, DetectionMethod.Manual, sessionId, Frequency, publishCandidates: false);
-            clipper = startId is null ? new ClipperRunner(privateBus, sessionId, Frequency) : new ClipperRunner(privateBus, catalog, startId, sessionId, Frequency);
+            // Every candidate gets its features (and a model score when there is a model) before it is published.
+            ClipperOptions clipping = scoring.Options(Frequency);
+            clipper = startId is null ? new ClipperRunner(privateBus, sessionId, Frequency, clipping) : new ClipperRunner(privateBus, catalog, startId, sessionId, Frequency, clipping);
             ProfileRunner? p0 = profile;
             ClipperRunner c0 = clipper;
             var pacer = new ReplayPacer(() => Math.Max(p0?.Queued ?? 0, c0.Queued));

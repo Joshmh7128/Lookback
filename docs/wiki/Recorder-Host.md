@@ -36,6 +36,7 @@ server GC's per-core heaps.
 | `ProfilesDirectory` | unset | The checkout's `profiles` folder, so calibration can save confirmed numbers |
 | `Control` | `true` | Handle the shell's `rate`, `analyze` and `save` commands on `/events` |
 | `DatasetsDirectory` | `%LOCALAPPDATA%\Lookback\datasets` | Where ratings are stored (`<dir>/<game>/ratings.jsonl`); point it at the checkout's `datasets` so `ml/` trains on them |
+| `ModelDirectory` | `%LOCALAPPDATA%\Lookback\model` | The learned clip scorer (`model.json`, `model.onnx` from `ml/`), loaded at start. Without one, candidates keep heuristic scores; their `clip-features/1` are attached either way. See [Clip Scoring](Clip-Scoring#scoring-on-the-recorder) |
 | `ParentProcessId` | unset | The shell's pid: the recorder stops when that process exits, however it exits |
 | `Capture` | `true` on Windows | Record every allowed game game detection sees start (one at a time) |
 | `StoreDirectory` | `%LOCALAPPDATA%\Lookback\store` | Session footage (`sessions/`), saved clips (`clips/`) and temporary previews (`previews/`) |
