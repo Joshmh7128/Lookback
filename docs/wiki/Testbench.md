@@ -12,10 +12,13 @@ lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|
 lookback-testbench report <session-path-without-extension> [--video <file>]
 lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
                                [--port <n>] [--no-wait] [--pipe <name>] [--retention ...]
+lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
 ```
 
 `live` plays the footage in real time into the [live profiler](Live-Profiler)
 instead of analysing it as fast as possible; see that page.
+
+`browse` writes the [Dataset Browser](Dataset-Browser): one page for sifting profiles, datasets and their scores. It needs no ffmpeg.
 
 Requires ffmpeg and ffprobe on PATH (or `LOOKBACK_FFMPEG_DIR`).
 

@@ -27,6 +27,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
+| [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
 | [Testing](Testing) | What each test proves |
 
 ## Status
