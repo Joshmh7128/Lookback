@@ -13,6 +13,7 @@ automatically when `main` changes, so the wiki always matches the code.
 
 | Page | What it covers |
 |---|---|
+| [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
 | [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
 | [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |

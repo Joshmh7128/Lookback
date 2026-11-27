@@ -7,6 +7,24 @@ scores them, checks each candidate, and learns from how clips are rated.
 Windows, C# on .NET 10, with a small native present hook for D3D11/D3D12 and
 an Electron shell. See [docs/architecture.md](docs/architecture.md).
 
+## Quickstart
+
+There is no desktop app yet (the Electron shell comes in M2). Today you run
+two command-line programs and open their pages in a browser. With the .NET 10
+SDK and ffmpeg on `PATH`:
+
+```powershell
+git clone https://github.com/Joshmh7128/Lookback.git; cd Lookback
+dotnet build Lookback.slnx -c Release
+dotnet run -c Release --project src/Lookback.Testbench -- analyze my-clip.mp4 --out out --profile generic
+# open out\<session>.html in a browser
+dotnet run -c Release --project src/Lookback.Testbench -- live my-clip.mp4 --profile overwatch
+# open the printed http://127.0.0.1:…/profiler#token=… link
+```
+
+The full walkthrough, with expected output and troubleshooting, is
+[docs/wiki/Quickstart.md](docs/wiki/Quickstart.md).
+
 ## Status
 
 - **M0 (done):** event schema, in-process bus, named pipes, WebSocket

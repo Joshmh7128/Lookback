@@ -1,6 +1,7 @@
 **Lookback**
 
 - [Home](Home)
+- [Quickstart](Quickstart)
 - [Architecture](Architecture)
 - [Detection Walkthrough](Detection-Walkthrough)
 - [Detection Design Notes](Detection-Design-Notes)

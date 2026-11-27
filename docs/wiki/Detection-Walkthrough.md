@@ -425,9 +425,9 @@ that is on the order of ten million simple integer operations per second, a
 small fraction of one core. Audio is one 1024-point FFT and a 64-band mel
 projection per 10 ms. The detector does dictionary lookups per value per
 frame and allocates only when an event fires; it is not on the capture path.
-For scale, the testbench analyses footage at about 6x real time on a laptop,
-and that figure includes ffmpeg decoding and scaling
-([Testbench](Testbench)).
+For scale, the testbench analyses a 20-second 720p60 clip with the
+Overwatch profile in 0.5 s (about 40x real time) on a Windows 10 desktop,
+and that figure includes ffmpeg decoding and scaling.
 
 ## See also
 
