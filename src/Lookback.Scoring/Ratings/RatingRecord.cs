@@ -10,7 +10,9 @@ namespace Lookback.Scoring.Ratings;
 /// (session, candidate) pair is the current rating, and stars 0 clears it.
 /// <para>
 /// Holds numbers and ids only. Never frames, audio, signal series or video
-/// ids; <see cref="RatingStore"/> refuses any session that may not persist.
+/// ids; <see cref="RatingStore"/> refuses any session that may not persist,
+/// except the user's own clipper-check ratings, which keep only the rating
+/// and the candidate's numbers (<see cref="RatingStore.AppendCheck"/>).
 /// </para>
 /// </summary>
 public sealed record RatingRecord
@@ -69,8 +71,21 @@ public sealed record RatingRecord
     /// <summary>Wall-clock time of the rating, UTC. Bookkeeping only, never event time.</summary>
     public DateTimeOffset RatedAt { get; init; }
 
-    /// <summary>What recorded the rating: <c>shell</c> or <c>testbench</c>.</summary>
+    /// <summary>What recorded the rating: <c>shell</c>, <c>testbench</c> or <c>clipper-check</c>.</summary>
     public string Source { get; init; } = "";
+
+    /// <summary>
+    /// Set only on a clipper-check rating of a video the user watched
+    /// (<c>user-rating-with-features</c>, <see cref="RatingStore.CheckFileName"/>):
+    /// the session was ephemeral and only the rating and the candidate's numbers
+    /// were kept. Its times are 0 and its session id is a random run id.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? DerivedWrite { get; init; }
+
+    /// <summary>The official player a clipper-check rating came from (<c>youtube</c>, <c>twitch</c>); null otherwise. Never the video.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Platform { get; init; }
 
     /// <summary>The soft label for <paramref name="stars"/>: (stars − 1) / 4, or null for 0.</summary>
     public static double? LabelFor(int stars) => stars switch

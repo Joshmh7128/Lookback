@@ -13,7 +13,8 @@ on your machine: the ratings, the training and the inference.
 | `LearnedClipScorer` (ONNX Runtime, CPU) | Built, matched to Python by a committed fixture |
 | `lookback-testbench rate` | Built (terminal fallback) |
 | Rating UI in the Electron shell, recorder `rate` handling | M2, in progress elsewhere |
-| Training on real ratings | Waits on ratings from your own footage |
+| Clipper-check ratings: your ratings of watched YouTube/Twitch videos, numbers only (`RatingStore.AppendCheck`) | Built |
+| Training on real ratings | Waits on your ratings (own footage, clipper check) |
 
 ## The loop
 
@@ -84,6 +85,34 @@ series or video identity.
 ephemeral sessions, sessions with no retention, and third-party footage
 without a `permission_ref` are refused, and so is a rating whose session
 header is unknown. See [Data Retention](Data-Retention#ratings-and-the-learned-scorer-m4).
+
+### Clipper-check ratings
+
+Ratings you give in the [clipper check](Official-Player-Calibration#clipper-check-how-accurate-is-the-clipper),
+on a YouTube or Twitch video you only watched, are training data too: the
+rating is yours, the video is not. `RatingStore.AppendCheck` writes them to
+`datasets/<game>/check-ratings.jsonl`, beside `ratings.jsonl`, with the same
+line format and three differences:
+
+- `sessionId` is a random run id (`check-` and 32 hex digits) and
+  `candidateId` the candidate's place in the run (`c0`, `c1`…);
+- `startQpc`, `endQpc`, `peakQpc` and `qpcFrequency` are 0;
+- `derivedWrite` is `user-rating-with-features`, `source` is `clipper-check`,
+  and `platform` is `youtube` or `twitch`.
+
+```json
+{"v":"lookback.rating/1","game":"cs2","profile":"cs2.competitive","sessionId":"check-0123456789abcdef0123456789abcdef",
+ "candidateId":"c3","stars":5,"label":1,"retention":"ephemeral","sourceKind":"official-player","permissionRef":"",
+ "startQpc":0,"endQpc":0,"peakQpc":0,"qpcFrequency":0,"heuristicScore":0.75,"highlightProbability":0,
+ "featureSchema":"clip-features/1","features":[0.75,8,2,1,1,0.75,0.25,0.5,2.5,null,...],
+ "ratedAt":"2026-11-27T12:00:00+00:00","source":"clipper-check","derivedWrite":"user-rating-with-features","platform":"youtube"}
+```
+
+The viewer sends no audio, so the audio features (`loudness_z`, `onset_rate`,
+`silent_fraction`, `audio_coverage`, `flux_z`, `loudness_z_max`) are stored as
+missing rather than as silence; training imputes them like any missing value.
+`ml/tests/data/check_rating_sample.jsonl` is the exact line C# writes, and the
+Python tests load it. See [Data Retention](Data-Retention#your-clipper-check-ratings).
 
 ### `RatingSink`
 
@@ -194,11 +223,15 @@ vectors still scores a sparse one sensibly.
 ## Training
 
 `python -m lookback_ml.train` (in `ml/`) reads every
-`datasets/<game>/ratings.jsonl`, keeps the current rating per candidate, and:
+`datasets/<game>/ratings.jsonl` and `datasets/<game>/check-ratings.jsonl`
+(`--no-check-ratings` reads only the first), keeps the current rating per
+candidate, and:
 
 1. **Refuses** to train when any line's retention is not `owned`,
    `permissioned` or `open-license`, when third-party lines lack a
-   `permissionRef`, or when a line sits in another game's folder. Then when
+   `permissionRef`, when a check line holds anything but the rating and the
+   candidate's numbers (an unknown key, a non-zero time, a session id that is
+   not a random run id), or when a line sits in another game's folder. Then when
    there are fewer than 40 usable ratings, fewer than 3 sessions, or fewer
    than 5 ratings of 4–5 stars or of 1–2 stars. Nothing is written on a
    refusal.
@@ -220,7 +253,9 @@ vectors still scores a sparse one sensibly.
    against scikit-learn (max difference ≤ 1e-5) before writing anything.
 
 Games with fewer than 10 ratings are still trained on but are left out of
-`games` in `model.json`, so they keep the heuristic.
+`games` in `model.json`, so they keep the heuristic. The report counts ratings
+by origin (`own`, `check`); each clipper-check run is one session for
+cross-validation.
 
 ### Evaluation
 

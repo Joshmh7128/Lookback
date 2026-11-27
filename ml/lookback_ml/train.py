@@ -203,6 +203,7 @@ def train(ds: Dataset, options: Options) -> TrainResult:
             "trainedAt": trained_at,
             "rows": len(ds),
             "sessions": len(set(ds.sessions.tolist())),
+            "origins": {o: int((ds.origins == o).sum()) for o in sorted(set(ds.origins.tolist()))},
             "gameRows": game_rows,
             "games": covered,
             "excluded": ds.excluded,
@@ -250,6 +251,7 @@ def report_markdown(report: dict) -> str:
         "",
         f"Trained {report['trainedAt']} on {report['rows']} ratings from {report['sessions']} sessions; "
         f"{report['folds']}-fold cross-validation by session; C = {report['C']}.",
+        f"Ratings by origin: {report.get('origins', {})} (own: your footage; check: the clipper check, numbers only).",
         "Held-out numbers. AUC and precision@k count 4-5 stars as highlights and 1-2 stars as not.",
         "",
     ]
@@ -294,6 +296,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-game-rows", type=int, default=d.min_game_rows, help="games with fewer ratings keep the heuristic")
     ap.add_argument("--strength", type=float, default=d.strength, help="pseudo-ratings pulling a game's calibration toward its parent")
     ap.add_argument("--k", type=int, default=d.k, help="top-k for precision per session")
+    ap.add_argument(
+        "--no-check-ratings",
+        action="store_true",
+        help="train on your own footage's ratings only, leaving out <game>/check-ratings.jsonl",
+    )
     args = ap.parse_args(argv)
 
     schema: FeatureSchema = load_schema(args.schema) if args.schema else load_schema()
@@ -306,7 +313,9 @@ def main(argv: list[str] | None = None) -> int:
         k=args.k,
     )
     try:
-        ds = load_dataset(args.datasets, schema, args.games.split(",") if args.games else None)
+        ds = load_dataset(
+            args.datasets, schema, args.games.split(",") if args.games else None, include_check=not args.no_check_ratings
+        )
         result = train(ds, options)
     except RefusedError as e:
         print(str(e), file=sys.stderr)

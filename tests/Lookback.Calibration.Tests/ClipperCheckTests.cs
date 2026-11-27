@@ -3,20 +3,56 @@ using Lookback.Calibration.Check;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
 using Lookback.Core.Time;
+using Lookback.Scoring.Features;
+using Lookback.Scoring.Ratings;
 
 namespace Lookback.Calibration.Tests;
 
 /// <summary>
 /// The clipper check: its arithmetic on hand-made candidates, and the whole
 /// harness on a live official-player session (the real clipper on the
-/// player's frames, judged through the panel's commands) with nothing written.
+/// player's frames, judged through the panel's commands): with no rating store
+/// nothing is written, and with one only the ratings and their numbers are.
 /// </summary>
 public sealed class ClipperCheckTests : IDisposable
 {
     private const long F = 10_000_000;
     private readonly string _dir = Directory.CreateTempSubdirectory("lookback-check-").FullName;
+    private readonly string _datasets = Directory.CreateTempSubdirectory("lookback-check-data-").FullName;
 
-    public void Dispose() => Directory.Delete(_dir, recursive: true);
+    public void Dispose()
+    {
+        Directory.Delete(_dir, recursive: true);
+        Directory.Delete(_datasets, recursive: true);
+    }
+
+    /// <summary>40 s of moving noise with three full-frame flashes, at 12, 22 and 32 s; a missed-highlight mark at 23 s; then a flush.</summary>
+    private static async Task FeedAsync(CalibrationHost host, OfficialPlayerSession session)
+    {
+        session.SetOrigin(0);
+        var rng = new Random(7);
+        byte[] px = new byte[Synthetic.W * Synthetic.H * 4];
+        for (int i = 0; i < 40 * 30; i++)
+        {
+            double t = i / 30.0;
+            bool flash = (t is >= 12 and < 12.4) || (t is >= 22 and < 22.4) || (t is >= 32 and < 32.4);
+            for (int p = 0; p < px.Length; p += 4)
+            {
+                byte v = flash ? (byte)250 : (byte)rng.Next(40, 120);
+                px[p] = px[p + 1] = px[p + 2] = v;
+                px[p + 3] = 255;
+            }
+
+            session.OnVideo(i * 33_333L, Synthetic.W, Synthetic.H, px);
+            if (i == (int)(23 * 30))
+            {
+                await host.CommandAsync(JsonNode.Parse("""{"type":"missed"}"""));
+            }
+        }
+
+        // Restarting the analysis flushes the clipper; the check outlives the restart.
+        await session.StartAsync(null);
+    }
 
     private static ClipCandidate C(string id, double start, double end, float score, params string[] reasons) => new()
     {
@@ -98,31 +134,7 @@ public sealed class ClipperCheckTests : IDisposable
         await using var host = new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = _dir });
         string[] before = Directory.GetFileSystemEntries(_dir, "*", SearchOption.AllDirectories);
         OfficialPlayerSession session = await host.StartAsync("youtube", null); // no profile: the clipper runs on the generic curve
-        session.SetOrigin(0);
-
-        // 40 s of moving noise with three full-frame flashes: the clipper's excitement curve peaks at each.
-        var rng = new Random(7);
-        byte[] px = new byte[Synthetic.W * Synthetic.H * 4];
-        for (int i = 0; i < 40 * 30; i++)
-        {
-            double t = i / 30.0;
-            bool flash = (t is >= 12 and < 12.4) || (t is >= 22 and < 22.4) || (t is >= 32 and < 32.4);
-            for (int p = 0; p < px.Length; p += 4)
-            {
-                byte v = flash ? (byte)250 : (byte)rng.Next(40, 120);
-                px[p] = px[p + 1] = px[p + 2] = v;
-                px[p + 3] = 255;
-            }
-
-            session.OnVideo(i * 33_333L, Synthetic.W, Synthetic.H, px);
-            if (i == (int)(23 * 30))
-            {
-                await host.CommandAsync(JsonNode.Parse("""{"type":"missed"}"""));
-            }
-        }
-
-        // Restarting the analysis flushes the clipper; the check outlives the restart.
-        await session.StartAsync(null);
+        await FeedAsync(host, session);
         CheckStats stats = session.Check.Stats();
         Assert.True(stats.Proposed >= 1, "the clipper proposed nothing on the flashes");
         CheckCandidate first = session.Check.Recent(50)[^1];
@@ -138,6 +150,8 @@ public sealed class ClipperCheckTests : IDisposable
         Assert.Equal(1, (int)check["stats"]!["missedMarks"]!);
         Assert.NotEmpty(check["recent"]!.AsArray());
         Assert.Contains("Nothing here is stored", (string)check["note"]!, StringComparison.Ordinal);
+        Assert.False((bool)check["saving"]!);
+        Assert.Contains("\"stored\":false", reply, StringComparison.Ordinal);
 
         // Nothing was written: not the candidates, the judgment, the mark, nor any part of the video.
         Assert.Equal(before, Directory.GetFileSystemEntries(_dir, "*", SearchOption.AllDirectories));
@@ -146,5 +160,46 @@ public sealed class ClipperCheckTests : IDisposable
         await host.StopAsync();
         Assert.Equal(0, session.Check.Stats().Proposed);
         Assert.Equal(0, session.Check.Stats().MissedMarks);
+    }
+
+    [Fact]
+    public async Task With_a_rating_store_your_ratings_are_saved_as_numbers_only()
+    {
+        using var bus = new InProcessEventBus();
+        var store = new RatingStore(_datasets);
+        await using var host = new CalibrationHost(bus, new CalibrationHostOptions { ProfilesDirectory = _dir, Ratings = store });
+        string[] before = Directory.GetFileSystemEntries(_dir, "*", SearchOption.AllDirectories);
+        OfficialPlayerSession session = await host.StartAsync("youtube", null);
+        await FeedAsync(host, session);
+        CheckCandidate first = session.Check.Recent(50)[^1];
+
+        string reply = await host.CommandAsync(JsonNode.Parse($$"""{"type":"judge","candidateId":"{{first.Id}}","stars":5}""")!);
+        Assert.Contains("\"stored\":true", reply, StringComparison.Ordinal);
+
+        JsonNode check = JsonNode.Parse(host.State())!["check"]!;
+        Assert.True((bool)check["saving"]!);
+        Assert.Contains("never the video", (string)check["note"]!, StringComparison.Ordinal);
+        Assert.True((bool)check["recent"]!.AsArray().Single(c => (string)c!["id"]! == first.Id)!["saved"]!);
+
+        // One line: the stars, the clipper's numbers for the candidate, a random run id; no time, no video.
+        RatingRecord row = Assert.Single(store.ReadChecks("generic").Records);
+        Assert.Equal(5, row.Stars);
+        Assert.Equal(session.Check.RunId, row.SessionId);
+        Assert.Equal("c0", row.CandidateId);
+        Assert.Equal((0UL, 0UL, 0UL), (row.StartQpc, row.EndQpc, row.PeakQpc));
+        Assert.Equal("youtube", row.Platform);
+        Assert.NotNull(row.Features[ClipFeatureSchema.IndexOf(ClipFeatureSchema.CurveMax)]); // the clipper's features came through
+        Assert.All(ClipFeatureSchema.AudioDerived, a => Assert.Null(row.Features[ClipFeatureSchema.IndexOf(a)]));
+        Assert.DoesNotContain(first.Id, File.ReadAllText(store.CheckPathFor("generic")), StringComparison.Ordinal);
+
+        // That file is the only write: the profiles are untouched, and the marks and scores stay in memory.
+        Assert.Equal([store.CheckPathFor("generic")], Directory.GetFiles(_datasets, "*", SearchOption.AllDirectories));
+        Assert.Equal(before, Directory.GetFileSystemEntries(_dir, "*", SearchOption.AllDirectories));
+
+        // A reset starts a new run; what was saved stays saved.
+        string run = session.Check.RunId;
+        await host.CommandAsync(JsonNode.Parse("""{"type":"check-reset"}""")!);
+        Assert.NotEqual(run, session.Check.RunId);
+        Assert.Single(store.ReadChecks("generic").Records);
     }
 }

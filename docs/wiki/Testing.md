@@ -206,6 +206,10 @@ The learned scorer and ratings. Platform-neutral, so they run on Windows and Lin
 | | `Torn_last_line_is_skipped_on_read` | A half-written line is counted and skipped |
 | | `Concurrent_appends_each_land_on_their_own_line` | 200 parallel appends give 200 whole lines |
 | | `Rows_hold_numbers_and_ids_only` | The line's keys are exactly the documented ones |
+| | `A_check_rating_keeps_the_stars_and_numbers_and_nothing_of_the_video` | A clipper-check rating goes to `check-ratings.jsonl` (never `ratings.jsonl`) with the run id, times 0, the clipper's features mapped and audio features missing; the line equals `ml/tests/data/check_rating_sample.jsonl` |
+| | `The_generic_curve_files_under_generic_and_a_clear_is_a_new_line` | No profile files under `generic`; 0 stars appends a clear |
+| | `Check_ratings_that_could_carry_more_are_refused` (4 cases) | A run id that is not random hex (could carry a video id), an unknown platform, or stars above 5: refused, nothing created |
+| | `Check_ratings_need_a_valid_official_player_session` | No session, owned footage, or an official player marked owned: refused; the official session's own `Append` is still refused |
 | `RatingSinkTests.cs` | `Persists_a_rating_joined_to_its_candidate_and_session` | `session`, `clip.candidate` then `clip.rating` on the bus become one stored line with the candidate's scores |
 | | `Official_player_session_ratings_are_refused_and_nothing_is_written` | The sink refuses and counts the refusal; the folder stays empty |
 | | `Unknown_session_is_refused_unless_the_lookup_knows_it` | A rating for a session not seen on the bus is refused unless `SessionLookup` supplies its header |
@@ -234,7 +238,7 @@ Run with `python -m pytest` in `ml/` (see [Clip Scoring](Clip-Scoring#running-it
 
 | File | What it proves |
 |---|---|
-| `test_data.py` | Rows with retention other than owned, permissioned or open-license, or third-party rows without a `permissionRef`, or rows filed under another game's folder, stop training; last line wins and 0 clears; torn lines are skipped; missing features load as NaN; too few ratings, sessions or examples of each class are refused; the C#-written sample line loads |
+| `test_data.py` | Rows with retention other than owned, permissioned or open-license, or third-party rows without a `permissionRef`, or rows filed under another game's folder, stop training; last line wins and 0 clears; torn lines are skipped; missing features load as NaN; too few ratings, sessions or examples of each class are refused; the C#-written sample line loads; the C#-written check line loads beside your own and `include_check=False` leaves it out; check lines with a time, an unknown key, a non-random session id, another retention, no `derivedWrite` or an unknown platform stop training; a check line in `ratings.jsonl` stops training |
 | `test_metrics_and_calibration.py` | AUC (with ties), log loss, Brier, ECE and precision@k on hand-checked inputs; Platt recovers known parameters; few ratings stay near the parent; lookup is deepest profile first |
 | `test_train.py` | On synthetic ratings the model beats the heuristic on held-out sessions and calibration lowers log loss and Brier; ONNX matches scikit-learn; games with too few ratings keep the heuristic; the CLI trains, and writes nothing when it refuses; the committed fixture still reproduces `expected.json`; the fixture regenerates |
 
@@ -337,7 +341,8 @@ loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
 |---|---|---|
 | `ClipperCheckTests.cs` | `Precision_recall_and_breakdowns_follow_the_judgments` | Precision, recall (marked moments found or missed), mean rating, per-reason and per-score breakdowns on hand-made candidates; duplicates ignored; QA failures shown |
 | | `Tolerance_clearing_and_reset` | A mark just past a window still counts as covered; 0 clears a rating; reset forgets everything |
-| | `The_clipper_runs_on_player_frames_and_its_candidates_are_judged_in_memory_only` | The real clipper on an official-player session's frames (video only) proposes candidates for flashes; judging and missed marks work through the panel's commands and show in its state; nothing is written; stopping the player clears the check |
+| | `The_clipper_runs_on_player_frames_and_its_candidates_are_judged_in_memory_only` | The real clipper on an official-player session's frames (video only) proposes candidates for flashes; judging and missed marks work through the panel's commands and show in its state; with no rating store nothing is written; stopping the player clears the check |
+| | `With_a_rating_store_your_ratings_are_saved_as_numbers_only` | Judging through the panel saves one line: stars, the clipper's features, a random run id, no times and not the candidate id; the panel shows it saved; profiles untouched; a reset starts a new run |
 
 ## `Lookback.Recorder.Tests`
 

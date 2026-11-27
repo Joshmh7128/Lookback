@@ -10,6 +10,7 @@ from lookback_ml.synth import generate, write
 
 SCHEMA = load_schema()
 SAMPLE = Path(__file__).parent / "data" / "rating_sample.jsonl"
+CHECK_SAMPLE = Path(__file__).parent / "data" / "check_rating_sample.jsonl"
 
 
 def _write(root: Path, game: str, rows: list[dict]) -> None:
@@ -107,3 +108,59 @@ def test_reads_the_row_format_csharp_writes(tmp_path):
     assert ds.profiles[0] == "overwatch.push"
     assert ds.X[0, 0] == pytest.approx(0.62)
     assert np.isnan(ds.X[0, 2])
+
+
+def _check_row(**over) -> dict:
+    row = json.loads(CHECK_SAMPLE.read_text(encoding="utf-8"))
+    row.update(over)
+    return row
+
+
+def _write_check(root: Path, game: str, rows: list[dict]) -> None:
+    p = root / game / "check-ratings.jsonl"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+
+
+def test_reads_the_check_row_csharp_writes_beside_your_own(tmp_path):
+    # check_rating_sample.jsonl is the exact line RatingStore.AppendCheck writes (a C# test asserts it).
+    (tmp_path / "cs2").mkdir()
+    (tmp_path / "cs2" / "check-ratings.jsonl").write_bytes(CHECK_SAMPLE.read_bytes())
+    (tmp_path / "overwatch").mkdir()
+    (tmp_path / "overwatch" / "ratings.jsonl").write_bytes(SAMPLE.read_bytes())
+    ds = load_dataset(tmp_path, SCHEMA)
+    assert len(ds) == 2
+    assert sorted(ds.origins.tolist()) == ["check", "own"]
+    i = ds.origins.tolist().index("check")
+    assert ds.stars[i] == 5 and ds.y[i] == 1.0
+    assert ds.profiles[i] == "cs2.competitive"
+    assert ds.X[i, SCHEMA.names.index("motion_z")] == pytest.approx(2.5)
+    assert np.isnan(ds.X[i, SCHEMA.names.index("loudness_z")])  # no audio stream: missing, not silent
+
+    own_only = load_dataset(tmp_path, SCHEMA, include_check=False)
+    assert own_only.origins.tolist() == ["own"]
+
+
+@pytest.mark.parametrize(
+    "over",
+    [
+        {"startQpc": 123},                      # a time in the video
+        {"videoRef": "abc"},                    # anything identifying the video
+        {"sessionId": "official-youtube-1a2b"}, # not a random run id
+        {"retention": "owned"},
+        {"derivedWrite": None},
+        {"platform": "vimeo"},
+    ],
+)
+def test_refuses_check_rows_that_carry_more_than_numbers(tmp_path, over):
+    _write_check(tmp_path, "cs2", [_check_row(), _check_row(candidateId="c4", **over)])
+    with pytest.raises(RefusedError, match="may not become training data"):
+        read_rows(tmp_path)
+
+
+def test_a_check_row_in_the_own_ratings_file_is_refused(tmp_path):
+    _write(tmp_path, "cs2", [_check_row()])
+    with pytest.raises(RefusedError, match="retention 'ephemeral'"):
+        read_rows(tmp_path)

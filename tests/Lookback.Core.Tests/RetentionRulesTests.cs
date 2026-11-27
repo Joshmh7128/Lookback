@@ -42,12 +42,14 @@ public class RetentionRulesTests
         Assert.True(RetentionRules.CanPersist(new SessionStarted { SourceKind = SourceKind.LiveGame, Retention = Retention.Owned }));
 
     [Fact]
-    public void OfficialPlayerMayWriteOnlyConfirmedProfileParameters()
+    public void OfficialPlayerMayWriteOnlyConfirmedProfileParametersAndTheUsersRatings()
     {
         var s = new SessionStarted { SourceKind = SourceKind.OfficialPlayer, Retention = Retention.Ephemeral };
         Assert.Null(RetentionRules.ValidateDerived(s, DerivedWriteKind.ConfirmedProfileParameters, userConfirmed: true));
         Assert.NotNull(RetentionRules.ValidateDerived(s, DerivedWriteKind.ConfirmedProfileParameters, userConfirmed: false));
         Assert.NotNull(RetentionRules.ValidateDerived(s, DerivedWriteKind.Unspecified, userConfirmed: true));
+        Assert.Null(RetentionRules.ValidateDerived(s, DerivedWriteKind.UserRatingWithFeatures, userConfirmed: true));
+        Assert.NotNull(RetentionRules.ValidateDerived(s, DerivedWriteKind.UserRatingWithFeatures, userConfirmed: false));
         Assert.False(RetentionRules.CanPersist(s)); // the session's own data still never touches disk
     }
 

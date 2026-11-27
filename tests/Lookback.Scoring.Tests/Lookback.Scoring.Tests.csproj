@@ -19,5 +19,6 @@
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\ml\feature_schema.json" Link="Fixtures\feature_schema.json" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\ml\tests\data\rating_sample.jsonl" Link="Fixtures\rating_sample.jsonl" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\ml\tests\data\check_rating_sample.jsonl" Link="Fixtures\check_rating_sample.jsonl" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

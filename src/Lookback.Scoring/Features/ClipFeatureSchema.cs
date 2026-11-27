@@ -61,6 +61,9 @@ public static class ClipFeatureSchema
 
     public static int Count => Names.Count;
 
+    /// <summary>Features measured from audio. Missing (not zero, not "silent") when a session had no audio stream, such as the official player's.</summary>
+    public static IReadOnlyList<string> AudioDerived { get; } = [LoudnessZ, OnsetRate, SilentFraction, AudioCoverage, FluxZ, LoudnessZMax];
+
     private static readonly Dictionary<string, int> Index =
         Names.Select((n, i) => (n, i)).ToDictionary(x => x.n, x => x.i, StringComparer.Ordinal);
 

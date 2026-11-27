@@ -18,13 +18,23 @@ public enum DerivedWriteKind
     /// the source video.
     /// </summary>
     ConfirmedProfileParameters = 1,
+
+    /// <summary>
+    /// The user's own 1–5 rating of a clipper candidate on a video they only
+    /// watched (the clipper check), with the candidate's fixed feature vector
+    /// and heuristic score. The rating is the user's data; the video is not:
+    /// no pixels, audio, signal series, timestamps or anything identifying the
+    /// source video. Written only by <c>RatingStore.AppendCheck</c>.
+    /// </summary>
+    UserRatingWithFeatures = 2,
 }
 
 /// <summary>
 /// The single place that decides whether a session's data may touch disk.
 /// Official-player sources are always ephemeral: they can be analysed live,
-/// and nothing from them is persisted, with one exception the user grants
-/// each time: profile parameters they confirmed (see <see cref="ValidateDerived"/>).
+/// and nothing from them is persisted, with two exceptions the user grants
+/// each time: profile parameters they confirmed, and their own ratings of
+/// clipper candidates with the candidates' feature numbers (see <see cref="ValidateDerived"/>).
 /// </summary>
 public static class RetentionRules
 {
@@ -59,10 +69,12 @@ public static class RetentionRules
     /// <summary>
     /// Returns null when a write of derived values of <paramref name="kind"/>
     /// from <paramref name="session"/> is allowed, otherwise the reason it is not.
-    /// The only derived write is <see cref="DerivedWriteKind.ConfirmedProfileParameters"/>,
-    /// and only after the user confirmed exactly what is written. This holds
-    /// for every session, so an ephemeral one gains nothing it could not get
-    /// by the user typing the same numbers into the profile by hand.
+    /// The derived writes are <see cref="DerivedWriteKind.ConfirmedProfileParameters"/>,
+    /// only after the user confirmed exactly what is written, and
+    /// <see cref="DerivedWriteKind.UserRatingWithFeatures"/>, only for a rating the
+    /// user gave. Both hold for every session and carry numbers only, so an
+    /// ephemeral session never yields its pixels, audio, signal series, times
+    /// or the identity of its video.
     /// </summary>
     public static string? ValidateDerived(SessionStarted session, DerivedWriteKind kind, bool userConfirmed)
     {
@@ -72,14 +84,16 @@ public static class RetentionRules
             return invalid;
         }
 
-        if (kind != DerivedWriteKind.ConfirmedProfileParameters)
+        if (kind is not (DerivedWriteKind.ConfirmedProfileParameters or DerivedWriteKind.UserRatingWithFeatures))
         {
-            return "The only derived write is confirmed profile parameters; anything else follows the session's retention.";
+            return "The only derived writes are confirmed profile parameters and the user's own ratings with candidate features; anything else follows the session's retention.";
         }
 
         if (!userConfirmed)
         {
-            return "Profile parameters are written only after the user confirms them.";
+            return kind == DerivedWriteKind.ConfirmedProfileParameters
+                ? "Profile parameters are written only after the user confirms them."
+                : "A rating is written only when the user gives it.";
         }
 
         return null;

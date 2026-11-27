@@ -13,7 +13,7 @@ Source: `src/Lookback.Contracts/RetentionRules.cs`.
 | `LIVE_GAME` (you playing) | `OWNED` | none |
 | `FILE`, your own footage | `OWNED` | none |
 | `FILE`, someone else's footage | `PERMISSIONED` or `OPEN_LICENSE` | `permission_ref` pointing to the written permission or licence |
-| `OFFICIAL_PLAYER` (YouTube or Twitch embed) | `EPHEMERAL` only | nothing is ever stored |
+| `OFFICIAL_PLAYER` (YouTube or Twitch embed) | `EPHEMERAL` only | nothing of the video is ever stored (two derived writes, below) |
 | any | `UNSPECIFIED` | always rejected |
 
 `RetentionRules.Validate(session)` returns null when a session is valid, or a
@@ -94,14 +94,33 @@ profile's diff shows exactly what was saved. Frames, audio, signal series,
 marks, times and the video's identity are never written, and
 `RetentionRules.CanPersist` stays false for the session.
 
-### The clipper check
+### Your clipper-check ratings
 
 The viewer's panel can also score the clipper on what you watch
 ([Clipper check](Official-Player-Calibration#clipper-check-how-accurate-is-the-clipper)).
-Its candidates, your 1–5 ratings, your missed-highlight marks and the scores
-live only in memory (`ClipperCheck`) and are cleared when the player stops.
-None of it is written, and none of it becomes training data: the learned
-scorer trains only on your ratings of footage you own.
+The candidates, your missed-highlight marks and the scores live only in memory
+(`ClipperCheck`) and are cleared when the player stops.
+
+Your 1–5 ratings are kept: **the rating is your data, the video is not.**
+`RatingStore.AppendCheck` writes one line per rating to
+`datasets/<game>/check-ratings.jsonl`, gated by
+`RetentionRules.ValidateDerived(session, UserRatingWithFeatures, userConfirmed)`.
+A line holds only:
+
+| Kept | Never kept |
+|---|---|
+| your stars and the soft label | the video's id, address or title |
+| the profile (`cs2.competitive`, or `generic`) and the platform (`youtube`, `twitch`) | any time in the video: start, end and peak are 0 |
+| the candidate's heuristic score and its 30 `clip-features/1` numbers (audio ones missing, as the viewer sends no audio) | frames, audio, thumbnails or signal series |
+| a random run id (`check-` and 32 hex digits) and the candidate's place in the run (`c0`, `c1`…) | the clipper's candidate id, which names the player session |
+| when you rated it (wall clock) | missed-highlight marks and the check's scores |
+
+The file sits apart from `ratings.jsonl` so it can be read, kept out of
+training (`--no-check-ratings`) or deleted on its own. Training checks the
+shape again: `ml/lookback_ml/data.py` refuses to train at all if a check line
+carries a key it does not know, a non-zero time, a session id that is not a
+random run id, or any retention other than an ephemeral official player.
+Deleting the file forgets every check rating; nothing else refers to them.
 
 ## Datasets
 

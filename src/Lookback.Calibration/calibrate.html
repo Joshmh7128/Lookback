@@ -52,7 +52,8 @@
   </div>
 
   <h2>4. Clipper check</h2>
-  <p class="muted" id="checkNote">The clipper proposes moments from this video. Rate each one on content (is it a highlight?), and press <b>M</b> or the button when you see a highlight it should catch. Nothing here is stored.</p>
+  <p class="muted" id="checkNote">The clipper proposes moments from this video. Rate each one on content (is it a highlight?), and press <b>M</b> or the button when you see a highlight it should catch.</p>
+  <p class="muted" id="checkStore"></p><p class="warn" id="checkSaveError"></p>
   <div class="tiles" id="checkTiles"></div>
   <div class="row"><button id="missed">Missed a highlight (M)</button><button id="checkReset">Reset the check</button></div>
   <table style="margin-top:8px"><thead><tr><th>At</th><th>Length</th><th>Score</th><th>Why</th><th>QA</th><th>Your rating</th></tr></thead><tbody id="checkRows"></tbody></table>
@@ -79,6 +80,7 @@ ws.onmessage = ev => {
   const m = JSON.parse(ev.data);
   if (m.type === 'state') { state = m; render(); }
   else if (m.type === 'saved') { $('result').textContent = m.files.length ? `Saved: ${m.files.join(', ')}` : 'Nothing to save.'; $('result').className = 'ok'; checked.clear(); }
+  else if (m.type === 'ok' && m.what === 'judge') { $('checkSaveError').textContent = m.stored || !(state && state.check && state.check.saving) ? '' : (m.reason || 'The rating was not saved.'); }
   else if (m.type === 'error') { $('result').textContent = m.message; $('result').className = 'warn'; }
 };
 
@@ -111,7 +113,8 @@ function renderCheck() {
   const sig = c ? JSON.stringify(c) : '';
   if (sig === checkSig) return;
   checkSig = sig;
-  if (!c) { $('checkRows').replaceChildren(); $('checkTiles').replaceChildren(); return; }
+  if (!c) { $('checkRows').replaceChildren(); $('checkTiles').replaceChildren(); $('checkStore').textContent = ''; return; }
+  $('checkStore').textContent = c.note;
   const st = c.stats;
   const tile = (label, value, sub) => { const d = el('div'); d.append(el('span', {}, label), el('div', { class: 'score' }, value)); if (sub) d.appendChild(el('span', {}, sub)); return d; };
   $('checkTiles').replaceChildren(
@@ -128,6 +131,7 @@ function renderCheck() {
       b.onclick = () => send({ type: 'judge', candidateId: k.id, stars: k.stars === n ? 0 : n });
       stars.appendChild(b);
     }
+    if (k.saved !== null && k.saved !== undefined) stars.appendChild(el('span', { class: k.saved ? 'ok' : 'warn', title: k.saved ? 'Saved: stars and numbers only' : 'Not saved' }, k.saved ? ' saved' : ' not saved'));
     tr.append(el('td', { class: 'num' }, mmss(k.start)), el('td', { class: 'num' }, `${num(k.end - k.start)} s`), el('td', { class: 'num' }, num(k.score, 2)),
       el('td', { class: 'muted' }, k.reasons.join('; ')), el('td', { class: k.qa ? 'ok' : 'warn' }, k.qa ? 'ok' : 'fails'), stars);
     rows.appendChild(tr);

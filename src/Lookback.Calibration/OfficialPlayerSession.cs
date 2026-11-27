@@ -29,7 +29,8 @@ namespace Lookback.Calibration;
 /// The clipper runs on the player's frames too (video only: the viewer sends
 /// no audio), and its candidates feed <see cref="Check"/>, where the user can
 /// judge them to see how accurate the clipper is. The check is memory only and
-/// is cleared when the player stops.
+/// is cleared when the player stops; the host may save the user's ratings,
+/// numbers only, through <c>RatingStore.AppendCheck</c>.
 /// </para>
 /// </summary>
 public sealed class OfficialPlayerSession : IAsyncDisposable
@@ -145,7 +146,7 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         ClipperRunner clipper = profileId is null
             ? new ClipperRunner(_bus, sessionId, _clock.Frequency)
             : new ClipperRunner(_bus, catalog, profileId, sessionId, _clock.Frequency);
-        clipper.CandidateFinished += (_, e) => Check.Add(e.Output.Candidate, e.Output.Qa);
+        clipper.CandidateFinished += (_, e) => Check.Add(e.Output.Candidate, e.Output.Qa, e.Output.Features);
         ThresholdTuner? tuner = resolved is null ? null : new ThresholdTuner(Owners(catalog, profileId!, resolved), bank.Names, _clock.Frequency);
 
         long now = _clock.Now;

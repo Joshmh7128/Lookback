@@ -114,15 +114,25 @@ The panel shows, live:
 Use it to tune: change a profile's thresholds or the clipper's weights, play
 the next video, and compare.
 
-**Nothing is stored.** `ClipperCheck` lives in memory: candidates, ratings,
-marks and scores are cleared when the player stops or you press *Reset the
-check*, and none of them, their times, or the video's identity is ever
-written. The videos are not training data: ratings that train the learned
-scorer come only from footage you own, through the shell's *Open footage…*
-and `RatingStore`. The check does not touch either.
+**Your ratings are kept, the video is not.** Each rating you give is saved
+for training the learned scorer (marked *saved* beside the stars):
+`RatingStore.AppendCheck` appends the stars, the profile, the platform and the
+candidate's numbers (its heuristic score and `clip-features/1` vector) to
+`datasets/<game>/check-ratings.jsonl` under a random run id, with every time
+set to 0. Nothing in the line identifies the video or a moment in it, and no
+frame, audio or signal series is written. The candidates, your missed-highlight
+marks and the scores stay in memory and are cleared when the player stops or
+you press *Reset the check* (a reset starts a new run; ratings already saved
+stay). See [Data Retention](Data-Retention#your-clipper-check-ratings).
+
+The recorder saves to its datasets folder (`%LOCALAPPDATA%\Lookback\datasets`
+by default, `--Recorder:DatasetsDirectory` to change). A host without a rating
+store keeps ratings in memory, and the panel says so. Training uses the
+check's ratings beside your own footage's; `--no-check-ratings` leaves them out.
 
 **Limits.** The viewer sends video only, so the clipper's audio components
-(loudness, onsets) do not contribute, and YouTube footage carries
+(loudness, onsets) do not contribute and the saved audio features are
+missing, and YouTube footage carries
 compression, webcams and overlays a direct recording would not. Read the
 scores as a sanity check of what the clipper picks, not as its accuracy on
 your own recordings. Candidates appear several seconds after the moment: the
