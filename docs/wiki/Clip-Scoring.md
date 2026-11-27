@@ -163,13 +163,27 @@ sees in training as long as ratings come from the same clipper. The features
 must be on the candidate **before** it is published, so the rating sink can
 store them and the scorer can set its probability:
 
+The clipper's `ClipperOptions.Annotate` hook (Clipper v1, PR #19) runs on
+its pump thread just before each candidate and its report go on the bus, so
+the host wires the scorer there; neither project references the other:
+
 ```csharp
-float[] f = ClipperFeatureMap.FromClipper(output.Features);
-ClipFeatureSchema.Attach(candidate, f);
-scorer.Score(candidate, qpcFrequency);
-LearnedClipScorer.Annotate(qa, candidate);
-// then publish clip.candidate and qa.report
+using var scorer = LearnedClipScorer.LoadOrHeuristic(modelDir, warn);
+var options = new ClipperOptions
+{
+    Annotate = (candidate, qa, features) =>
+    {
+        ClipFeatureSchema.Attach(candidate, ClipperFeatureMap.FromClipper(features));
+        scorer.Score(candidate, qpcFrequency);
+        LearnedClipScorer.Annotate(qa, candidate);
+    },
+};
+var clipper = new ClipperRunner(bus, catalog, gameId, sessionId, qpcFrequency, options);
 ```
+
+The hook runs under the runner's lock, so it stays quick (one tiny CPU
+inference). If it throws, the clipper publishes the candidate unchanged and
+counts the failure (`ClipperRunner.AnnotationFailures`).
 
 Until a producer attaches features, any candidate
 has its **floor features** (`ClipFeatureSchema.FromCandidate`): heuristic
