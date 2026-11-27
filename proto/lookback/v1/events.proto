@@ -1,0 +1,162 @@
+// Lookback event schema, version 1.
+//
+// Every message on the local event stream is an Envelope. All timestamps are
+// raw QueryPerformanceCounter ticks ("qpc"); SessionStarted carries the counter
+// frequency so a session log can be interpreted on any machine.
+syntax = "proto3";
+
+package lookback.v1;
+
+option csharp_namespace = "Lookback.Contracts.V1";
+
+message Envelope {
+  fixed64 qpc = 1;
+  string session_id = 2;
+  string topic = 3;
+  // Producer that emitted the event, e.g. "signals.video.motion".
+  string source_id = 4;
+  // Per-producer monotonic sequence number; gaps reveal drops.
+  uint64 seq = 5;
+
+  oneof payload {
+    SessionStarted session_started = 10;
+    SessionEnded session_ended = 11;
+    GameLifecycle game_lifecycle = 12;
+    SignalSchema signal_schema = 13;
+    SignalFrame signal_frame = 14;
+    ClipCandidate clip_candidate = 15;
+    QaReport qa_report = 16;
+    ClipSaved clip_saved = 17;
+  }
+}
+
+// ---------------------------------------------------------------- session
+
+enum SourceKind {
+  SOURCE_KIND_UNSPECIFIED = 0;
+  // A game running on this machine, captured live.
+  SOURCE_KIND_LIVE_GAME = 1;
+  // A local video file fed through FileSource.
+  SOURCE_KIND_FILE = 2;
+  // A video playing in an official embedded player (YouTube, Twitch).
+  SOURCE_KIND_OFFICIAL_PLAYER = 3;
+}
+
+// What may be persisted for a session. Enforced by the session log writer:
+// nothing is written to disk for RETENTION_EPHEMERAL.
+enum Retention {
+  RETENTION_UNSPECIFIED = 0;
+  // Analyse live, persist nothing. Required for official-player sources.
+  RETENTION_EPHEMERAL = 1;
+  // The user's own gameplay or footage.
+  RETENTION_OWNED = 2;
+  // Third-party footage used with the rights holder's permission.
+  RETENTION_PERMISSIONED = 3;
+  // Footage under a licence that allows this use (for example CC BY).
+  RETENTION_OPEN_LICENSE = 4;
+}
+
+message SessionStarted {
+  SourceKind source_kind = 1;
+  Retention retention = 2;
+  // Required for PERMISSIONED and OPEN_LICENSE: where the permission or
+  // licence is recorded (a file path, URL or document id).
+  string permission_ref = 3;
+  string title = 4;
+  // QueryPerformanceFrequency, ticks per second.
+  fixed64 qpc_frequency = 5;
+  // Optional game identity if already known (live capture knows it).
+  string game_profile = 6;
+}
+
+message SessionEnded {
+  string reason = 1;
+}
+
+// ---------------------------------------------------------------- detection
+
+enum GraphicsApi {
+  GRAPHICS_API_UNSPECIFIED = 0;
+  GRAPHICS_API_D3D11 = 1;
+  GRAPHICS_API_D3D12 = 2;
+  GRAPHICS_API_VULKAN = 3;
+  GRAPHICS_API_OPENGL = 4;
+}
+
+message GameLifecycle {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_DETECTED = 1;
+    KIND_FOCUSED = 2;
+    KIND_UNFOCUSED = 3;
+    KIND_EXITED = 4;
+  }
+  Kind kind = 1;
+  uint32 pid = 2;
+  string exe = 3;
+  GraphicsApi api = 4;
+  string engine = 5;
+  uint64 hwnd = 6;
+  uint64 adapter_luid = 7;
+  float confidence = 8;
+  string game_profile = 9;
+}
+
+// ---------------------------------------------------------------- signals
+
+enum SignalFamily {
+  SIGNAL_FAMILY_UNSPECIFIED = 0;
+  SIGNAL_FAMILY_VIDEO = 1;
+  SIGNAL_FAMILY_AUDIO = 2;
+  SIGNAL_FAMILY_INPUT = 3;
+}
+
+// Published once per producer (and again on change). SignalFrame values are
+// positional against `names`, which keeps per-frame messages small.
+message SignalSchema {
+  uint32 schema_id = 1;
+  SignalFamily family = 2;
+  repeated string names = 3;
+}
+
+message SignalFrame {
+  uint32 schema_id = 1;
+  fixed64 window_start_qpc = 2;
+  fixed64 window_end_qpc = 3;
+  repeated float values = 4 [packed = true];
+}
+
+// ---------------------------------------------------------------- clipping
+
+message ClipCandidate {
+  string candidate_id = 1;
+  fixed64 start_qpc = 2;
+  fixed64 end_qpc = 3;
+  fixed64 peak_qpc = 4;
+  float heuristic_score = 5;
+  // Unset until a model scores the candidate.
+  optional float model_score = 6;
+  float highlight_probability = 7;
+  string game_profile = 8;
+  repeated string reasons = 9;
+}
+
+message QaCheck {
+  string name = 1;
+  bool passed = 2;
+  float value = 3;
+  string detail = 4;
+}
+
+message QaReport {
+  string candidate_id = 1;
+  bool passed = 2;
+  repeated QaCheck checks = 3;
+}
+
+message ClipSaved {
+  string candidate_id = 1;
+  string path = 2;
+  fixed64 start_qpc = 3;
+  fixed64 end_qpc = 4;
+}
