@@ -19,3 +19,6 @@ datasets/**/*
 testbench-out/
 dataset-out/
 browse-out/
+
+# Native build output
+native/out/

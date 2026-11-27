@@ -1,0 +1,6 @@
+foreach(api d3d11 d3d12)
+  add_executable(lookback_testapp_${api} WIN32 ${api}/main.cpp common/testapp.h)
+  set_target_properties(lookback_testapp_${api} PROPERTIES OUTPUT_NAME lookback-testapp-${api})
+  target_include_directories(lookback_testapp_${api} PRIVATE ${CMAKE_SOURCE_DIR}/include common)
+  target_link_libraries(lookback_testapp_${api} PRIVATE ${api} dxgi shell32)
+endforeach()

@@ -23,7 +23,7 @@ design, what has landed and what's next. Update it with every PR on this work.
 | AAC encoder MFT | `Lookback.Encode` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
 | WASAPI loopback, process loopback (Win10 20348+ only), mic track | `Lookback.Audio` (Windows) | In progress in a parallel session (branch `claude/capture-audio`) |
 | Recorder wiring, control commands on `/events` | `Lookback.Recorder` | Planned; contract additions to be agreed with the Electron thread first |
-| Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence) and an injector limited to our own testbench apps | `native/hook` | Planned (M6 scope) |
+| Present-hook DLL (C++, D3D11 keyed mutex, D3D12 shared fence + copy queue), test apps, an injector limited to them, `HookCaptureSource` | `native/hook`, `native/testapps`, `Lookback.Capture/Hook` | **Done**, tested on AETHER: both test apps at full rate (120/144 fps) with 0 hook drops, through the analysis tap and NVENC. Wiki: `Present-Hook.md` |
 
 ## Data flow
 
@@ -149,7 +149,8 @@ Rebase on main before merging; they touch this file's rows too.
    `RetentionRules.CanPersist` allows; official-player sessions get
    `ephemeral` and nothing is written. The shell keeps ratings in memory
    when there is no ack within ~2 s or the ack is `ok:false`.
-7. Present-hook DLL (M6).
+7. ~~Present-hook DLL (M6)~~ **done** (test apps only; see the wiki's
+   Present-Hook page for the sync model, allowlist and limits).
 
 Windows projects target `net10.0-windows10.0.22621.0` with
 `SupportedOSPlatformVersion` 10.0.19041.0 and build on Linux with

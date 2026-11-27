@@ -148,7 +148,10 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 ## `Lookback.Capture.Tests`
 
 Windows only (they skip elsewhere). Encoder tests also need ffmpeg/ffprobe.
-See [Live Capture](Live-Capture#tests).
+The hook tests build `native/` with CMake when its output is missing, and the
+capture ones need a hardware GPU (they skip on CI runners; the `native` CI
+job runs the rest). See [Live Capture](Live-Capture#tests) and
+[Present Hook](Present-Hook#tests).
 
 | File | Test | Proves |
 |---|---|---|
@@ -157,6 +160,16 @@ See [Live Capture](Live-Capture#tests).
 | `EncoderTests.cs` | `Software_h264_on_warp_round_trips_through_the_muxer` | Software H.264 on WARP takes NV12 DXGI surface buffers; 120 frames through the ring and `ClipWriter` read back as 120 frames, keyframes at 0 and 2 s, no B-frames, no decode errors |
 | | `Software_h264_on_the_gpu_reads_converter_output` | The same from `Nv12Converter` output on a real adapter |
 | | `Hardware_encoder_round_trips_through_the_muxer` (H.264, HEVC) | Every display adapter's hardware MFT: all frames out, `Dispose` drains in under 3 s, same clip checks |
+| `HookTests.cs` | `Layout_matches_the_native_header` | The C# protocol structs have the sizes and offsets the C++ header `static_assert`s |
+| | `Notepad_is_refused_before_anything_starts` | The injector refuses `notepad.exe` ("not a Lookback test app") and starts nothing |
+| | `A_process_the_injector_did_not_start_is_refused` | A real test app started by someone else, the test host and System are refused by `Attach` |
+| | `A_capture_policy_without_allowPresentHook_is_refused` | `allowPresentHook` false refuses before launching |
+| | `A_test_app_copied_out_of_the_build_output_is_refused` | The same binary outside `native/out/bin/Release` fails the path check |
+| | `Only_the_test_apps_carry_the_marker` | The PE export reader finds `LookbackTestAppMarker` in both apps only |
+| | `Test_app_frames_arrive_numbered_in_order_with_monotonic_qpc` (D3D11, D3D12 × Present, Present1) | ≥ 120 frames from each test app; monotonic QPC; every frame-number gap counted as a hook drop or receiver skip; pixels carry the same frame number as the metadata |
+| | `Capture_survives_a_resize_and_a_recreated_device` (D3D11, D3D12) | Resize, then device recreation (a real `RemoveDevice` on D3D12): capture continues, textures reopen, accounting holds |
+| | `Source_stops_when_the_hook_stops_producing` | A frozen test app makes the source raise `Stopped` after the stall timeout |
+| | `Source_stops_when_the_test_app_exits` | The app exiting raises `Stopped` once |
 | `EncodeTickerTests.cs` | `Irregular_capture_becomes_constant_rate_packets` | Slow, bursty, then absent capture still gives one packet per tick at constant spacing, repeats counted, nothing skipped or busy |
 
 ## Testing approach

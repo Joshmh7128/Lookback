@@ -19,6 +19,9 @@ public enum CaptureBackend
     Auto,
     Wgc,
     Dxgi,
+
+    /// <summary>The present hook in one of our own test apps (<see cref="LiveSessionOptions.HookTarget"/>); never games.</summary>
+    Hook,
 }
 
 /// <summary>What a live session captures and what may be kept of it.</summary>
@@ -41,6 +44,9 @@ public sealed record LiveSessionOptions
     public bool CaptureCursor { get; init; }
 
     public string? SessionId { get; init; }
+
+    /// <summary>For <see cref="CaptureBackend.Hook"/>: the test app <see cref="Hook.HookInjector"/> launched. The target's adapter must be the hook's.</summary>
+    public Hook.HookedProcess? HookTarget { get; init; }
 
     /// <summary>Extra per-frame signals, such as a game profile's regions.</summary>
     public IReadOnlyList<IVideoSignal> ExtraVideoSignals { get; init; } = [];
@@ -170,6 +176,7 @@ public sealed class LiveCaptureSession : IAsyncDisposable
         {
             CaptureBackend.Wgc => new WgcCaptureSource(gpu, o.Target, o.CaptureCursor),
             CaptureBackend.Dxgi => new DxgiDuplicationSource(gpu, o.Target),
+            CaptureBackend.Hook => new Hook.HookCaptureSource(gpu, o.HookTarget ?? throw new ArgumentException("The hook backend needs HookTarget (a test app launched by HookInjector).", nameof(o))),
             _ => throw new ArgumentOutOfRangeException(nameof(o)),
         };
     }

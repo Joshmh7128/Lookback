@@ -18,12 +18,18 @@ using Lookback.Stream.WebSockets;
 
 static string? Arg(string[] a, string name) { int i = Array.IndexOf(a, name); return i >= 0 && i + 1 < a.Length ? a[i + 1] : null; }
 
+if (await HookBench.TryRunAsync(args) is int hookExit)
+{
+    return hookExit; // the present hook on our own test apps (HookBench.cs)
+}
+
 if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
 {
     Console.WriteLine($"""
         lookback-capture --list
         lookback-capture (--window <title part> | --pid <pid> | --monitor <n>) [--seconds 15] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
                          {EncodeBench.Usage}
+        {HookBench.Usage}
         Captures live and runs the signal pipeline. Nothing is written to disk unless
         --encode asks for a clip of the last N seconds (refused with --official-player).
         """);

@@ -15,11 +15,11 @@ are rated. Signals are game-agnostic; no game-specific APIs are required.
 
 | Process | Owns |
 |---|---|
-| `Lookback.Recorder` | Detection, capture (WGC, DXGI duplication, opt-in present hook, FileSource), GPU downscale, hardware encode, RAM replay ring, disk session store, audio, resource governor |
+| `Lookback.Recorder` | Detection, capture (WGC, DXGI duplication, the present hook on our own test apps, FileSource), GPU downscale, hardware encode, RAM replay ring, disk session store, audio, resource governor |
 | `Lookback.Signals` | Video, audio and input feature extraction; the event stream; session feature log |
 | `Lookback.Clipper` | Per-game normalisation, excitement curve, candidates, ONNX scoring, QA |
 | `Lookback.Testbench` | Feeds footage files through Signals and Clipper |
-| `native/hook` | C++ present hook for D3D11/D3D12 (the only native code; it lives in the game process) |
+| `native/hook` | C++ present hook for D3D11/D3D12 (the only native code; it lives in the rendering process, and only ever in our own `native/testapps`, never a game) |
 | `app/` | Electron shell: library, live timeline, rating UI, official-player viewer |
 | `ml/` | Offline Python training and ONNX export |
 

@@ -43,6 +43,12 @@ Linux runners are fast. Capture code (M1 onwards) is Windows-only and its
 tests will run only on the Windows leg; D3D11 compute runs on the WARP
 software rasteriser there, so GPU code is testable without a GPU.
 
+A third job, `native`, builds `native/` (the present hook and its test apps,
+C++20 with `/W4 /WX`) on `windows-latest` with `native/build.ps1`, runs the
+hook tests against that build (allowlist, marker export and protocol layout;
+the GPU capture tests skip without a hardware adapter), and uploads the
+binaries as an artifact.
+
 `.github/workflows/wiki.yml` publishes `docs/wiki/` to the GitHub wiki on
 every push to `main` that changes it.
 

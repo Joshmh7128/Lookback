@@ -32,6 +32,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
 | [Live Capture](Live-Capture) | WGC/DXGI capture, the analysis tap, NV12 + CFR encode clock, Media Foundation encoders, the `lookback-capture` bench |
+| [Present Hook](Present-Hook) | The D3D11/D3D12 present hook, limited to our own test apps: sync model, allowlist, frame accounting, limits |
 | [Testing](Testing) | What each test proves |
 
 ## Status
@@ -46,7 +47,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | Planned |
 | M5 | Transcode, VMAF report, audio checks | Planned |
-| M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |
+| M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | In progress: present hook (our test apps only) and DXGI duplication done; HDR encode planned |
 | M7 | Memory module (secondary) | Planned |
 
 ## The one-paragraph version
