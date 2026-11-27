@@ -21,6 +21,7 @@
 - [Signals Library](Signals-Library)
 - [Resource Governor](Resource-Governor)
 - [Game Profiles](Game-Profiles)
+- [Clipper](Clipper)
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
 - [Live Profiler](Live-Profiler)

@@ -169,10 +169,15 @@ rules applied when.
 **`ClipCandidate`** is a proposed clip: its window, the peak inside it,
 the heuristic score, an optional model score (`optional` so "not scored yet"
 differs from 0), the calibrated `highlight_probability`, and human-readable
-`reasons`.
+`reasons`. The [clipper](Clipper) publishes them, fusing profile events with
+peaks of the excitement curve; its `heuristic_score` is 0..1
+(1 − e^(−raw)) and `highlight_probability` equals it until M4 calibrates a
+model. A profile runner on its own (no clipper) still publishes event-only
+candidates whose `heuristic_score` is the unbounded raw sum.
 
 **`QaReport`** lists the QA checks run on a candidate, each with a pass flag,
-a measured value and detail.
+a measured value and detail. The clipper publishes one right after each
+candidate; v1 checks `length`, `black`, `frozen` and `silence`.
 
 **`ClipSaved`** records a clip written to disk.
 
@@ -185,7 +190,7 @@ a measured value and detail.
 | `GraphicsApi` | `D3D11`, `D3D12`, `VULKAN`, `OPENGL` |
 | `ProfileLevel` | `GAME`, `SUBGAME`, `MODE` |
 | `DetectionMethod` | `EXECUTABLE`, `HINT`, `VISUAL`, `MANUAL` |
-| `SignalFamily` | `VIDEO`, `AUDIO`, `INPUT`, `RULES` (a profile's rule margins, for viewers) |
+| `SignalFamily` | `VIDEO`, `AUDIO`, `INPUT`, `RULES` (a profile's rule margins, for viewers), `CLIPPER` (5: the clipper's excitement curve, for viewers) |
 
 Every enum starts with an `_UNSPECIFIED = 0` value, as proto3 requires, so a
 missing field can be told apart from a real choice. `RetentionRules` rejects
@@ -201,10 +206,11 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `game.lifecycle` | `GameLifecycle` |
 | `signals.video`, `signals.audio`, `signals.input` | `SignalSchema`, `SignalFrame` |
 | `signals.rules` | `SignalSchema`, `SignalFrame`: one margin per profile condition, published by the profile runner |
+| `signals.clipper` | `SignalSchema` (schema id 4), `SignalFrame` every 100 ms: the excitement curve, its thresholds and each component's z-score |
 | `game.event` | `GameEvent` |
 | `game.profile` | `ProfileDetected` |
-| `clip.candidate` | `ClipCandidate` (today built from profile events; source `profile.<game>.candidates`) |
-| `qa.report` | `QaReport` |
+| `clip.candidate` | `ClipCandidate` from the clipper (source `clipper`); a profile runner without a clipper publishes event-only ones (source `profile.<game>.candidates`) |
+| `qa.report` | `QaReport`, right after its candidate (source `clipper`) |
 | `clip.saved` | `ClipSaved` |
 
 Subscriptions use patterns: an exact name, `*` for everything, or a prefix

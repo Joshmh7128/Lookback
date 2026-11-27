@@ -4,6 +4,7 @@
     <Project Path="src/Lookback.Encode/Lookback.Encode.csproj" />
     <Project Path="src/Lookback.Capture/Lookback.Capture.csproj" />
     <Project Path="src/Lookback.Calibration/Lookback.Calibration.csproj" />
+    <Project Path="src/Lookback.Clipper/Lookback.Clipper.csproj" />
     <Project Path="src/Lookback.Contracts/Lookback.Contracts.csproj" />
     <Project Path="src/Lookback.Core/Lookback.Core.csproj" />
     <Project Path="src/Lookback.Detection/Lookback.Detection.csproj" />
@@ -23,6 +24,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Lookback.Capture.Tests/Lookback.Capture.Tests.csproj" />
     <Project Path="tests/Lookback.Calibration.Tests/Lookback.Calibration.Tests.csproj" />
+    <Project Path="tests/Lookback.Clipper.Tests/Lookback.Clipper.Tests.csproj" />
     <Project Path="tests/Lookback.Core.Tests/Lookback.Core.Tests.csproj" />
     <Project Path="tests/Lookback.Detection.TestWindow/Lookback.Detection.TestWindow.csproj" />
     <Project Path="tests/Lookback.Detection.Tests/Lookback.Detection.Tests.csproj" />

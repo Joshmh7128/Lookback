@@ -33,16 +33,26 @@ public sealed class ProfileRunner : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
     private readonly Lock _gate = new();
+    private readonly bool _publishCandidates;
     private bool _rulesSchemaSent;
     private long _eventCount;
 
-    public ProfileRunner(IEventBus bus, GameProfile profile, string sessionId, long frequency, int capacity = 65_536)
-        : this(bus, new ProfileCatalog([profile ?? throw new ArgumentNullException(nameof(profile))]), profile.Id, DetectionMethod.Manual, sessionId, frequency, capacity)
+    /// <summary>
+    /// Runs one profile. With <c>publishCandidates</c> it also publishes
+    /// <c>clip.candidate</c> built from the events alone; pass false when a
+    /// clipper (<c>Lookback.Clipper.ClipperRunner</c>) runs on the same bus,
+    /// which fuses these events with the excitement curve and publishes the
+    /// one candidate set.
+    /// </summary>
+    public ProfileRunner(IEventBus bus, GameProfile profile, string sessionId, long frequency, int capacity = 65_536, bool publishCandidates = true)
+        : this(bus, new ProfileCatalog([profile ?? throw new ArgumentNullException(nameof(profile))]), profile.Id, DetectionMethod.Manual, sessionId, frequency, capacity, publishCandidates)
     {
     }
 
-    public ProfileRunner(IEventBus bus, ProfileCatalog catalog, string startId, DetectionMethod method, string sessionId, long frequency, int capacity = 65_536)
+    /// <summary>Runs a whole game tree from <c>startId</c>; <c>publishCandidates</c> as in the other constructor.</summary>
+    public ProfileRunner(IEventBus bus, ProfileCatalog catalog, string startId, DetectionMethod method, string sessionId, long frequency, int capacity = 65_536, bool publishCandidates = true)
     {
+        _publishCandidates = publishCandidates;
         ArgumentNullException.ThrowIfNull(bus);
         ArgumentNullException.ThrowIfNull(catalog);
         _bus = bus;
@@ -204,7 +214,10 @@ public sealed class ProfileRunner : IAsyncDisposable
             env.GameEvent = g;
             _bus.Publish(env);
             Interlocked.Increment(ref _eventCount);
-            _builder.Add(g, _closed);
+            if (_publishCandidates)
+            {
+                _builder.Add(g, _closed);
+            }
         }
 
         found.Clear();

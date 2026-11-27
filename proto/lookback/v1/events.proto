@@ -148,6 +148,10 @@ enum SignalFamily {
   // so a positive value means the condition holds. Lets a viewer show why an
   // event fired or did not.
   SIGNAL_FAMILY_RULES = 4;
+  // The clipper's excitement curve: the smoothed curve, its active
+  // thresholds, and each component's clamped robust z-score. Published on
+  // topic "signals.clipper" at a reduced rate (10 Hz by default).
+  SIGNAL_FAMILY_CLIPPER = 5;
 }
 
 // Published once per producer (and again on change). SignalFrame values are
@@ -221,11 +225,18 @@ enum DetectionMethod {
 
 // ---------------------------------------------------------------- clipping
 
+// A stretch of the session worth clipping. Published on "clip.candidate" by
+// the clipper (Lookback.Clipper), which fuses game-profile events and peaks
+// of the game-agnostic excitement curve into one deduplicated set; each
+// candidate is followed by its QaReport on "qa.report".
 message ClipCandidate {
   string candidate_id = 1;
   fixed64 start_qpc = 2;
   fixed64 end_qpc = 3;
   fixed64 peak_qpc = 4;
+  // 0..1 from the clipper: 1 - e^(-raw), raw = sum of event weight x
+  // confidence plus curve peak strength. (A profile runner without a clipper
+  // still publishes the unbounded raw sum here.)
   float heuristic_score = 5;
   // Unset until a model scores the candidate.
   optional float model_score = 6;

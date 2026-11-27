@@ -11,6 +11,9 @@ public static class Topics
     public const string SignalsAudio = "signals.audio";
     public const string SignalsInput = "signals.input";
     public const string SignalsRules = "signals.rules";
+
+    /// <summary>The clipper's excitement curve (<c>SIGNAL_FAMILY_CLIPPER</c>), for viewers.</summary>
+    public const string SignalsClipper = "signals.clipper";
     public const string ClipCandidate = "clip.candidate";
     public const string ClipSaved = "clip.saved";
     public const string QaReport = "qa.report";

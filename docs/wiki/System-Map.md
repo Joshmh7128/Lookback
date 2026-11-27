@@ -69,7 +69,7 @@ the shell's memory.
 | Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17); ratings in memory until the recorder stores them |
 | WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
 | Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
-| Clipper v1: normalisation, excitement curve, peaks, windows, merge, QA gates | Clipper | In progress (M2) |
+| [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |
 | Game detection: process and window watcher, profile matching, allow/deny lists, debounced `GameLifecycle`, `lookback-detect` bench ([Game Detection](Game-Detection)) | Detection · Detection.Windows | Done (#20); the recorder wiring hosts it |
 | Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference | Scoring · `ml/` | In progress (M4) |
 | Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
@@ -86,9 +86,10 @@ the shell's memory.
    to end only inside `lookback-capture`. The recorder-wiring step creates them
    in the recorder, behind the same retention check.
 2. **Live play produces no clip candidates.** Candidates come from
-   `ProfileRunner`, which today runs in the testbench and in official-player
-   calibration. Live sessions get them with the recorder wiring; the generic
-   excitement curve arrives with Clipper v1.
+   `ClipperRunner` (profile events fused with the generic excitement curve,
+   each with a QA report), which today runs in the testbench; official-player
+   calibration still uses the profile runner's event-only candidates. Live
+   sessions get them when the recorder wiring hosts the clipper.
 3. **Ratings are not stored.** The shell keeps them in memory until the
    recorder accepts `rate` and the RatingStore lands.
 4. **Live capture deadlock: fixed.** WGC delivers frames while holding the

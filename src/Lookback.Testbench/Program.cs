@@ -24,8 +24,12 @@ const string Usage = """
                                      [--port <n>] [--no-wait] [--pipe <name>]
                                      [--retention ...] [--permission-ref <ref>] [--title <text>]
 
-    Live plays the footage in real time, runs the profile's rules on it, and
-    shows every event in the live profiler as it fires: it prints a link to
+    Analyze and live always run the clipper: the excitement curve over the
+    signals, fused with the profile's events when there is a profile, into clip
+    candidates, each with a QA report.
+
+    Live plays the footage in real time, runs the profile's rules and the
+    clipper on it, and shows every event in the live profiler as it fires: it prints a link to
     open in a browser and starts the clip when the page connects. With --pipe it sends to a running recorder instead
     (start the recorder with --Recorder:Profiler=true and open its link).
     Nothing is written to disk.
@@ -137,12 +141,17 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"         {group.Key,-24} {group.Count(),5}"));
         }
 
-        Console.WriteLine($"clips    {r.Candidates.Count} candidates");
-        foreach (ClipCandidate c in r.Candidates.OrderByDescending(c => c.HeuristicScore).Take(10))
-        {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"         {c.StartQpc / (double)TestbenchRunner.Frequency,7:0.0}-{c.EndQpc / (double)TestbenchRunner.Frequency,-7:0.0} s  score {c.HeuristicScore,5:0.00}  {string.Join(", ", c.Reasons)}"));
-        }
+    }
+
+    int passed = r.Candidates.Count(c => r.Qa.TryGetValue(c.CandidateId, out QaReport? q) && q.Passed);
+    Console.WriteLine($"clips    {r.Candidates.Count} candidates, {passed} pass QA");
+    foreach (ClipCandidate c in r.Candidates.OrderByDescending(c => c.HeuristicScore).Take(10))
+    {
+        string qa = r.Qa.TryGetValue(c.CandidateId, out QaReport? q)
+            ? q.Passed ? "QA ok  " : "QA fail (" + string.Join(", ", q.Checks.Where(k => !k.Passed).Select(k => k.Name)) + ")"
+            : "";
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"         {c.StartQpc / (double)TestbenchRunner.Frequency,7:0.0}-{c.EndQpc / (double)TestbenchRunner.Frequency,-7:0.0} s  score {c.HeuristicScore,4:0.00}  {qa}  {string.Join("; ", c.Reasons)}"));
     }
 
     return 0;

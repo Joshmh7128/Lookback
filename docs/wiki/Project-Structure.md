@@ -21,6 +21,7 @@ src/
   Lookback.Media/             analysis format, frames, ffmpeg FileSource
   Lookback.Signals/           video + audio signals, DSP, publisher
   Lookback.Profiles/          game profiles: regions, rules, event detector
+  Lookback.Clipper/           excitement curve, peaks, candidate fusion, QA gates
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
@@ -39,6 +40,7 @@ tests/
   Lookback.Stream.Tests/
   Lookback.Signals.Tests/
   Lookback.Profiles.Tests/
+  Lookback.Clipper.Tests/
   Lookback.Calibration.Tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
@@ -64,7 +66,9 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 ```mermaid
 flowchart TB
     R[Lookback.Recorder<br/>exe] --> PF[Lookback.Profiler] --> S[Lookback.Stream]
-    TB[Lookback.Testbench<br/>exe] --> PF & S & PR[Lookback.Profiles]
+    TB[Lookback.Testbench<br/>exe] --> PF & S & CL[Lookback.Clipper]
+    CL --> PR[Lookback.Profiles]
+    CL -. embeds .-> CJ[(clipper.defaults.json)]
     PR --> SG[Lookback.Signals]
     PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
@@ -79,6 +83,7 @@ flowchart TB
     TS[Lookback.Stream.Tests] --> S
     TSG[Lookback.Signals.Tests] --> SG
     TPR[Lookback.Profiles.Tests] --> PR
+    TCL[Lookback.Clipper.Tests] --> CL
     TTB[Lookback.Testbench.Tests] --> TB
     MD -. runs .-> FF[[ffmpeg / ffprobe]]
 ```
@@ -93,6 +98,7 @@ flowchart TB
 | `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
 | `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
 | `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*`, `Candidates/*` | Game profiles as data: the profile tree, HUD regions, event rules, sub-game and mode detection, the detector and its bus runner, clip candidates |
+| `Lookback.Clipper` | `ClipperEngine.cs`, `ClipperRunner.cs`, `ClipperOptions.cs`, `Curve/*`, `Candidates/*`, `Qa/*`, `clipper.defaults.json` | The [clipper](Clipper): normalisation, excitement curve, peaks, fusion with profile events, QA gates, and its bus runner |
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `app/` (Electron) | `src/main/*`, `src/preload/*`, `src/renderer/*`, `src/viewer/*`, `src/test/*` | The [desktop shell](Desktop-Shell): recorder process, `/events` library, timeline, ratings, official-player viewer and its `/ingest` sender |
@@ -111,7 +117,7 @@ flowchart TB
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
+`Lookback.Audio`, `Lookback.Quality`,
 `Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
 `Lookback.Capture/Gpu`.)
 

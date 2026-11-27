@@ -59,7 +59,7 @@ third-party footage without a permission reference.
 |---|---|
 | M0 | Solution, contracts, bus, pipes, WebSocket bridge, session log, CI |
 | M1 | FileSource (ffmpeg), video and audio signals, testbench CLI and timeline viewer |
-| M2 | Game identifier, Clipper v1, rating UI, official-player viewer |
+| M2 | Game identifier, Clipper v1 (built: `src/Lookback.Clipper`), rating UI, official-player viewer |
 | M3 | Live capture: detection, WGC, GPU downscale, encode, ring, disk store, governor, audio, Raw Input |
 | M4 | Training, ONNX scoring, calibration |
 | M5 | Transcode, VMAF report, audio checks |
