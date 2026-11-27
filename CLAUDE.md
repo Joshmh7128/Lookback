@@ -7,4 +7,6 @@
 - Anything that writes session data to disk must go through `RetentionRules`. Official-player sources are ephemeral; never add a path that persists them.
 - Schema changes go in `proto/lookback/v1/events.proto`; never renumber or reuse field numbers.
 - Do not add game-specific APIs or memory reading to the clipping path; signals stay game-agnostic.
+- Game knowledge lives in `profiles/*.json` as data (HUD regions plus rules over existing signals). A profile never adds a new kind of measurement; if a game needs one, add a game-agnostic signal instead. Profiles for anti-cheat titles keep `allowPresentHook` and `allowMemoryReading` false.
+- Dataset media is never committed: only `datasets/<game>/manifest*.json`, with provenance and a permission reference for third-party footage.
 - Original project: no other company's code, branding or assets.

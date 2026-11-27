@@ -9,6 +9,8 @@ Directory.Build.props         settings every project inherits
 Directory.Packages.props      every NuGet version, in one place
 .editorconfig                 style and analyzer severities
 CLAUDE.md                     rules for contributors and agents
+profiles/                     game profiles as JSON (generic, overwatch)
+datasets/<game>/              per-game dataset manifests (media never committed)
 proto/
   lookback/v1/events.proto    the event schema
 src/
@@ -17,12 +19,14 @@ src/
   Lookback.Stream/            framing, pipes, WebSocket bridge, session log
   Lookback.Media/             analysis format, frames, ffmpeg FileSource
   Lookback.Signals/           video + audio signals, DSP, publisher
+  Lookback.Profiles/          game profiles: regions, rules, event detector
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
   Lookback.Core.Tests/
   Lookback.Stream.Tests/
   Lookback.Signals.Tests/
+  Lookback.Profiles.Tests/
   Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
@@ -40,7 +44,9 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 ```mermaid
 flowchart TB
     R[Lookback.Recorder<br/>exe] --> S[Lookback.Stream]
-    TB[Lookback.Testbench<br/>exe] --> S & SG[Lookback.Signals]
+    TB[Lookback.Testbench<br/>exe] --> S & PR[Lookback.Profiles]
+    PR --> SG[Lookback.Signals]
+    PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
     S --> C[Lookback.Core]
     C --> K[Lookback.Contracts]
@@ -52,6 +58,7 @@ flowchart TB
     TC[Lookback.Core.Tests] --> C
     TS[Lookback.Stream.Tests] --> S
     TSG[Lookback.Signals.Tests] --> SG
+    TPR[Lookback.Profiles.Tests] --> PR
     TTB[Lookback.Testbench.Tests] --> TB
     MD -. runs .-> FF[[ffmpeg / ffprobe]]
 ```
@@ -65,8 +72,9 @@ flowchart TB
 | `Lookback.Stream` | `Framing/EnvelopeFraming.cs`, `Pipes/*`, `WebSockets/WebSocketBridge.cs`, `SessionLog/*` | Every way an envelope leaves the process: pipe, socket or file |
 | `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
 | `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
+| `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*` | Game profiles as data: HUD regions, event rules, the detector and its bus runner |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
-| `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Report/*` | Footage CLI and the timeline viewer |
+| `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Report/*`, `Datasets/*` | Footage CLI, the timeline viewer, and per-game dataset scoring |
 
 ## Planned projects
 
@@ -90,7 +98,8 @@ flowchart TB
         CLPL[Clipper lib]
         QUAL[Quality]
     end
-    subgraph Foundation["Foundation (M0, M1)"]
+    subgraph Foundation["Foundation (M0, M1, profiles)"]
+        PRO[Profiles] --> SIGL
         SIGL[Signals] --> MED[Media] --> CORE
         STR[Stream] --> CORE[Core] --> CON[Contracts]
     end

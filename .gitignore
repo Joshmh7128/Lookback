@@ -10,3 +10,11 @@ artifacts/
 node_modules/
 *.lbklog
 *.lbkidx
+
+# Per-game datasets: commit manifests only, never media or outputs
+datasets/**/*
+!datasets/**/
+!datasets/**/manifest*.json
+!datasets/**/README.md
+testbench-out/
+dataset-out/

@@ -27,8 +27,17 @@ internal static class TimelineBuilder
         var melIndex = new Dictionary<uint, (int Start, int Count)>();
         double maxSeconds = 0;
 
+        var events = new List<TimelineData.EventMark>();
         await foreach (Envelope e in reader.ReadAsync(cancellationToken: ct).ConfigureAwait(false))
         {
+            if (e.PayloadCase == Envelope.PayloadOneofCase.GameEvent)
+            {
+                GameEvent g = e.GameEvent;
+                double Sec(ulong q) => QpcTime.ToTimeSpan((long)q, frequency).TotalSeconds;
+                events.Add(new TimelineData.EventMark(g.Name, Sec(g.AtQpc), Sec(g.WindowStartQpc), Sec(g.WindowEndQpc), g.Confidence, g.Weight, [.. g.Evidence]));
+                continue;
+            }
+
             if (e.PayloadCase == Envelope.PayloadOneofCase.SignalSchema)
             {
                 schemas[e.SignalSchema.SchemaId] = e.SignalSchema;
@@ -110,7 +119,7 @@ internal static class TimelineBuilder
             data.Lanes.Add(new TimelineData.Lane
             {
                 Name = schema.Names[index],
-                Family = schema.Family == SignalFamily.Audio ? "audio" : "video",
+                Family = schema.Family switch { SignalFamily.Audio => "audio", SignalFamily.Rules => "rules", _ => "video" },
                 Step = steps[schemaId],
                 Values = Densify(s),
             });
@@ -120,6 +129,9 @@ internal static class TimelineBuilder
         {
             data.Mel.Add(row);
         }
+
+        data.Events.AddRange(events.OrderBy(x => x.At));
+        data.Profile = string.IsNullOrEmpty(header.GameProfile) ? null : header.GameProfile;
 
         return data;
     }

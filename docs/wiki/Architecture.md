@@ -122,6 +122,8 @@ Clips are cut by remuxing packets from a keyframe, with no re-encode.
 ```mermaid
 flowchart LR
     S[Signals<br/>video · audio · input] --> N[Per-game z-scores]
+    S --> GP[Game profile rules<br/>game.event]
+    GP --> SC
     N --> C[Excitement curve]
     C --> P[Peak detection<br/>with hysteresis]
     P --> W["Windows [t−pre, t+post]"]
@@ -133,10 +135,16 @@ flowchart LR
     R --> T[Training] --> SC
 ```
 
+Game profiles sit beside the excitement curve, not in place of it. A profile
+names moments in one game (an Overwatch elimination) from the same
+game-agnostic signals measured inside that game's HUD regions; the clipper
+weighs those named moments alongside the generic curve. See
+[Game Profiles](Game-Profiles).
+
 ## Milestones
 
 ```mermaid
 flowchart LR
-    M0[M0 foundation ✓] --> M1[M1 signals on footage] --> M2[M2 clipper + viewer] --> M3[M3 live capture]
+    M0[M0 foundation ✓] --> M1[M1 signals on footage ✓] --> GPR[Game profiles] --> M2[M2 clipper + viewer] --> M3[M3 live capture]
     M3 --> M4[M4 learned scoring] --> M5[M5 quality reports] --> M6[M6 present hook + HDR] --> M7[M7 memory module]
 ```

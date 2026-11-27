@@ -2,6 +2,7 @@ using System.Globalization;
 using Lookback.Contracts.V1;
 using Lookback.Stream.SessionLog;
 using Lookback.Testbench;
+using Lookback.Testbench.Datasets;
 
 const string Usage = """
     lookback-testbench: run footage through Lookback's signals and render a timeline.
@@ -9,7 +10,14 @@ const string Usage = """
     Usage:
       lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|open-license|ephemeral]
                                         [--permission-ref <ref>] [--title <text>] [--game <name>]
+                                        [--profile <id-or-path>]
+      lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
       lookback-testbench report <session-path-without-extension> [--video <file>]
+
+    Profiles:
+      Built in: generic, overwatch. A path to a profile JSON file also works.
+      With a profile, the report gains an events lane, rule-margin lanes and a
+      calibration overlay of the profile's HUD regions and the detected HUD mask.
 
     Retention:
       owned         your own footage (default)
@@ -26,6 +34,7 @@ try
     return args switch
     {
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
+        ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
         _ => PrintUsage(),
     };
@@ -57,6 +66,7 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
         PermissionRef = flags.GetValueOrDefault("permission-ref", ""),
         Title = flags.GetValueOrDefault("title"),
         Game = flags.GetValueOrDefault("game"),
+        Profile = flags.GetValueOrDefault("profile"),
     };
 
     var progress = new Progress<TimeSpan>(t => Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"\r  analysed {t:hh\\:mm\\:ss}")));
@@ -69,7 +79,46 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
     Console.WriteLine(r.ReportPath is null
         ? "stored   nothing (ephemeral)"
         : $"log      {r.SessionBasePath}.lbklog\nreport   {r.ReportPath}");
+    foreach (string warning in r.Warnings)
+    {
+        Console.WriteLine($"warning  {warning}");
+    }
+
+    if (options.Profile is not null)
+    {
+        Console.WriteLine($"events   {r.Events.Count} from profile '{options.Profile}'");
+        foreach (var group in r.Events.GroupBy(e => e.Name, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"         {group.Key,-24} {group.Count(),5}"));
+        }
+    }
+
     return 0;
+}
+
+static async Task<int> DatasetAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
+{
+    string output = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "dataset-out"));
+    double tolerance = double.Parse(flags.GetValueOrDefault("tolerance", "1.0"), CultureInfo.InvariantCulture);
+    var (entries, overall) = await DatasetRunner.RunAsync(manifest, output, tolerance, flags.GetValueOrDefault("profile"), ct);
+
+    foreach (DatasetEntryResult e in entries)
+    {
+        Console.WriteLine($"{e.File}: {e.Events} events, report {e.Report}");
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"{"event",-24} {"TP",5} {"FP",5} {"FN",5} {"precision",10} {"recall",8}  (tolerance {tolerance:0.##} s)"));
+    foreach (EventScore s in overall)
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"{s.Event,-24} {s.TruePositives,5} {s.FalsePositives,5} {s.FalseNegatives,5} {Pct(s.Precision),10} {Pct(s.Recall),8}"));
+    }
+
+    Console.WriteLine($"\nscores   {Path.Combine(output, "scores.json")}");
+    return 0;
+
+    static string Pct(double v) => double.IsNaN(v) ? "-" : v.ToString("P0", CultureInfo.InvariantCulture);
 }
 
 static async Task<int> ReportAsync(string session, Dictionary<string, string> flags, CancellationToken ct)
