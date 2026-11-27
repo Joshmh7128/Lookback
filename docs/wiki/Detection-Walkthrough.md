@@ -52,7 +52,7 @@ flowchart LR
     VB & AB --> SP --> BUS
     BUS -- "signals.video<br/>signals.audio" --> TM
     DET -- "game.event<br/>signals.rules" --> BUS
-    PJ[("profiles/*.json")] -. regions .-> VB
+    PJ[("profiles/game/*.json")] -. regions .-> VB
     PJ -. rules .-> DET
 ```
 
@@ -266,6 +266,45 @@ detector's output.
 The one concession to wall time: a stream that has sent nothing for 2 seconds
 of wall clock (a game with no audio device) stops holding back the watermark
 until it sends again.
+
+## Stage 5½ · Which profile is active
+
+Profiles form a tree in `profiles/<game>/`: a **game** (`roblox`), a
+**sub-game** beneath it (`roblox.arsenal`, one Roblox experience), and a
+**mode** beneath either (`overwatch.escort`, `roblox.doors.run`). A child
+inherits its parent's regions and rules and adds its own; it can only make
+the capture policy stricter. See [Profiles and Local Datasets](Local-Datasets)
+for the format.
+
+The analyser measures the regions of the **whole tree** under the game
+(`ProfileCatalog.SubtreeRegions`), and the detector knows every rule in the
+tree up front, so the margin schema never changes mid-session.
+`ProfileTracker` decides which profile is active; only the active profile's
+rules fire, while inactive rules keep updating their baselines so they are
+ready the moment their profile becomes active.
+
+```mermaid
+flowchart TD
+    EXE["Executable matched<br/>or profile chosen by hand"] --> FLOOR["floor<br/>(detection never rises above it)"]
+    HINT["Hints, read outside the game process:<br/>launch arguments · window title · launcher log<br/>e.g. a Roblox place id"] -- "exact: moves the floor down" --> FLOOR
+    FLOOR --> WALK{"For each child below the floor:<br/>fingerprint = fraction of its visual<br/>conditions holding, averaged over its window"}
+    WALK -- "best child ≥ minScore" --> DOWN["step down a level, repeat"]
+    DOWN --> WALK
+    WALK -- "no child qualifies" --> CAND["candidate profile"]
+    CAND --> HOLD{"same answer for holdSeconds?<br/>(stepping up waits a full window)"}
+    HOLD -- yes --> ACT["active profile changes<br/>ProfileDetected on game.profile"]
+    HOLD -- no --> FLOOR
+```
+
+Two properties matter. **Hints are exact and fingerprints are hysteretic:** a
+place id in the launcher's log decides the experience outright, while a
+visual fingerprint must hold for `holdSeconds` before it switches anything,
+so one odd frame never flips the active profile. And **nothing is read from
+inside the game:** hints come only from what the platform exposes outside the
+process, and fingerprints are the same `above`/`below`/`rise` conditions over
+the same signals. Every switch is published as a `ProfileDetected` event on
+`game.profile` with its method (executable, hint, visual, manual), its
+confidence and its evidence.
 
 ## Stage 6 · Decide
 
