@@ -27,7 +27,7 @@ internal sealed record FootageRequest(string Path, string? Profile, Retention Re
 /// retention is validated before anything starts. At most two run at once,
 /// so a batch of files leaves room for live capture.
 /// </summary>
-internal sealed partial class FootageSessions(IEventBus bus, ILogger logger) : IAsyncDisposable
+internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, ProfileSource? profiles = null) : IAsyncDisposable
 {
     public const long Frequency = 10_000_000;
     private static readonly string[] Forwarded = [Topics.Session, Topics.GameEvent, Topics.GameProfile, Topics.ClipCandidate, Topics.QaReport];
@@ -50,7 +50,7 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger) : I
             return (null, "bad-request", $"No file at '{request.Path}' (send an absolute path).");
         }
 
-        ProfileCatalog catalog = ProfileCatalog.BuiltIn;
+        ProfileCatalog catalog = profiles?.Current() ?? ProfileCatalog.BuiltIn;
         if (request.Profile is { Length: > 0 } id && !catalog.Contains(id))
         {
             return (null, "bad-request", $"No profile '{id}'.");

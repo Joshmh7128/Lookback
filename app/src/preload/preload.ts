@@ -2,7 +2,7 @@
 // CommonJS file that imports only types. It exposes `window.lookback` and
 // nothing else: no ipcRenderer, no Node.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, Rating, RecorderState, Settings, ShellPaths, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
+import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, ProfileEdits, ProfileToolResult, Rating, RecorderState, Settings, ShellPaths, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const wrapped = (_e: IpcRendererEvent, value: T): void => listener(value);
@@ -42,6 +42,8 @@ const api: LookbackApi = {
   showView: (view: EmbeddedView | null, bounds: ViewBounds | null) => ipcRenderer.invoke("lookback:show-view", view, bounds) as Promise<boolean>,
   getBrowseState: () => ipcRenderer.invoke("lookback:browse-state"),
   buildBrowse: () => ipcRenderer.invoke("lookback:build-browse"),
+  viewProfile: (id: string | null) => ipcRenderer.invoke("lookback:profile-view", id) as Promise<ProfileToolResult>,
+  saveProfile: (id: string, edits: ProfileEdits) => ipcRenderer.invoke("lookback:profile-save", id, edits) as Promise<ProfileToolResult>,
   getSettings: () => ipcRenderer.invoke("lookback:get-settings") as Promise<Settings>,
   saveSettings: (settings: Settings) => ipcRenderer.invoke("lookback:save-settings", settings) as Promise<Settings>,
   openViewer: (link: string | null) => ipcRenderer.invoke("lookback:open-viewer", link) as Promise<boolean>,

@@ -14,6 +14,7 @@ import { eventsUrl } from "./handshake";
 import { Library, validRating } from "./library";
 import { datasetsFolder, defaultRatingsFolder, locateTool, profilesFolder, RECORDER, recorderArgs, TESTBENCH, type LocateContext } from "./locate";
 import { MEDIA_SCHEME, MediaRegistry, serveMedia, VIDEO_EXTENSIONS } from "./media";
+import { isEmptyEdits, isProfileId, profileSaveArgs, profileViewArgs, runProfileTool, sanitizeEdits } from "./profile-editor";
 import { listProfiles } from "./profiles";
 import { RecorderHost } from "./recorder";
 import { RecorderSupervisor } from "./supervisor";
@@ -493,6 +494,35 @@ function registerIpc(): void {
     if (result.ok) {
       browseBuiltAt = Date.now();
       refreshEmbedded();
+    }
+
+    return result;
+  });
+  // Profiles tab: the testbench reads and writes the checkout's profiles/ (only that folder).
+  const profileTool = async (args: (dir: string) => string[], stdin: string | null) => {
+    const dir = profilesFolder(settings, locate());
+    if (!dir) {
+      return { ok: false, message: "No profiles folder: run Lookback from a checkout, or set the profiles folder in Settings." };
+    }
+
+    const command = locateTool(TESTBENCH, settings.testbenchPath, locate(), args(dir));
+    if (!command) {
+      return { ok: false, message: "lookback-testbench was not found. Build the solution (launch.bat does) or set its path in Settings." };
+    }
+
+    return runProfileTool(command, stdin);
+  };
+  handle("lookback:profile-view", fromMain, (id) => {
+    if (id !== null && !isProfileId(id)) return { ok: false, message: "Not a profile id." };
+    return profileTool((dir) => profileViewArgs(dir, id), null);
+  });
+  handle("lookback:profile-save", fromMain, async (id, raw) => {
+    const edits = sanitizeEdits(raw);
+    if (!isProfileId(id) || !edits) return { ok: false, message: "The edit is malformed." };
+    if (isEmptyEdits(edits)) return { ok: false, message: "Nothing to save." };
+    const result = await profileTool((dir) => profileSaveArgs(dir, id), JSON.stringify(edits));
+    if (result.ok) {
+      recorder.note(`Profiles: saved ${id} (${(result.files ?? []).join(", ") || "no change"}); applies from the next recording`);
     }
 
     return result;

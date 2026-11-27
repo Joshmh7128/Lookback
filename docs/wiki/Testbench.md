@@ -15,6 +15,8 @@ lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed
 lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
 lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
+lookback-testbench profile-view --profiles <folder> [--id <profile>]
+lookback-testbench profile-save --profiles <folder> --id <profile> --edits <file.json|->
 ```
 
 `live` plays the footage in real time into the [live profiler](Live-Profiler)
@@ -36,6 +38,14 @@ manifest entry, then asks for 1 to 5 stars per candidate on its content
 clears, `q` stops. Ratings go to `datasets/<game>/ratings.jsonl` through
 `RatingStore`, so the entry's retention is checked first; a second pass skips
 what is rated unless `--again`. See [Clip Scoring](Clip-Scoring).
+
+`profile-view` and `profile-save` are the desktop app's profile editor:
+the first prints the profile list and a profile resolved with the source of
+every weight and threshold, as JSON; the second changes weights, thresholds
+and clipper overrides in the folder's files in place, after checking that the
+whole folder still loads the way the recorder loads it, and prints the files
+it changed (or `{"ok":false,"message":…}` and writes nothing). See
+[Game Profiles](Game-Profiles#editing-weights-and-thresholds). Neither needs ffmpeg.
 
 `browse` writes the [Dataset Browser](Dataset-Browser): one page for sifting profiles, datasets and their scores. It needs no ffmpeg.
 

@@ -147,3 +147,30 @@ dialog.notice { max-width: 480px; background: var(--panel); color: var(--text); 
 dialog.notice::backdrop { background: rgba(0, 0, 0, 0.55); }
 dialog.notice h2 { color: #f3c0c0; }
 .save-note { display: block; font-size: 11px; color: var(--warn); max-width: 220px; }
+
+/* Profiles tab */
+.profile-list { width: 260px; flex: none; overflow: auto; display: flex; flex-direction: column; gap: 1px; }
+.profile-list button { flex: none; text-align: left; width: 100%; padding: 4px 8px; background: transparent; border-color: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-list button.active { border-color: var(--accent); background: var(--panel2); }
+.profile-list button .lvl { color: var(--muted); font-size: 11px; margin-left: 6px; }
+.pe-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.pe-main > .toolbar { position: sticky; top: 0; z-index: 1; background: var(--bg); padding: 4px 0; flex-wrap: nowrap; }
+.pe-title { flex: 1; min-width: 0; }
+.pe-title strong { color: var(--text); }
+.pe-status { margin: 0; padding: 8px 10px; border-radius: 4px; border: 1px solid var(--line); background: var(--panel); white-space: pre-wrap; font: 12px/1.4 ui-monospace, Consolas, monospace; }
+.pe-status.bad { border-color: #6a2f2f; color: #f3c0c0; background: #2a1717; }
+.pe-status.good { border-color: #2f6a40; color: #bfe8c9; }
+.pe-body { display: flex; flex-direction: column; gap: 12px; }
+.pe-body table { width: 100%; border-collapse: collapse; }
+.pe-body th, .pe-body td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.pe-body th { color: var(--muted); font-weight: 500; }
+.pe-body input.num { width: 90px; font-variant-numeric: tabular-nums; }
+.pe-body input.num.changed { border-color: var(--event); background: #2a2414; }
+.pe-body input.num.invalid { border-color: var(--bad); background: #2a1717; }
+.pe-body .cond { display: inline-flex; gap: 4px; align-items: center; margin: 1px 12px 1px 0; }
+.pe-body .cond code, .pe-body td code { font: 12px ui-monospace, Consolas, monospace; color: #c3cad4; }
+.pe-body .src { color: var(--muted); font-size: 12px; }
+.pe-body .src.own { color: var(--profile); }
+.pe-body tr.off td { opacity: 0.55; }
+.pe-body tr.reset td { text-decoration: line-through; opacity: 0.6; }
+.pe-body .add { margin-top: 8px; }

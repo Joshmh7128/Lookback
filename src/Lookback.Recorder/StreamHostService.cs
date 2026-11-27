@@ -45,12 +45,13 @@ internal sealed partial class StreamHostService(
         if (o.Control)
         {
             _sessions = new SessionDirectory(bus);
-            _footage = new FootageSessions(bus, logger);
+            var profiles = new ProfileSource(o.ProfilesDirectory, logger); // the checkout's profiles/, so the profile editor's saves apply without a rebuild
+            _footage = new FootageSessions(bus, logger, profiles);
 
             // Live capture: game detection starts a recording for every allowed game (Windows only).
             if (o.Capture && OperatingSystem.IsWindows())
             {
-                _capture = CaptureService.Start(bus, o, _sessions, logger);
+                _capture = CaptureService.Start(bus, o, _sessions, logger, profiles);
             }
 
             control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);

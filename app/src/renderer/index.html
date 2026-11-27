@@ -14,6 +14,7 @@
     <button data-tab="timeline">Timeline</button>
     <button data-tab="profiler">Profiler</button>
     <button data-tab="datasets">Datasets</button>
+    <button data-tab="profiles">Profiles</button>
     <button data-tab="settings">Settings</button>
     <span class="spacer"></span>
     <span id="pill-recorder" class="pill">recorder</span>
@@ -156,6 +157,23 @@
   <section id="tab-datasets" class="tab embed">
     <div class="row toolbar"><button id="browse-build">Build dataset browser</button><span id="browse-status" class="muted"></span></div>
     <div id="browse-host" class="embed-host"><p class="muted">Build the dataset browser to sift profiles and datasets.</p></div>
+  </section>
+
+  <section id="tab-profiles" class="tab">
+    <div class="split">
+      <aside class="profile-list" id="pe-list"><p class="muted">Loading profiles…</p></aside>
+      <div class="pe-main">
+        <div class="row toolbar">
+          <div id="pe-title" class="pe-title muted">Choose a profile.</div>
+          <span class="spacer"></span>
+          <button id="pe-discard" disabled>Discard changes</button>
+          <button id="pe-save" class="primary" disabled>Save</button>
+        </div>
+        <pre id="pe-status" class="pe-status" hidden></pre>
+        <div id="pe-body" class="pe-body"></div>
+        <p class="muted note">Values are shown resolved: what this profile runs with, and where each comes from. Rule weights and thresholds are saved in the file that defines the rule ("from"), so every profile that inherits the rule changes too; open that profile to see which do. Clipper settings are this profile's own overrides: Reset removes one, so the value is inherited again (from the parent, then the clipper's defaults), and weight 0 switches a signal off. Saving edits the checkout's profiles/ files in place (check them with git diff) after checking that every profile still loads; live recording uses them from the next game it records.</p>
+      </div>
+    </div>
   </section>
 
   <section id="tab-settings" class="tab">
