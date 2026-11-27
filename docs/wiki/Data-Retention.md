@@ -94,6 +94,15 @@ profile's diff shows exactly what was saved. Frames, audio, signal series,
 marks, times and the video's identity are never written, and
 `RetentionRules.CanPersist` stays false for the session.
 
+### The clipper check
+
+The viewer's panel can also score the clipper on what you watch
+([Clipper check](Official-Player-Calibration#clipper-check-how-accurate-is-the-clipper)).
+Its candidates, your 1–5 ratings, your missed-highlight marks and the scores
+live only in memory (`ClipperCheck`) and are cleared when the player stops.
+None of it is written, and none of it becomes training data: the learned
+scorer trains only on your ratings of footage you own.
+
 ## Datasets
 
 Per-game datasets come from your own recordings (labelled automatically by

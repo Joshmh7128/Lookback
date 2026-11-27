@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
+    <ProjectReference Include="..\Lookback.Clipper\Lookback.Clipper.csproj" />
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
   </ItemGroup>
   <ItemGroup>

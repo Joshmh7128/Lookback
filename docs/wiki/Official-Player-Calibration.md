@@ -88,6 +88,47 @@ Then commit the profile change like any other edit.
   (counted with the rule's cooldown). The panel shows both the current and
   proposed thresholds' results on this video.
 
+## Clipper check: how accurate is the clipper?
+
+The same session runs the clipper on the player's frames (`ClipperRunner`,
+with the profile's events, or the generic excitement curve with no profile).
+Its candidates appear in section 4 of the panel, newest first. Watch the
+video and:
+
+- **rate each candidate 1 to 5** on content: is this moment a highlight?
+  Click a star again to clear it;
+- **press M** (or *Missed a highlight*) when you see a highlight, so the check
+  can tell whether the clipper finds it. A mark counts as found when any
+  candidate's window covers it, within 2 s.
+
+The panel shows, live:
+
+| Score | Meaning |
+|---|---|
+| Precision | Of the candidates you rated, the share rated 4 or 5 |
+| Recall | Of the highlights (candidates rated 4–5, plus marked moments no 4–5 candidate covers), the share the clipper found |
+| Mean rating | The average of your ratings |
+| By reason | For each reason the clipper gave (an event such as `impact`, or `excitement` for the curve): how many it proposed, how many you rated, their mean and precision |
+| By heuristic score | Whether higher-scored candidates were rated higher |
+
+Use it to tune: change a profile's thresholds or the clipper's weights, play
+the next video, and compare.
+
+**Nothing is stored.** `ClipperCheck` lives in memory: candidates, ratings,
+marks and scores are cleared when the player stops or you press *Reset the
+check*, and none of them, their times, or the video's identity is ever
+written. The videos are not training data: ratings that train the learned
+scorer come only from footage you own, through the shell's *Open footage…*
+and `RatingStore`. The check does not touch either.
+
+**Limits.** The viewer sends video only, so the clipper's audio components
+(loudness, onsets) do not contribute, and YouTube footage carries
+compression, webcams and overlays a direct recording would not. Read the
+scores as a sanity check of what the clipper picks, not as its accuracy on
+your own recordings. Candidates appear several seconds after the moment: the
+clipper closes one only when nothing more can extend it, and with no audio
+stream it waits an extra 5 s before giving up on audio.
+
 ## The sender (desktop shell)
 
 The viewer window's main process captures the page with
