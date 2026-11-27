@@ -1,0 +1,73 @@
+{
+  // Pet raising and trading. Hatching and trades are the moments people clip.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
+  "id": "roblox.adopt-me",
+  "displayName": "Adopt Me!",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["pets", "trading", "social"],
+  "ids": { "roblox.universe": ["383310974"], "roblox.place": ["920587237"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "adoptme_trade",
+      "x": 0.2,
+      "y": 0.15,
+      "w": 0.6,
+      "h": 0.7,
+      "purpose": "Trade window in the middle of the screen."
+    }
+  ],
+  "events": [
+    {
+      "name": "egg_hatch",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.1
+        },
+        {
+          "signal": "region.centre.activity",
+          "rise": 0.08
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 400,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 5000,
+        "postMs": 5000
+      }
+    },
+    {
+      "name": "trade_window",
+      "weight": 0.7,
+      "baseConfidence": 0.45,
+      "cooldownMs": 15000,
+      "when": [
+        {
+          "signal": "region.adoptme_trade.activity",
+          "rise": 0.08
+        },
+        {
+          "signal": "region.adoptme_trade.luma",
+          "above": 0.55
+        }
+      ],
+      "clip": {
+        "preMs": 3000,
+        "postMs": 12000
+      }
+    }
+  ]
+}

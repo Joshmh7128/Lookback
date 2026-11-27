@@ -1,0 +1,30 @@
+{
+  // Copy to manifest.json next to your footage. Media is never committed.
+  // One manifest covers the whole Roblox tree: each entry says which experience
+  // (and mode, if any) it shows, so fingerprints can be learned per experience:
+  //   lookback-testbench fingerprint datasets/roblox/manifest.json
+  //   lookback-testbench dataset datasets/roblox/manifest.json --profiles fingerprint-out/learned
+  // Include some footage of experiences without a profile yet ("profile": "roblox"):
+  // it teaches each fingerprint what it must not match.
+  "game": "roblox",
+  "entries": [
+    {
+      "file": "media/arsenal-01.mp4",
+      "source": "own recording, 1920x1080",
+      "profile": "roblox.arsenal",
+      "labels": [ { "event": "elimination", "at": 12.4 }, { "event": "multikill", "at": 14.0 } ],
+      "clips": [ { "start": 6, "end": 17 } ]
+    },
+    {
+      "file": "media/jailbreak-01.mp4",
+      "source": "own recording, 1920x1080",
+      "profile": "roblox.jailbreak",
+      "clips": [ { "start": 30, "end": 52 } ]
+    },
+    {
+      "file": "media/other-experience-01.mp4",
+      "source": "own recording of an experience with no profile yet",
+      "profile": "roblox"
+    }
+  ]
+}

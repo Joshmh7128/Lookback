@@ -28,6 +28,7 @@ message Envelope {
     QaReport qa_report = 16;
     ClipSaved clip_saved = 17;
     GameEvent game_event = 18;
+    ProfileDetected profile_detected = 19;
   }
 }
 
@@ -151,6 +152,38 @@ message GameEvent {
   float weight = 7;
   // Human-readable evidence, e.g. "region.kill_feed.activity rise 0.21".
   repeated string evidence = 8;
+}
+
+// Which profile is active: the game, then optionally a sub-game (such as a
+// Roblox experience) and a game mode beneath it. Published on topic
+// "game.profile" whenever the active profile changes. Detection uses, in
+// order: the executable, launch and log hints (live only), then visual
+// fingerprints over the profile's HUD regions.
+message ProfileDetected {
+  // The deepest profile detected, for example "roblox.arsenal".
+  string profile_id = 1;
+  // Root first: ["roblox", "roblox.arsenal"].
+  repeated string path = 2;
+  ProfileLevel level = 3;
+  DetectionMethod method = 4;
+  float confidence = 5;
+  fixed64 at_qpc = 6;
+  repeated string evidence = 7;
+}
+
+enum ProfileLevel {
+  PROFILE_LEVEL_UNSPECIFIED = 0;
+  PROFILE_LEVEL_GAME = 1;
+  PROFILE_LEVEL_SUBGAME = 2;
+  PROFILE_LEVEL_MODE = 3;
+}
+
+enum DetectionMethod {
+  DETECTION_METHOD_UNSPECIFIED = 0;
+  DETECTION_METHOD_EXECUTABLE = 1;
+  DETECTION_METHOD_HINT = 2;
+  DETECTION_METHOD_VISUAL = 3;
+  DETECTION_METHOD_MANUAL = 4;
 }
 
 // ---------------------------------------------------------------- clipping

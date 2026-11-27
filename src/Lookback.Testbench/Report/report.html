@@ -32,6 +32,8 @@
   .family-video b { color:var(--video); } .family-audio b { color:var(--audio); }
   .family-rules b { color:var(--rules); } .family-events b { color:var(--event); }
   .lane.events canvas { height:46px; cursor:pointer; }
+  .lane.spans canvas { height:26px; cursor:pointer; }
+  .family-profile b { color:#ffd24a; } .family-candidates b { color:#ff8fb1; }
   #axis { margin-left:170px; height:20px; position:relative; color:var(--dim); font-size:11px; }
   #axis span { position:absolute; transform:translateX(-50%); }
   .note { color:var(--dim); margin-top:14px; }
@@ -61,6 +63,7 @@
   <div id="lanes"></div>
   <p class="note">Each lane is scaled to its own range. Audio lanes show the maximum per 100 ms. The mel lane is a log-mel spectrogram, low frequencies at the bottom.
   Rule lanes show each condition's margin over its threshold: above the dashed zero line the condition holds.
+  The profile lane shows which game, sub-game or mode was active; the candidates lane shows the clips built from the events (darker is a higher score).
   In the events lane, the tick is the moment, the band is the clip window and the height is the confidence; hover for the evidence.</p>
 </main>
 <script type="application/json" id="timeline">__DATA__</script>
@@ -116,6 +119,36 @@
     row.append(name, canvas);
     lanesEl.append(row);
     lanes.push({ canvas, draw, valueAt, label, describe });
+  }
+
+  // Spans: which profile was active, and the clip candidates. Both are bars over time with hover text.
+  function addSpans(label, family, spans, colourOf, text, seekOf) {
+    const at = t => spans.find(s => t >= s.start && t < s.end) || null;
+    addLane(label, family, (ctx, w, h) => {
+      for (const s of spans) {
+        const x0 = s.start / duration * w, x1 = Math.max(x0 + 2, s.end / duration * w);
+        ctx.fillStyle = colourOf(s);
+        ctx.fillRect(x0, 3, x1 - x0 - 1, h - 6);
+      }
+    }, () => null, 'spans', t => { const s = at(t); return s ? text(s) : null; });
+    lanes[lanes.length - 1].seekTo = t => { const s = at(t); return s ? seekOf(s) : t; };
+  }
+
+  if (data.profileSpans.length) {
+    const ids = [...new Set(data.profileSpans.map(s => s.id))];
+    addSpans('profile', 'profile', data.profileSpans,
+      s => `hsl(${(ids.indexOf(s.id) * 83 + 40) % 360} 55% 45%)`,
+      s => [`profile ${s.id} from ${s.start.toFixed(1)} s (${s.method}, ${(s.confidence * 100).toFixed(0)}%)`, ...s.evidence.map(x => '  ' + x)].join('\n'),
+      s => s.start);
+  }
+
+  if (data.candidates.length) {
+    const top = Math.max(...data.candidates.map(c => c.score), 1e-6);
+    addSpans(`candidates (${data.candidates.length})`, 'candidates', data.candidates,
+      c => `rgba(255, 143, 177, ${0.25 + 0.75 * c.score / top})`,
+      c => [`candidate ${c.id}: ${c.start.toFixed(1)}-${c.end.toFixed(1)} s, peak ${c.peak.toFixed(1)} s`,
+        `  score ${c.score.toFixed(2)}  probability ${c.probability.toFixed(2)}  profile ${c.profile}`, ...c.reasons.map(x => '  ' + x)].join('\n'),
+      c => c.start);
   }
 
   if (data.events.length) {

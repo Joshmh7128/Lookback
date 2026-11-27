@@ -6,13 +6,18 @@ at the parts of the screen that matter in that game, and turns their output
 into named moments with rules. Adding a game means writing a JSON file, not
 code.
 
-Profiles live in `profiles/*.json` and are embedded into
-`Lookback.Profiles` at build time. Two ship today:
+Profiles live in `profiles/<game>/*.json` (one folder per game tree) and
+are embedded into `Lookback.Profiles` at build time. Run
+`lookback-testbench profiles` to print the tree:
 
-| Profile | Purpose |
-|---|---|
-| `generic` | Any game. No regions; rules over the whole-frame signals only. The fallback, and the baseline a game profile has to beat. |
-| `overwatch` | The first game profile. Vision and audio only. |
+| Profile | Level | Purpose |
+|---|---|---|
+| `generic` | game | Any game. No regions; rules over the whole-frame signals only. The fallback, and the baseline a game profile has to beat. |
+| `overwatch` | game | The first game profile. Vision and audio only. |
+| `overwatch.control`, `.escort`, `.push` | mode | Mode stubs, ready for fingerprints learned from footage. |
+| `roblox` | game | What every Roblox experience shares: the client's interface and generic moments. |
+| `roblox.<experience>` (16) | sub-game | Steal an Egg, Murder Mystery 2, Brookhaven RP, Adopt Me!, 99 Nights in the Forest, Blox Fruits, RIVALS, Steal a Brainrot, Jujutsu Shenanigans, +1 Speed Keyboard Escape, BedWars, Slap Battles, Fisch, Arsenal, Jailbreak, DOORS. Each has its own regions, rules, tags and Roblox ids. |
+| `roblox.<experience>.lobby`, `.match`, `.round`, `.duel`, `.run`, `.day`, `.night` | mode | Lobbies switch off the experience's combat rules; 99 Nights tells day from night by brightness. |
 
 ## Why Overwatch first
 
@@ -28,6 +33,149 @@ Live capture (M3) reads this policy. For a title like this it will use
 Windows.Graphics.Capture from outside the process: no injected present hook,
 no reading the game's memory. Executable names in the profile are used only
 to recognise that the game is running.
+
+## The profile tree
+
+Some games are one game. Others are a platform of many: Roblox runs
+thousands of experiences in one executable, and an elimination in an arena
+shooter looks nothing like a robbery in an open-world one. Many games also
+have modes that change what matters. So profiles form a tree:
+
+```mermaid
+flowchart TB
+    R[roblox<br/>game · RobloxPlayerBeta.exe] --> RA[roblox.arsenal<br/>sub-game]
+    R --> RJ[roblox.jailbreak<br/>sub-game]
+    R --> RD[roblox.doors<br/>sub-game]
+    R --> RB[roblox.blox-fruits<br/>sub-game]
+    O[overwatch<br/>game · Overwatch.exe] --> OC[overwatch.control<br/>mode]
+    O --> OE[overwatch.escort<br/>mode]
+    O --> OP[overwatch.push<br/>mode]
+    RA -.-> RAM[roblox.arsenal.‹mode›<br/>mode, when needed]
+```
+
+A child names its `parent`, its `level` (`subgame` or `mode`), and an id that
+starts with the parent's id and a dot. It **inherits everything** and adds to it:
+
+| What | Rule |
+|---|---|
+| Regions | Added. A region name means one rectangle across the whole tree, because one `RegionSignal` measures them all; a child names new regions instead of moving the parent's. |
+| Events and composites | Added, or replaced by giving the same name. `disable` removes inherited ones (and composites built on them). |
+| Capture policy | Can only get **stricter**. A Roblox experience can never allow the hook or memory reading its game forbids. |
+| Executables | Games only; children are detected beneath their game. |
+
+The detector loads the whole tree under the game at once, so the rule-margin
+schema never changes mid-session, and evaluates only the rules of the
+**active** profile. Inactive rules keep their baselines up to date, so they
+are ready the moment their profile becomes active. Every `GameEvent` carries
+the profile that was active when it fired.
+
+## Detecting the sub-game and mode
+
+```mermaid
+flowchart TB
+    EXE[Executable matches a game] --> FLOOR[Floor = game]
+    MAN[Chosen by hand<br/>--profile roblox.arsenal] --> FLOOR2[Floor = that profile]
+    HINT[Hint matches<br/>launch args · window title · client log] --> FLOOR3[Floor = proven profile<br/>method HINT, confidence 1]
+    FLOOR & FLOOR2 & FLOOR3 --> WALK[Each video frame: walk down from the floor]
+    WALK --> FP[At each level, the child whose fingerprint<br/>averages ≥ minScore over its window wins]
+    FP --> HOLD[New answer held for holdSeconds?]
+    HOLD -->|yes| PUB[Publish ProfileDetected on game.profile]
+    HOLD -->|no| WALK
+```
+
+1. **The floor.** Detection never rises above where it starts: the game
+   found by its executable, a profile chosen by hand, or one a hint proved.
+2. **Hints are exact.** A hint is a regular expression over facts the
+   platform exposes *outside* the game process: the launch arguments, the
+   window title, or new lines in the launcher's own log file. With `values`,
+   the first capture group must equal one of them, for example a Roblox
+   place id. A match decides the sub-game outright and becomes the floor.
+   Hints need live capture (M3); footage has none, so footage relies on
+   fingerprints.
+3. **Fingerprints are learned.** A fingerprint is a few `above`/`below`
+   conditions on video signals, usually the region signals. Each frame
+   scores the share of conditions that hold; the score is averaged over
+   `windowSeconds`. Walking down from the floor, the best child above its
+   `minScore` wins at each level.
+4. **Hysteresis.** A new answer must persist for `holdSeconds` before the
+   active profile switches. Stepping back *up* to a parent waits a full
+   window, so a switch between two siblings never detours through the parent.
+
+## Roblox
+
+The `roblox` game profile covers what every experience shares: the client's
+top bar, player list, chat, the centre of the screen where most experiences
+put pop-ups and banners, and the hotbar. Its events are deliberately generic
+(`impact`, `centre_popup`, `respawn_or_teleport`, `loud_moment`), so an
+experience with no profile yet still gets reasonable clips.
+
+Each experience profile adds its own regions and rules. Arsenal adds a kill
+feed and elimination notice with multikill and killstreak composites;
+Jailbreak adds its notification banner and a chase rule; DOORS adds
+jumpscare and death; Blox Fruits adds big abilities, level-ups and combos.
+Each experience lists its Roblox ids: the **universe id** (one per
+experience, stable across all its places, the key to categorise by) and its
+**place ids** (lobby, worlds, matches). The `roblox` game profile's
+`idHints` read those ids from the client's own log and launch arguments, so
+a running experience is identified exactly, without fingerprints.
+
+`lookback-testbench roblox-ids --write true` fills in and verifies the ids
+with Roblox's public web API. It resolves listed place ids to universes,
+searches by name where none is listed, and confirms each universe's name,
+then edits only the `"ids"` line of each profile where the names match.
+`lookback-testbench profiles --id roblox.universe=<id>` finds the profile for
+an id, and `--tag` lists a category. All regions are estimates until
+calibrated.
+
+The client ships anti-tamper protection, so the Roblox capture policy is
+external capture only, and every experience inherits it.
+
+## Clip candidates
+
+The runner turns events into `ClipCandidate`s on `clip.candidate`:
+
+- Events whose clip windows overlap, or come within 1.5 s, merge into one
+  candidate, up to 60 s long. A team fight with five eliminations becomes one
+  clip, not five overlapping ones.
+- **Score** is the sum of weight × confidence over the events inside;
+  **peak** is the event that contributed most; the candidate belongs to that
+  event's profile.
+- **Highlight probability** is 1 − e^(−score) for now: bounded, and monotonic
+  in the score. Ratings calibrate it in M4.
+
+The report shows a **profile** lane (which profile was active when, with how
+and why on hover) and a **candidates** lane (darker is a higher score).
+
+## Training profiles from footage
+
+```mermaid
+flowchart LR
+    L[Label footage:<br/>which profile it shows,<br/>moments, good clips] --> F[fingerprint command]
+    F --> P[(learned profiles<br/>detect.visual filled in)]
+    P --> D[dataset command<br/>--profiles learned]
+    D --> S[Detection accuracy<br/>event precision and recall<br/>candidate precision and recall]
+    S -->|adjust regions, rules,<br/>add footage| L
+```
+
+`fingerprint <manifest>` analyses every entry from the game down, so every
+region signal in the tree is measured. For each sub-game or mode, frames of
+its footage are compared with frames of its siblings' footage (or of the
+parent alone):
+
+1. Each video signal gets a **separation**: the gap between the two means
+   over the sum of the two standard deviations.
+2. The best separated signals (up to three, separation ≥ 1 and at least half
+   the best) become conditions. The threshold is where the two distributions
+   cross, kept at least a tenth of the gap from either mean.
+3. `minScore` is set halfway between the share of conditions that hold on
+   its own frames and on the others'.
+
+It prints each condition with how often it holds on each side, and writes
+complete profile files to `<out>/learned/`. Load them with
+`--profiles <out>/learned` on `analyze` or `dataset`, check the numbers, then
+copy the `detect.visual` block into the profile in `profiles/`. When nothing
+separates a profile, it says so: add a region over something only that
+experience or mode shows.
 
 ## How a profile becomes events
 
@@ -54,9 +202,11 @@ flowchart LR
    any other signal. Allocation-free per frame.
 2. **Merge.** Video frames and audio hops arrive on different threads at
    different speeds. The merger releases them in time order, holding each
-   item until every stream has moved past it (the watermark). A stream that
-   falls more than one second behind, or never sends at all (no audio
-   device), stops holding the others back.
+   item until every stream has moved past it (the watermark). The output
+   depends only on timestamps, so a replay at 8x (where the audio decoder
+   can run seconds of footage behind video) gives exactly the same events
+   as one at 1x. Only a stream that has sent nothing for two seconds of
+   wall time (no audio device) stops holding the others back.
 3. **Rules.** On every video frame the detector checks each rule. A rule
    that holds and is out of its cooldown opens a pending event.
 4. **Boosts.** Corroborating evidence near the trigger, such as an audio
@@ -185,7 +335,10 @@ edited copy without rebuilding.
 ## Datasets and scoring
 
 Each game gets a dataset: footage plus hand-marked moments, described by a
-manifest at `datasets/<game>/manifest.json`. Media is never committed; only
+manifest at `datasets/<game>/manifest.json`. Each entry can also say which
+profile the footage shows (`"profile": "roblox.arsenal"`), which scores
+detection and teaches fingerprints, and which stretches a person would clip
+(`"clips": [{ "start": 40, "end": 52 }]`), which scores candidates. Media is never committed; only
 manifests are (see `.gitignore`). An example is in
 `datasets/overwatch/manifest.example.json`.
 
@@ -211,6 +364,11 @@ dotnet run --project src/Lookback.Testbench -- dataset datasets/overwatch/manife
 ```
 
 ```
+arsenal-01.mp4: 23 events, detected roblox.arsenal (expected roblox.arsenal, right 91% of the time)
+
+detection  right profile 88% of labelled time
+candidates 14 match labelled clips, 3 extra, 2 missed: precision 82%, recall 88%, mean overlap 0.61
+
 event                       TP    FP    FN  precision   recall  (tolerance 1 s)
 elimination                 41     6     9        87%      82%
 multikill                    7     1     2        88%      78%
@@ -219,7 +377,10 @@ multikill                    7     1     2        88%      78%
 (Illustrative output.) A detection matches a label of the same name within
 the tolerance. Each label and each detection is used at most once, closest
 pairs first, so firing twice on one elimination scores one hit and one false
-positive. Scores are counted per entry and then summed, so a label in one
+positive. Candidates match labelled clips one-to-one when their time ranges
+overlap by at least 0.3 (intersection over union). Detection accuracy is the
+share of labelled time during which the active profile was the one the entry
+names. Scores are counted per entry and then summed, so a label in one
 file can never match a detection in another.
 
 This is the per-game QA loop for profile rules: change a threshold or a
@@ -231,9 +392,12 @@ labels later train the learned scorer (M4).
 | File | What it does |
 |---|---|
 | `Model/GameProfile.cs` | The records above, with defaults |
+| `Model/ProfileCatalog.cs` | The tree: parents, children, inheritance, tree-wide checks |
+| `Detection/ProfileTracker.cs` | Hints, fingerprints and hysteresis: which profile is active |
+| `Candidates/CandidateBuilder.cs` | Events to clip candidates |
 | `Model/GameProfileLoader.cs` | Loads by id (embedded) or path, rejects unknown fields, validates structure and signal names |
 | `Regions/RegionSignal.cs` | The per-region measurements, as an `IVideoSignal` |
 | `Detection/TimeOrderedMerger.cs` | Watermark merge of video and audio |
 | `Detection/ProfileEventDetector.cs` | Conditions, baselines, cooldowns, boosts, composites, margins |
 | `Detection/ProfileRunner.cs` | Subscribes to one session's signals on the bus, publishes `game.event` and `signals.rules` |
-| `Testbench/Datasets/*` | Manifest, scoring and the dataset runner |
+| `Testbench/Datasets/*` | Manifest, event, detection and candidate scoring, the dataset runner, the fingerprint learner |

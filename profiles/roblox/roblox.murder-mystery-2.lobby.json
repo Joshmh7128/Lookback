@@ -1,0 +1,18 @@
+// Lobby or waiting area: the experience's combat rules are switched off, the Roblox-wide ones stay.
+{
+  "id": "roblox.murder-mystery-2.lobby",
+  "displayName": "Murder Mystery 2: lobby",
+  "version": 1,
+  "parent": "roblox.murder-mystery-2",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage with lookback-testbench fingerprint."
+  },
+  "disable": [
+    "elimination",
+    "role_reveal",
+    "round_result",
+    "murder_spree"
+  ]
+}

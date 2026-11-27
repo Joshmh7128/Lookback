@@ -19,43 +19,97 @@ namespace Lookback.Profiles.Detection;
 /// </list>
 /// It also reports each condition's margin (value minus threshold) so a viewer
 /// can show why a rule did or did not fire.
+/// <para>
+/// Given a catalog, it runs a whole game tree at once: every rule of every
+/// profile under the root is known up front (so the margin schema never
+/// changes), and only the rules of the active profile, as chosen by the
+/// <see cref="ProfileTracker"/>, are evaluated. Inactive rules still track
+/// their baselines, so they are ready the moment their profile becomes active.
+/// </para>
 /// </summary>
 public sealed class ProfileEventDetector
 {
     private const int HistoryMs = 2000;
 
-    private readonly GameProfile _profile;
+    private readonly ProfileCatalog _catalog;
+    private readonly ProfileTracker _tracker;
     private readonly long _frequency;
     private readonly Dictionary<string, float> _values = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Queue<(long Qpc, float Value)>> _history = new(StringComparer.Ordinal);
     private readonly Dictionary<uint, (SignalFamily Family, string[] Names)> _schemas = [];
     private readonly RuleState[] _rules;
+    private readonly (CompositeRule Rule, HashSet<string> ActiveIn)[] _composites;
+    private bool _announced;
     private readonly List<Pending> _pending = [];
     private readonly Dictionary<string, Queue<long>> _recent = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, long> _compositeLast = new(StringComparer.Ordinal);
     private readonly float[] _margins;
     private long _now;
 
+    /// <summary>A single profile with no tree beneath it.</summary>
     public ProfileEventDetector(GameProfile profile, long frequency)
+        : this(new ProfileCatalog([profile ?? throw new ArgumentNullException(nameof(profile))]), profile.Id, frequency, DetectionMethod.Manual)
     {
-        ArgumentNullException.ThrowIfNull(profile);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frequency);
-        _profile = profile;
-        _frequency = frequency;
-        _rules = profile.Events.Select(e => new RuleState(e)).ToArray();
+    }
 
-        foreach (string s in profile.Events.SelectMany(e => e.Boosts).Select(b => b.Signal))
+    /// <param name="catalog">All profiles.</param>
+    /// <param name="startId">Where detection starts: a game, or a sub-game or mode chosen by hand.</param>
+    /// <param name="frequency">Ticks per second of the timestamps.</param>
+    /// <param name="method">How <paramref name="startId"/> was chosen.</param>
+    public ProfileEventDetector(ProfileCatalog catalog, string startId, long frequency, DetectionMethod method)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frequency);
+        _catalog = catalog;
+        _frequency = frequency;
+        _tracker = new ProfileTracker(catalog, startId, frequency, method);
+
+        // Every distinct rule instance in the tree, and the resolved profiles it is part of.
+        IReadOnlyList<GameProfile> tree = catalog.Subtree(_tracker.RootId);
+        var rules = new Dictionary<EventRule, RuleState>(ReferenceEqualityComparer.Instance);
+        var composites = new Dictionary<CompositeRule, HashSet<string>>(ReferenceEqualityComparer.Instance);
+        foreach (GameProfile own in tree)
+        {
+            GameProfile resolved = catalog.Resolve(own.Id);
+            foreach (EventRule e in resolved.Events)
+            {
+                if (!rules.TryGetValue(e, out RuleState? state))
+                {
+                    state = new RuleState(e, own.Id);
+                    rules[e] = state;
+                }
+
+                state.ActiveIn.Add(own.Id);
+            }
+
+            foreach (CompositeRule c in resolved.Composites)
+            {
+                if (!composites.TryGetValue(c, out HashSet<string>? set))
+                {
+                    set = new HashSet<string>(StringComparer.Ordinal);
+                    composites[c] = set;
+                }
+
+                set.Add(own.Id);
+            }
+        }
+
+        _rules = [.. rules.Values];
+        _composites = [.. composites.Select(kv => (kv.Key, kv.Value))];
+
+        foreach (string s in _rules.SelectMany(r => r.Rule.Boosts).Select(b => b.Signal))
         {
             _history.TryAdd(s, new Queue<(long, float)>());
         }
 
         var names = new List<string>();
-        foreach (EventRule e in profile.Events)
+        foreach (RuleState r in _rules)
         {
+            // Rules of the root keep short names; a child's rules carry the child's own part of its id.
+            string prefix = r.Owner == _tracker.RootId ? "" : r.Owner[(_tracker.RootId.Length + 1)..] + ".";
             int i = 0;
-            foreach (Condition c in e.When.Concat(e.WhenAny))
+            foreach (Condition c in r.Rule.When.Concat(r.Rule.WhenAny))
             {
-                names.Add(string.Create(CultureInfo.InvariantCulture, $"rule.{e.Name}.{i++}"));
+                names.Add(string.Create(CultureInfo.InvariantCulture, $"rule.{prefix}{r.Rule.Name}.{i++}"));
             }
         }
 
@@ -69,9 +123,18 @@ public sealed class ProfileEventDetector
     /// <summary>Margins after the last video frame. Positive means the condition held.</summary>
     public ReadOnlySpan<float> Margins => _margins;
 
-    /// <summary>Signals the rules use that no schema has provided.</summary>
-    public IEnumerable<string> MissingSignals(IEnumerable<string> available) =>
-        GameProfileLoader.ValidateSignals(_profile, available.ToHashSet(StringComparer.Ordinal));
+    /// <summary>The profile whose rules are being evaluated.</summary>
+    public string ActiveProfileId => _tracker.ActiveId;
+
+    /// <summary>Signals any rule or fingerprint in the tree uses that no schema has provided.</summary>
+    public IEnumerable<string> MissingSignals(IEnumerable<string> available)
+    {
+        var set = available.ToHashSet(StringComparer.Ordinal);
+        return _catalog.Subtree(_tracker.RootId).SelectMany(p => GameProfileLoader.ValidateSignals(p, set)).Distinct(StringComparer.Ordinal);
+    }
+
+    /// <summary>Live detection facts (launch arguments, window title, launcher log lines).</summary>
+    public ProfileDetected? ApplyHints(DetectionContext context, long at) => _tracker.ApplyHints(context, at);
 
     public void OnSchema(SignalSchema schema)
     {
@@ -83,7 +146,10 @@ public sealed class ProfileEventDetector
     /// Consumes one frame. Returns true when it was a video frame and the
     /// margins were refreshed. Finalised events are appended to <paramref name="events"/>.
     /// </summary>
-    public bool OnFrame(SignalFrame frame, List<GameEvent> events)
+    public bool OnFrame(SignalFrame frame, List<GameEvent> events) => OnFrame(frame, events, null);
+
+    /// <summary>As above; profile changes are appended to <paramref name="detections"/>.</summary>
+    public bool OnFrame(SignalFrame frame, List<GameEvent> events, List<ProfileDetected>? detections)
     {
         ArgumentNullException.ThrowIfNull(frame);
         if (!_schemas.TryGetValue(frame.SchemaId, out (SignalFamily Family, string[] Names) schema))
@@ -112,6 +178,18 @@ public sealed class ProfileEventDetector
         bool video = schema.Family == SignalFamily.Video;
         if (video)
         {
+            if (!_announced)
+            {
+                _announced = true;
+                detections?.Add(_tracker.Initial(t));
+            }
+
+            ProfileDetected? change = _tracker.OnVideoFrame(t, _values);
+            if (change is not null)
+            {
+                detections?.Add(change);
+            }
+
             Evaluate(t);
         }
 
@@ -125,8 +203,18 @@ public sealed class ProfileEventDetector
     private void Evaluate(long t)
     {
         int m = 0;
+        string active = _tracker.ActiveId;
         foreach (RuleState r in _rules)
         {
+            if (!r.ActiveIn.Contains(active))
+            {
+                int n = r.Rule.When.Count + r.Rule.WhenAny.Count;
+                _margins.AsSpan(m, n).Fill(float.NegativeInfinity);
+                m += n;
+                r.UpdateBaselines(this);
+                continue;
+            }
+
             bool all = true;
             foreach (Condition c in r.Rule.When)
             {
@@ -153,7 +241,7 @@ public sealed class ProfileEventDetector
                 }
 
                 int widest = r.Rule.Boosts.Count == 0 ? 0 : r.Rule.Boosts.Max(b => b.WithinMs);
-                _pending.Add(new Pending(r.Rule, t, t + Ms(widest), evidence));
+                _pending.Add(new Pending(r.Rule, active, t, t + Ms(widest), evidence));
             }
 
             r.UpdateBaselines(this);
@@ -181,18 +269,18 @@ public sealed class ProfileEventDetector
                 }
             }
 
-            GameEvent e = Make(p.Rule.Name, p.At, p.Rule.Clip, Math.Min(1, confidence), p.Rule.Weight, p.Evidence);
+            GameEvent e = Make(p.Rule.Name, p.Profile, p.At, p.Rule.Clip, Math.Min(1, confidence), p.Rule.Weight, p.Evidence);
             events.Add(e);
-            Composite(e, events);
+            Composite(e, p.Profile, events);
             _pending.RemoveAt(i--);
         }
     }
 
-    private void Composite(GameEvent e, List<GameEvent> events)
+    private void Composite(GameEvent e, string profile, List<GameEvent> events)
     {
-        foreach (CompositeRule c in _profile.Composites)
+        foreach ((CompositeRule c, HashSet<string> activeIn) in _composites)
         {
-            if (c.Of != e.Name)
+            if (c.Of != e.Name || !activeIn.Contains(profile))
             {
                 continue;
             }
@@ -215,18 +303,17 @@ public sealed class ProfileEventDetector
                 long first = q.Peek();
                 q.Clear(); // one composite per streak; the next one needs a fresh set
                 var evidence = new List<string> { string.Create(CultureInfo.InvariantCulture, $"{c.AtLeast}+ {c.Of} within {c.WithinMs} ms") };
-                GameEvent composite = Make(c.Name, at, c.Clip, e.Confidence, c.Weight, evidence);
+                GameEvent composite = Make(c.Name, profile, at, c.Clip, e.Confidence, c.Weight, evidence);
                 composite.WindowStartQpc = (ulong)Math.Max(0, first - Ms(c.Clip.PreMs)); // cover the whole streak
                 events.Add(composite);
-                _compositeLast[c.Name] = at;
             }
         }
     }
 
-    private GameEvent Make(string name, long at, ClipWindow clip, float confidence, float weight, List<string> evidence) => new()
+    private GameEvent Make(string name, string profile, long at, ClipWindow clip, float confidence, float weight, List<string> evidence) => new()
     {
         Name = name,
-        GameProfile = _profile.Id,
+        GameProfile = profile,
         AtQpc = (ulong)at,
         WindowStartQpc = (ulong)Math.Max(0, at - Ms(clip.PreMs)),
         WindowEndQpc = (ulong)(at + Ms(clip.PostMs)),
@@ -239,13 +326,19 @@ public sealed class ProfileEventDetector
 
     private long Ms(int ms) => QpcTime.Rescale(ms, 1000, _frequency);
 
-    private sealed record Pending(EventRule Rule, long At, long Due, List<string> Evidence);
+    private sealed record Pending(EventRule Rule, string Profile, long At, long Due, List<string> Evidence);
 
-    private sealed class RuleState(EventRule rule)
+    private sealed class RuleState(EventRule rule, string owner)
     {
         private readonly Dictionary<Condition, float> _baseline = [];
 
         public EventRule Rule { get; } = rule;
+
+        /// <summary>The profile that defines this rule.</summary>
+        public string Owner { get; } = owner;
+
+        /// <summary>Profiles in which this rule applies (its owner and descendants that do not replace or disable it).</summary>
+        public HashSet<string> ActiveIn { get; } = new(StringComparer.Ordinal);
 
         public long LastFired { get; set; } = long.MinValue / 2;
 

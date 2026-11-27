@@ -1,0 +1,36 @@
+{
+  // A horror experience: jumpscares, deaths and room-by-room progress.
+  "id": "roblox.doors",
+  "displayName": "DOORS",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["horror", "co-op"],
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["2440500124"], "roblox.place": ["6516141723"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No HUD regions yet; rules use whole-frame signals only." },
+  "events": [
+    {
+      // A sudden loud sound together with a sudden picture change.
+      "name": "jumpscare",
+      "weight": 1.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 4000,
+      "when": [ { "signal": "audio.rms_db", "rise": 15, "baselineAlpha": 0.02 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.08, "withinMs": 300, "add": 0.3 },
+        { "signal": "scene.cut", "above": 0.4, "withinMs": 300, "add": 0.2 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 3000 }
+    },
+    {
+      // The screen goes dark after a death.
+      "name": "death",
+      "weight": 0.8,
+      "baseConfidence": 0.5,
+      "cooldownMs": 10000,
+      "when": [ { "signal": "luma.black", "above": 0.9 } ],
+      "clip": { "preMs": 10000, "postMs": 2000 }
+    }
+  ]
+}

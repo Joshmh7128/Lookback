@@ -15,19 +15,43 @@ public class LoaderTests
         Assert.Contains("generic", GameProfileLoader.BuiltInIds);
     }
 
+    public static TheoryData<string> BuiltIns => [.. GameProfileLoader.BuiltInIds];
+
+    /// <summary>Every shipped profile, at every level, validates and names only signals that exist for its game's tree.</summary>
     [Theory]
-    [InlineData("overwatch")]
-    [InlineData("generic")]
+    [MemberData(nameof(BuiltIns))]
     public void BuiltInProfilesAreValidAndUseOnlyRealSignals(string id)
     {
         GameProfile p = GameProfileLoader.Load(id);
         Assert.Empty(GameProfileLoader.Validate(p));
 
+        ProfileCatalog catalog = ProfileCatalog.BuiltIn;
+        string root = catalog.PathTo(id)[0].Id;
         var available = new HashSet<string>(StringComparer.Ordinal);
         available.UnionWith(VideoSignalBank.CreateDefault(AnalysisFormat.Default).Names);
         available.UnionWith(AudioSignalBank.CreateDefault(AnalysisFormat.Default).Names);
-        available.UnionWith(new RegionSignal(p.Regions, 384, 216).Names);
-        Assert.Empty(GameProfileLoader.ValidateSignals(p, available));
+        available.UnionWith(new RegionSignal(catalog.SubtreeRegions(root), 384, 216).Names);
+        Assert.Empty(GameProfileLoader.ValidateSignals(catalog.Resolve(id), available));
+    }
+
+    [Fact]
+    public void EveryRobloxExperienceIsListedAndExternalOnly()
+    {
+        string[] expected =
+        [
+            "steal-an-egg", "murder-mystery-2", "brookhaven", "adopt-me", "99-nights-in-the-forest", "blox-fruits", "rivals",
+            "steal-a-brainrot", "jujutsu-shenanigans", "plus-one-speed-keyboard-escape", "bedwars", "slap-battles", "fisch",
+            "arsenal", "jailbreak", "doors",
+        ];
+        ProfileCatalog c = ProfileCatalog.BuiltIn;
+        Assert.All(expected, e => Assert.Equal(ProfileLevelKind.Subgame, c.Get("roblox." + e).Level));
+        Assert.All(c.Subtree("roblox"), p =>
+        {
+            GameProfile r = c.Resolve(p.Id);
+            Assert.False(r.CapturePolicy.AllowPresentHook || r.CapturePolicy.AllowMemoryReading);
+            Assert.False(r.Reference.Calibrated && p.Regions.Count > 0, $"{p.Id} claims calibrated regions");
+        });
+        Assert.NotEmpty(c.Get("roblox").IdHints);
     }
 
     [Fact]

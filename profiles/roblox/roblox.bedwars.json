@@ -1,0 +1,93 @@
+{
+  // Team PvP: protect your bed, break theirs. Final kills only after a team's bed is gone.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
+  "id": "roblox.bedwars",
+  "displayName": "BedWars",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["pvp", "teams", "strategy"],
+  "ids": { "roblox.universe": ["2619619496"], "roblox.place": ["6872265039"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "bedwars_kill_feed",
+      "x": 0.74,
+      "y": 0.3,
+      "w": 0.26,
+      "h": 0.25,
+      "purpose": "Kill feed on the right."
+    },
+    {
+      "name": "bedwars_banner",
+      "x": 0.25,
+      "y": 0.18,
+      "w": 0.5,
+      "h": 0.12,
+      "purpose": "Bed destroyed and final kill banners."
+    }
+  ],
+  "disable": [
+    "centre_popup"
+  ],
+  "events": [
+    {
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.45,
+      "cooldownMs": 400,
+      "whenAny": [
+        {
+          "signal": "region.bedwars_kill_feed.activity",
+          "rise": 0.05
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 6000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "bed_destroyed",
+      "weight": 1.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        {
+          "signal": "region.bedwars_banner.activity",
+          "rise": 0.08
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 400,
+          "add": 0.3
+        }
+      ],
+      "clip": {
+        "preMs": 12000,
+        "postMs": 4000
+      }
+    }
+  ],
+  "composites": [
+    {
+      "name": "multikill",
+      "of": "elimination",
+      "atLeast": 3,
+      "withinMs": 6000,
+      "weight": 3
+    }
+  ]
+}
