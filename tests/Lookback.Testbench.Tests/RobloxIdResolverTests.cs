@@ -33,4 +33,12 @@ public class RobloxIdResolverTests
         GameProfile p = GameProfileLoader.Parse(updated);
         Assert.Equal(["123"], p.Ids["roblox.universe"]);
     }
+
+    [Fact]
+    public void WindowsLineEndingsAreMatchedAndKept()
+    {
+        string json = "{\r\n  \"id\": \"roblox.x\",\r\n  \"ids\": {},\r\n  \"events\": []\r\n}\r\n";
+        string updated = RobloxIdResolver.ReplaceIdsLine(json, 1, ["2"]);
+        Assert.Equal("{\r\n  \"id\": \"roblox.x\",\r\n  \"ids\": { \"roblox.universe\": [\"1\"], \"roblox.place\": [\"2\"] },\r\n  \"events\": []\r\n}\r\n", updated);
+    }
 }

@@ -1,14 +1,14 @@
 {
   // Team PvP: protect your bed, break theirs. Final kills only after a team's bed is gone.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.bedwars",
   "displayName": "BedWars",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["pvp", "teams", "strategy"],
-  "ids": {},
+  "ids": { "roblox.universe": ["2619619496"], "roblox.place": ["6872265039"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

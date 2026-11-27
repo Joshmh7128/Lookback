@@ -1,14 +1,14 @@
 {
   // Collect eggs and steal them from other players.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.steal-an-egg",
   "displayName": "Steal an Egg",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["tycoon", "pvp", "pets"],
-  "ids": {},
+  "ids": { "roblox.universe": ["10563114921"], "roblox.place": ["107778070777162"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

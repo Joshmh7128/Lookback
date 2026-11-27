@@ -6,8 +6,8 @@
   "parent": "roblox",
   "level": "subgame",
   "tags": ["open-world", "cops-and-robbers"],
-  // Ids are unverified until "lookback-testbench roblox-ids" confirms them; the universe id is filled in by it.
-  "ids": { "roblox.place": ["606849621"] },
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["245662005"], "roblox.place": ["606849621"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
   "regions": [
     { "name": "jailbreak_banner", "x": 0.25, "y": 0.10, "w": 0.50, "h": 0.12, "purpose": "Notifications across the top: robbery started, arrested, bounty." }

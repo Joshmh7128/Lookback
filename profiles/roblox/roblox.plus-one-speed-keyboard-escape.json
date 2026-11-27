@@ -1,14 +1,14 @@
 {
   // Obstacle course where speed grows every second.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.plus-one-speed-keyboard-escape",
   "displayName": "+1 Speed Keyboard Escape",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["obby", "speed"],
-  "ids": {},
+  "ids": { "roblox.universe": ["9584852943"], "roblox.place": ["95082159892680"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "regions": [
     {

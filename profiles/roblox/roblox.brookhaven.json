@@ -1,14 +1,14 @@
 {
   // Open roleplay town. Few scripted moments: clips come from vehicles, chaos and loud reactions.
   // Regions and thresholds are estimates until calibrated on real footage.
-  // Ids are filled in and verified by "lookback-testbench roblox-ids".
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
   "id": "roblox.brookhaven",
   "displayName": "Brookhaven RP",
   "version": 1,
   "parent": "roblox",
   "level": "subgame",
   "tags": ["roleplay", "social"],
-  "ids": {},
+  "ids": { "roblox.universe": ["1686885941"], "roblox.place": ["4924922222"] },
   "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
   "disable": [
     "respawn_or_teleport"

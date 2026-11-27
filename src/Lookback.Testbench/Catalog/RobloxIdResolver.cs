@@ -25,7 +25,8 @@ internal sealed record RobloxIdResult(string Profile, string DisplayName, long? 
 /// </summary>
 internal static class RobloxIdResolver
 {
-    private static readonly Regex IdsLine = new("""^(?<indent>[ \t]*)"ids":[ \t]*\{.*\},?[ \t]*$""", RegexOptions.Multiline, TimeSpan.FromSeconds(1));
+    // [^\r\n] and \r? so files checked out with Windows line endings match too; the line ending itself is left as it was.
+    private static readonly Regex IdsLine = new("""^(?<indent>[ \t]*)"ids":[ \t]*\{[^\r\n]*\},?[ \t]*(?=\r?$)""", RegexOptions.Multiline, TimeSpan.FromSeconds(1));
 
     public static async Task<IReadOnlyList<RobloxIdResult>> RunAsync(string profileDirectory, bool write, HttpClient http, CancellationToken ct)
     {
@@ -93,8 +94,15 @@ internal static class RobloxIdResolver
                     places.AddRange(listed.Where(x => !places.Contains(x)));
                 }
 
-                string json = await File.ReadAllTextAsync(file, ct).ConfigureAwait(false);
-                await File.WriteAllTextAsync(file, ReplaceIdsLine(json, universe!.Value, places), ct).ConfigureAwait(false);
+                try
+                {
+                    string json = await File.ReadAllTextAsync(file, ct).ConfigureAwait(false);
+                    await File.WriteAllTextAsync(file, ReplaceIdsLine(json, universe!.Value, places), ct).ConfigureAwait(false);
+                }
+                catch (InvalidDataException ex)
+                {
+                    results[^1] = results[^1] with { Problem = $"not written: {ex.Message}" };
+                }
             }
         }
 
