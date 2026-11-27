@@ -38,6 +38,16 @@ public static class ClipFeatureSchema
     public const string SilentFraction = "silent_fraction";
     public const string VideoCoverage = "video_coverage";
     public const string AudioCoverage = "audio_coverage";
+    public const string CurveMean = "curve_mean";
+    public const string CurveMax = "curve_max";
+    public const string CurveAboveHigh = "curve_above_high";
+    public const string CurvePeaks = "curve_peaks";
+    public const string CurvePeakMax = "curve_peak_max";
+    public const string EventConfidenceMean = "event_confidence_mean";
+    public const string FluxZ = "flux_z";
+    public const string SceneCutZ = "scene_cut_z";
+    public const string LoudnessZMax = "loudness_z_max";
+    public const string MotionZMax = "motion_z_max";
 
     /// <summary>Feature names in vector order.</summary>
     public static IReadOnlyList<string> Names { get; } =
@@ -45,6 +55,8 @@ public static class ClipFeatureSchema
         HeuristicScore, DurationSeconds, EventCount, EventKinds, MaxContribution, MeanContribution,
         EventDensity, PeakPosition, MotionZ, FlashZ, RedEdgeZ, HudActivityZ, LoudnessZ, OnsetRate,
         SceneCuts, BlackFraction, FrozenFraction, SilentFraction, VideoCoverage, AudioCoverage,
+        CurveMean, CurveMax, CurveAboveHigh, CurvePeaks, CurvePeakMax, EventConfidenceMean,
+        FluxZ, SceneCutZ, LoudnessZMax, MotionZMax,
     ];
 
     public static int Count => Names.Count;

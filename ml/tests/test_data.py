@@ -26,9 +26,9 @@ def _row(**over) -> dict:
     return base
 
 
-def test_schema_has_twenty_unique_features():
+def test_schema_has_thirty_unique_features():
     assert SCHEMA.id == "clip-features/1"
-    assert len(SCHEMA) == 20
+    assert len(SCHEMA) == 30
     assert SCHEMA.names[0] == "heuristic_score"
 
 

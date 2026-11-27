@@ -8,7 +8,7 @@ on your machine: the ratings, the training and the inference.
 |---|---|
 | Schema: `ClipRating`, `ClipCandidate.features`, `QaReport.highlight_probability` | Built |
 | `RatingStore` and `RatingSink` (`src/Lookback.Scoring/Ratings/`) | Built |
-| Feature schema `clip-features/1` | Built: the list, the floor features any candidate has, and the C#/Python parity test. The clipper fills the rest |
+| Feature schema `clip-features/1` | Built: the 30-feature list, the floor features any candidate has, the map from Clipper v1's named features, and the C#/Python parity test |
 | Training, calibration, evaluation, ONNX export (`ml/`) | Built and tested on synthetic ratings |
 | `LearnedClipScorer` (ONNX Runtime, CPU) | Built, matched to Python by a committed fixture |
 | `lookback-testbench rate` | Built (terminal fallback) |
@@ -134,9 +134,44 @@ them identical. A schema is never edited: new features mean a new id.
 | 14 | `scene_cuts` | Scene cuts per second |
 | 15–17 | `black_fraction`, `frozen_fraction`, `silent_fraction` | Share of frames or hops that are black, frozen, silent |
 | 18–19 | `video_coverage`, `audio_coverage` | Share of the candidate with signal frames |
+| 20–24 | `curve_mean`, `curve_max`, `curve_above_high`, `curve_peaks`, `curve_peak_max` | The clipper's excitement curve over the candidate: mean, maximum, share of frames at or above the active threshold, peaks inside and the strongest |
+| 25 | `event_confidence_mean` | Mean confidence of the game events inside |
+| 26–27 | `flux_z`, `scene_cut_z` | Mean spectral flux and scene-cut signal, session z-score |
+| 28–29 | `loudness_z_max`, `motion_z_max` | Maximum loudness and motion z-score over the candidate |
 
-The clipper computes the vector and attaches it with
-`ClipFeatureSchema.Attach(candidate, features)`. Until it does, any candidate
+### From the clipper
+
+Clipper v1 keeps its own named features per candidate in memory
+(`Lookback.Clipper.CandidateFeatures`, version `clipper-features/1`: names
+such as `score.heuristic`, `window.seconds`, `curve.max`,
+`z_mean.motion.energy`). `ClipperFeatureMap.FromClipper` maps them onto
+`clip-features/1` by name, so neither project references the other:
+
+| Ours | Clipper's |
+|---|---|
+| `heuristic_score`, `duration_s`, `peak_position` | `score.heuristic`, `window.seconds`, `window.peak_position` |
+| `event_count`, `event_kinds`, `max_contribution`, `event_confidence_mean` | `events.count`, `events.kinds`, `events.score_max`, `events.confidence_mean` |
+| `mean_contribution`, `event_density` | `events.score_sum` / `events.count` (0 with no events), `events.count` / `window.seconds` |
+| `motion_z`, `flash_z`, `red_edge_z`, `hud_activity_z`, `loudness_z`, `flux_z`, `scene_cut_z` | `z_mean.` + `motion.energy`, `flash.brighten`, `flash.red_edge`, `hud.activity`, `audio.rms_db`, `spectral.flux`, `scene.cut` |
+| `loudness_z_max`, `motion_z_max` | `z_max.audio.rms_db`, `z_max.motion.energy` |
+| `black_fraction`, `frozen_fraction`, `silent_fraction` | `qa.black`, `qa.frozen`, `qa.silent` (1 when nothing was measured) |
+| `curve_*` | `curve.mean`, `curve.max`, `curve.above_high`, `curve.peaks`, `curve.peak_max` |
+| `onset_rate`, `scene_cuts`, `video_coverage`, `audio_coverage` | not provided: NaN |
+
+The clipper's z-scores are clamped robust z-scores, which is what the model
+sees in training as long as ratings come from the same clipper. The features
+must be on the candidate **before** it is published, so the rating sink can
+store them and the scorer can set its probability:
+
+```csharp
+float[] f = ClipperFeatureMap.FromClipper(output.Features);
+ClipFeatureSchema.Attach(candidate, f);
+scorer.Score(candidate, qpcFrequency);
+LearnedClipScorer.Annotate(qa, candidate);
+// then publish clip.candidate and qa.report
+```
+
+Until a producer attaches features, any candidate
 has its **floor features** (`ClipFeatureSchema.FromCandidate`): heuristic
 score, duration and peak position, the rest missing. Missing values are
 replaced by the training mean at inference, so a model trained on full
@@ -191,9 +226,9 @@ On the synthetic set (3 games × 6 sessions × 15 candidates, `lookback_ml.synth
 
 | Scorer | AUC | Log loss | Brier | ECE | precision@3 |
 |---|---|---|---|---|---|
-| Heuristic | 0.854 | 0.618 | 0.072 | 0.057 | 0.778 |
-| Model | 0.908 | 0.598 | 0.063 | 0.052 | 0.815 |
-| Calibrated | 0.908 | 0.543 | 0.040 | 0.034 | 0.815 |
+| Heuristic | 0.859 | 0.605 | 0.070 | 0.044 | 0.648 |
+| Model | 0.935 | 0.561 | 0.051 | 0.046 | 0.833 |
+| Calibrated | 0.935 | 0.520 | 0.035 | 0.033 | 0.833 |
 
 Synthetic data proves the plumbing, not the product: real numbers come from
 real ratings.
@@ -275,6 +310,7 @@ CI job checks the committed files still reproduce in Python.
 | `src/Lookback.Scoring/Ratings/RatingSink.cs` | Persists `clip.rating` from the bus |
 | `src/Lookback.Scoring/Ratings/RatingRecord.cs` | The line format |
 | `src/Lookback.Scoring/Features/ClipFeatureSchema.cs` | `clip-features/1` in C# |
+| `src/Lookback.Scoring/Features/ClipperFeatureMap.cs` | Clipper v1's named features → `clip-features/1` |
 | `src/Lookback.Scoring/Model/*` | `model.json`, Platt calibration, the ONNX session |
 | `src/Lookback.Scoring/LearnedClipScorer.cs` | Scores candidates; heuristic fallback |
 | `src/Lookback.Testbench/Datasets/RateRunner.cs` | `lookback-testbench rate` |

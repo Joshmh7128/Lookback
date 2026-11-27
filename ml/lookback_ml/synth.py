@@ -76,6 +76,21 @@ def generate(
                     "video_coverage": 1.0,
                     "audio_coverage": 1.0 if rng.random() > 0.05 else 0.0,
                 }
+                curve = _sigmoid(1.1 * q + 0.6 * rng.normal())
+                f.update(
+                    {
+                        "curve_mean": 0.6 * curve,
+                        "curve_max": curve,
+                        "curve_above_high": float(np.clip(0.5 * curve + 0.1 * rng.normal(), 0, 1)),
+                        "curve_peaks": int(rng.poisson(0.5 + 2 * curve)),
+                        "curve_peak_max": max(0.0, curve + 0.2 * rng.normal()),
+                        "event_confidence_mean": float(np.clip(0.6 + 0.15 * q + 0.1 * rng.normal(), 0, 1)) if count else 0.0,
+                        "flux_z": 0.5 * q + rng.normal(),
+                        "scene_cut_z": rng.normal(),
+                        "loudness_z_max": f["loudness_z"] + abs(rng.normal()),
+                        "motion_z_max": f["motion_z"] + abs(rng.normal()),
+                    }
+                )
                 values = [float(f[name]) for name in schema.names]
                 values = [None if rng.random() < missing else round(v, 6) for v in values]
                 stars = int(np.clip(np.round(3 + 1.3 * (q + bias) + 0.6 * rng.normal()), 1, 5))

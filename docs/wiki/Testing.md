@@ -181,6 +181,10 @@ The learned scorer and ratings. Platform-neutral, so they run on Windows and Lin
 | | `Wrong_schema_keeps_the_heuristic_but_floor_features_score` | Features of another schema are not read; a bare candidate is scored from its floor features when the clock frequency is known |
 | | `Qa_report_gets_the_highlight_probability` | `QaReport.highlight_probability` copies the scored value |
 | | `Scoring_is_thread_safe` | 64 parallel scores agree |
+| `ClipperFeatureMapTests.cs` | `Every_mapping_reads_a_documented_clipper_name_into_a_schema_feature` | Each mapped name is one Clipper v1 documents for `clipper-features/1`, and each target is in our schema |
+| | `Full_clipper_features_fill_all_but_what_the_clipper_does_not_measure` | Direct copies, the two derived features, and exactly onset rate, scene cuts and coverage left NaN |
+| | `Curve_only_candidate_has_zero_mean_contribution_and_missing_names_stay_nan` | No events gives 0 contribution and density; absent or infinite values stay missing |
+| | `Mapped_features_score_through_the_fixture_model` | A mapped vector scores with the model |
 | `ClipFeatureSchemaTests.cs` | `Matches_ml_feature_schema_json` | The C# feature list is exactly `ml/feature_schema.json` |
 | | `Floor_features_come_from_the_candidate_alone`, `Attach_sets_the_schema_and_rejects_the_wrong_length` | The vector helpers |
 | | `New_fields_survive_a_round_trip` | `ClipRating`, `ClipCandidate.features` and `QaReport.highlight_probability` serialise and parse |
