@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Lookback.Contracts.V1;
 using Lookback.Stream.SessionLog;
 using Lookback.Testbench;
 using Lookback.Testbench.Datasets;
+using Lookback.Testbench.Live;
 
 const string Usage = """
     lookback-testbench: run footage through Lookback's signals and render a timeline.
@@ -17,6 +19,15 @@ const string Usage = """
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
       lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
       lookback-testbench report <session-path-without-extension> [--video <file>]
+      lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
+                                     [--port <n>] [--no-wait] [--pipe <name>]
+                                     [--retention ...] [--permission-ref <ref>] [--title <text>]
+
+    Live plays the footage in real time, runs the profile's rules on it, and
+    shows every event in the live profiler as it fires: it prints a link to
+    open in a browser and starts the clip when the page connects. With --pipe it sends to a running recorder instead
+    (start the recorder with --Recorder:Profiler=true and open its link).
+    Nothing is written to disk.
 
     Profiles:
       Profiles form a tree: game, then sub-game (a Roblox experience), then mode.
@@ -37,6 +48,8 @@ const string Usage = """
 
 using var cts = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
+// `live` keeps serving until stopped; treat a termination request like Ctrl+C.
+using PosixSignalRegistration term = PosixSignalRegistration.Create(PosixSignal.SIGTERM, c => { c.Cancel = true; cts.Cancel(); });
 
 try
 {
@@ -48,6 +61,7 @@ try
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
         ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
+        ["live", string file, .. var rest] => await LiveAsync(file, ParseFlags(rest), cts.Token),
         _ => PrintUsage(),
     };
 }
@@ -56,7 +70,11 @@ catch (RetentionViolationException ex)
     await Console.Error.WriteLineAsync($"Refused: {ex.Message}");
     return 2;
 }
-catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or ArgumentException)
+catch (OperationCanceledException)
+{
+    return 130;
+}
+catch (Exception ex) when (ex is FileNotFoundException or InvalidDataException or ArgumentException or TimeoutException)
 {
     await Console.Error.WriteLineAsync($"Error: {ex.Message}");
     return 1;
@@ -250,6 +268,29 @@ static async Task<int> ReportAsync(string session, Dictionary<string, string> fl
     return 0;
 }
 
+static async Task<int> LiveAsync(string file, Dictionary<string, string> flags, CancellationToken ct)
+{
+    var options = new LiveOptions
+    {
+        File = file,
+        Retention = ParseRetention(flags.GetValueOrDefault("retention", "owned")),
+        PermissionRef = flags.GetValueOrDefault("permission-ref", ""),
+        Title = flags.GetValueOrDefault("title"),
+        Game = flags.GetValueOrDefault("game"),
+        Profile = flags.GetValueOrDefault("profile"),
+        Speed = double.Parse(flags.GetValueOrDefault("speed", "1"), CultureInfo.InvariantCulture),
+        PipeName = flags.GetValueOrDefault("pipe"),
+        Port = int.Parse(flags.GetValueOrDefault("port", "0"), CultureInfo.InvariantCulture),
+        WaitForViewer = !flags.ContainsKey("no-wait"),
+        Loop = flags.ContainsKey("loop"),
+        KeepServing = true,
+    };
+
+    LiveResult r = await LiveRunner.RunAsync(options, Console.WriteLine, ct);
+    Console.WriteLine($"sent     {r.Released} events in {r.Plays} play(s)");
+    return 0;
+}
+
 static Retention ParseRetention(string value) => value.ToLowerInvariant() switch
 {
     "owned" => Retention.Owned,
@@ -264,6 +305,12 @@ static Dictionary<string, string> ParseFlags(string[] args)
     var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     for (int i = 0; i < args.Length; i++)
     {
+        if (args[i] is "--loop" or "--no-wait")
+        {
+            flags[args[i][2..]] = "true";
+            continue;
+        }
+
         if (!args[i].StartsWith("--", StringComparison.Ordinal) || i + 1 >= args.Length)
         {
             throw new ArgumentException($"Unexpected argument '{args[i]}'.");

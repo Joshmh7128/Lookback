@@ -10,7 +10,12 @@ timeline.
 lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|open-license|ephemeral]
                                   [--permission-ref <ref>] [--title <text>] [--game <name>]
 lookback-testbench report <session-path-without-extension> [--video <file>]
+lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
+                               [--port <n>] [--no-wait] [--pipe <name>] [--retention ...]
 ```
+
+`live` plays the footage in real time into the [live profiler](Live-Profiler)
+instead of analysing it as fast as possible; see that page.
 
 Requires ffmpeg and ffprobe on PATH (or `LOOKBACK_FFMPEG_DIR`).
 

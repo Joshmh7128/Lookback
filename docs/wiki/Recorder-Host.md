@@ -26,6 +26,7 @@ server GC's per-core heaps.
 |---|---|---|
 | `PipeName` | `lookback.events` | Named pipe the other processes connect to |
 | `WebSocketPort` | `0` | 0 picks a free port, reported in the handshake |
+| `Profiler` | `false` | Serve the [live profiler](Live-Profiler) at `/profiler` and print `LOOKBACK_PROFILER <url>` on stdout |
 
 ## `StreamHostService.cs`
 

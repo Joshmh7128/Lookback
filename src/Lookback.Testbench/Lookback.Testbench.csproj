@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
+    <ProjectReference Include="..\Lookback.Profiler\Lookback.Profiler.csproj" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Report\report.html" LogicalName="report.html" />

@@ -97,6 +97,20 @@ Streams bus events to Electron as JSON text frames.
   cancels the send loop, so a closed client is noticed even when no events
   are flowing. Inbound messages are ignored in M0; ratings and clip requests
   come with M2.
+- **Late joiners:** `StreamSnapshot` keeps each live session's
+  `SessionStarted`, latest `GameLifecycle` and each producer's latest
+  `SignalSchema`. A new client gets these first (after it has subscribed, so
+  nothing in between is lost; one may arrive twice), so it can decode frames
+  that started before it connected. Sessions are dropped on `SessionEnded`,
+  and at most 32 are kept. `ReplaySnapshot = false` turns it off.
+- **Pages:** `Pages` serves self-contained HTML, such as the
+  [live profiler](Live-Profiler), from the same loopback origin, with a strict
+  Content-Security-Policy. When pages are configured the bridge's own origin
+  joins the allow-list; `PageUrl` builds a link with the token in the URL
+  fragment, which never reaches the server.
+- **Shutdown:** `DisposeAsync` completes every client's subscription, so each
+  send loop delivers what is already queued and closes normally; a client
+  that stops reading is cut off after two seconds.
 
 ```mermaid
 flowchart TD

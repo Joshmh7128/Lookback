@@ -17,4 +17,5 @@
 - [Game Profiles](Game-Profiles)
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
+- [Live Profiler](Live-Profiler)
 - [Testing](Testing)

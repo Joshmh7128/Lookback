@@ -33,8 +33,12 @@ dotnet run --project src/Lookback.Recorder
 dotnet run --project src/Lookback.Testbench -- analyze my-clip.mp4 --out out
 dotnet run --project src/Lookback.Testbench -- analyze my-clip.mp4 --profile overwatch
 dotnet run --project src/Lookback.Testbench -- dataset datasets/overwatch/manifest.json
+<<<<<<< HEAD
+dotnet run --project src/Lookback.Testbench -- live my-clip.mp4 --profile overwatch
+=======
 dotnet run --project src/Lookback.Testbench -- fingerprint datasets/roblox/manifest.json
 dotnet run --project src/Lookback.Testbench -- profiles
+>>>>>>> origin/main
 ```
 
 The recorder prints one `LOOKBACK_READY {"pipe":…,"ws":…,"token":…}` line on
@@ -54,6 +58,7 @@ profiles/                 game profiles as JSON
 datasets/                 per-game dataset manifests (no media)
 src/Lookback.Recorder/    service host
 src/Lookback.Testbench/   footage CLI and timeline viewer
+src/Lookback.Profiler/    live event profiler page, for demos
 tests/                    xUnit v3 tests
 docs/                     architecture
 ```
