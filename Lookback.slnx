@@ -3,6 +3,7 @@
     <Project Path="src/Lookback.Capture.Cli/Lookback.Capture.Cli.csproj" />
     <Project Path="src/Lookback.Encode/Lookback.Encode.csproj" />
     <Project Path="src/Lookback.Capture/Lookback.Capture.csproj" />
+    <Project Path="src/Lookback.Calibration/Lookback.Calibration.csproj" />
     <Project Path="src/Lookback.Contracts/Lookback.Contracts.csproj" />
     <Project Path="src/Lookback.Core/Lookback.Core.csproj" />
     <Project Path="src/Lookback.Governor/Lookback.Governor.csproj" />
@@ -17,6 +18,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Lookback.Capture.Tests/Lookback.Capture.Tests.csproj" />
+    <Project Path="tests/Lookback.Calibration.Tests/Lookback.Calibration.Tests.csproj" />
     <Project Path="tests/Lookback.Core.Tests/Lookback.Core.Tests.csproj" />
     <Project Path="tests/Lookback.Governor.Tests/Lookback.Governor.Tests.csproj" />
     <Project Path="tests/Lookback.Profiles.Tests/Lookback.Profiles.Tests.csproj" />

@@ -8,8 +8,8 @@
   "version": 1,
   "level": "game",
   "tags": ["shooter", "tactical", "anti-cheat"],
-  // DirectX and Vulkan builds. Verify the names against your install; the
-  // launcher-side BattlEye wrapper is not the game.
+  // DirectX and Vulkan builds, as Ubisoft Support names them (one .exe per
+  // renderer in the install folder). The launcher-side BattlEye wrapper is not the game.
   "executables": ["RainbowSix.exe", "RainbowSix_Vulkan.exe"],
   "capturePolicy": {
     "allowPresentHook": false,

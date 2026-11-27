@@ -56,6 +56,19 @@ events live. The session is `OFFICIAL_PLAYER` + `EPHEMERAL`: features stay in
 memory and vanish when the session ends, and export is disabled. It
 demonstrates the pipeline on arbitrary footage; it is not a dataset source.
 
+### Confirmed profile parameters
+
+The viewer can also calibrate a game profile ([Official-Player
+Calibration](Official-Player-Calibration)). The only thing that may leave an
+official-player session is numbers in a profile file that you reviewed and
+pressed Save for: region rectangles (x, y, w, h) and rule thresholds.
+`RetentionRules.ValidateDerived(session, ConfirmedProfileParameters,
+userConfirmed)` gates it, and `CalibrationWriter` is the only code that calls
+it. The writer edits those number tokens in place and nothing else, so the
+profile's diff shows exactly what was saved. Frames, audio, signal series,
+marks, times and the video's identity are never written, and
+`RetentionRules.CanPersist` stays false for the session.
+
 ## Datasets
 
 Per-game datasets come from your own recordings (labelled automatically by

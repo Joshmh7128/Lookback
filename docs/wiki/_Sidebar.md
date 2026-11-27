@@ -21,5 +21,6 @@
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
 - [Live Profiler](Live-Profiler)
+- [Official-Player Calibration](Official-Player-Calibration)
 - [Dataset Browser](Dataset-Browser)
 - [Testing](Testing)
