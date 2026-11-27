@@ -470,7 +470,7 @@ there is something to hear; loopback records everything the speakers play.
 ```
 render  * Speakers (Realtek(R) Audio)
 capture * Microphone (Yeti Stereo Microphone)
-Windows build 19045; process loopback needs 20348+
+Windows build 19045; process loopback tried (falls back to system loopback if it fails or stays silent)
 plan: system loopback, encoded
 game: endpoint loopback of Speakers (Realtek(R) Audio) (48000 Hz 2 ch IeeeFloat)
   1.0s  game  -21.5 dBFS  packets 101  hops 101  rate 48000.04 Hz  resets 1  glitches 0  alloc 0 B  aac 45
@@ -485,8 +485,10 @@ wrote ...\clips\showcase-audio.mp4: 145 KiB, tracks 1:game
 
 **How to read it.**
 
-- `plan` is `AudioCapturePolicy`'s decision: endpoint loopback on Windows 10,
-  process loopback of the game's pid on build 20348+.
+- `plan` is `AudioCapturePolicy`'s decision: endpoint loopback without a
+  game pid; with `--pid`, process loopback of that process and its children
+  on build 19041+ (Windows 10 included), falling back to the endpoint if it
+  fails or stays silent.
 - `rate` is the measured device rate from the clock fit (within a few ppm of
   48000); `resets 1` is the initial fit.
 - `alloc 0 B`: nothing is allocated on the capture thread per packet.

@@ -37,6 +37,7 @@ internal static unsafe class Wasapi
     public static readonly Guid IidAudioClient = new("1CB9AD4C-DBFA-4C32-B178-C2F568A703B2");
     public static readonly Guid IidAudioCaptureClient = new("C8ADBD64-E71E-48A0-A4DE-185C395CD317");
     public static readonly Guid IidAudioRenderClient = new("F294ACFC-3146-4483-A7BF-ADDCA7C260E2");
+    public static readonly Guid IidAudioMeterInformation = new("C02216F6-8C67-4B5B-9D00-D008E73E0064");
     public static readonly Guid IidActivateCompletionHandler = new("41D949AB-9862-444A-80F6-C261334DA5EB");
     public static readonly Guid IidAgileObject = new("94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90");
     public static readonly Guid IidUnknown = new("00000000-0000-0000-C000-000000000046");
@@ -86,6 +87,15 @@ internal static unsafe class Wasapi
         nint d;
         int hr = ((delegate* unmanaged[Stdcall]<nint, uint, nint*, int>)Vtbl(collection)[4])(collection, index, &d);
         device = hr >= 0 ? d : 0;
+        return hr;
+    }
+
+    // IAudioMeterInformation
+    public static int GetPeakValue(nint meter, out float peak)
+    {
+        float v = 0;
+        int hr = ((delegate* unmanaged[Stdcall]<nint, float*, int>)Vtbl(meter)[3])(meter, &v);
+        peak = v;
         return hr;
     }
 
@@ -144,9 +154,14 @@ internal static unsafe class Wasapi
     public static int Initialize(nint client, int shareMode, uint flags, long bufferHns, long periodHns, WaveFormatExtensible* format) =>
         ((delegate* unmanaged[Stdcall]<nint, int, uint, long, long, WaveFormatExtensible*, Guid*, int>)Vtbl(client)[3])(client, shareMode, flags, bufferHns, periodHns, format, null);
 
+    /// <remarks>
+    /// A process-loopback client on Windows 10 (19045) returns S_OK here
+    /// without writing the count, so <paramref name="frames"/> is 0 then;
+    /// callers fall back to the requested buffer length.
+    /// </remarks>
     public static int GetBufferSize(nint client, out uint frames)
     {
-        uint n;
+        uint n = 0;
         int hr = ((delegate* unmanaged[Stdcall]<nint, uint*, int>)Vtbl(client)[4])(client, &n);
         frames = n;
         return hr;

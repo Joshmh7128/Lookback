@@ -100,7 +100,8 @@ sequenceDiagram
   budget picks the tier (on AETHER's RTX: 1440p60 HEVC), the ring (120 s) and
   the disk budget.
 - **Audio:** `AudioCapturePolicy` decides: process loopback of the game where
-  Windows has it (build 20348+), otherwise the whole endpoint; the mic only
+  Windows has it (build 19041+, checked, falling back if it fails or stays
+  silent), otherwise the whole endpoint; the mic only
   with `Microphone`. If audio fails to start, video keeps recording.
 - **No hangs:** the encoder runs under the stall watchdog (fallback chain,
   then fail-fast), and so does the capture thread. A fail-fast exit is the

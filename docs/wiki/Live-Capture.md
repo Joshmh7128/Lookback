@@ -94,7 +94,7 @@ flowchart LR
 | Stage | Type | What it does |
 |---|---|---|
 | Policy | `AudioCapturePolicy` | Decides what a session gets from its `SessionStarted`, the OS build and the game's pid (below) |
-| Capture | `WasapiSource` | WASAPI shared mode, event-driven, on an MMCSS ("Pro Audio") thread; raw vtable calls, so nothing is allocated per packet (`CaptureThreadAllocatedBytes` measures it). Endpoint loopback of the default render device, process loopback of the game on Windows build 20348+, or the default mic |
+| Capture | `WasapiSource` | WASAPI shared mode, event-driven, on an MMCSS ("Pro Audio") thread; raw vtable calls, so nothing is allocated per packet (`CaptureThreadAllocatedBytes` measures it). Endpoint loopback of the default render device, process loopback of the game (and its children) on Windows build 19041+, checked and with a fallback ([below](#process-loopback-on-windows-10)), or the default mic |
 | Clock | `SampleClock` | `u64QPCPosition` (100 ns) is rescaled to raw QPC and fitted against the device position (weighted least squares, ~30 s window); silent packets become zeros, discontinuity flags and timestamp errors reset or bridge the fit |
 | Resample | `StereoResampler` | Downmix to stereo (centre and surrounds at -3 dB, LFE dropped), 4-point Hermite to 48 kHz. Once the fit has 5 s it resamples at the *measured* device rate, so the sample count stays on QPC instead of drifting |
 | Encode | `MfAacEncoder` | The Microsoft AAC MFT, synchronous: float → PCM16, 128/160/192 kbps, raw access units, AudioSpecificConfig from `MF_MT_USER_DATA`. Packet times come from the sample count, anchored on the first QPC; late input gets silence first, early input is trimmed (20 ms tolerance). 0 B per call |
@@ -122,15 +122,65 @@ flowchart LR
 
 | Session | Game audio | Mic | Encoded |
 |---|---|---|---|
-| Live game, owned | Process loopback of the game on 20348+, otherwise endpoint loopback (and the plan says why) | If asked | Yes |
+| Live game, owned | Process loopback of the game on 19041+; endpoint loopback before that, or if process loopback fails or stays silent (`FallbackReason` and the log say why) | If asked | Yes |
 | Live game, ephemeral | As above | No | No (analysis only) |
-| Official player | Process loopback of the player on 20348+ only; **never endpoint loopback**, which would pick up everything else the machine plays. On Windows 10 (AETHER) it gets no audio | No | Never: no encoder, ring or store |
+| Official player | Process loopback of the player on 19041+ only, with no fallback; **never endpoint loopback**, which would pick up everything else the machine plays. Before 19041 it gets no audio | No | Never: no encoder, ring or store |
+
+### Process loopback on Windows 10
+
+Microsoft documents `AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK` from build
+20348, but it works from Windows 10 2004 (build 19041). OBS gates its
+Application Audio Capture source on 19041 for the same reason (a comment in
+its `win-wasapi` plugin notes that process filtering works before 20348). Lookback tries it
+from 19041 and checks that it works:
+
+- **Activation.** `ActivateAudioInterfaceAsync("VAD\\Process_Loopback")` with
+  the target pid and `INCLUDE_TARGET_PROCESS_TREE`, then `Initialize` with an
+  explicit 48 kHz float stereo format (OBS does the same and never calls
+  `GetMixFormat` on this client) and `LOOPBACK | EVENTCALLBACK | AUTOCONVERTPCM`. OBS passes
+  `LOOPBACK | EVENTCALLBACK` only, at its own mix rate; both work on 19045.
+  The completion wait has a 5 s timeout.
+- **Quirks on 19045**, none of which OBS hits because it ignores them:
+  `GetBufferSize` returns S_OK without writing the count (the source uses
+  the requested buffer length instead); the device position is 0 on every
+  packet (the source counts frames itself); and `u64QPCPosition` is exactly
+  10 ms per 480-frame packet but jumps forward 7–17 ms when the target
+  starts or stops a stream. Process loopback runs the clock fit with a 3 ms
+  reset tolerance, so each jump becomes a reset plus a short gap filled with
+  silence rather than a bent rate.
+- **Fallback, by timeout.** If activation or `Initialize` fails, or the
+  default render endpoint's peak meter (`IAudioMeterInformation`) is above
+  -60 dBFS for 3 s in total while the process has delivered only silence,
+  the source switches to endpoint loopback, sets `FallbackReason`, and calls
+  the `Log` option with it. The check runs on the capture thread's own 20 ms
+  loop, so nothing waits on it. One non-silent sample from the process
+  proves it for the rest of the session. A game that is silent while
+  something else plays for 3 s falls back too, so the clip then has that
+  other audio, as it would with endpoint loopback.
+- **Official players** never fall back: the source stays on the process and
+  `FallbackReason` says why it is not trusted.
+
+Measured on AETHER (19045): a child process playing a 600 Hz tone is captured
+at its level while this process's 997 Hz tone, played at the same time, is
+not (0.0001); the clock fit holds 48000.00 Hz; 0 B per packet; a silent target
+falls back once the endpoint has played for the probe time (1 s in the test).
+
+**Electron and the official-player viewer.** Chromium plays audio from its
+audio-service utility process, a child of the main process. Process loopback
+of an Electron main pid with the tree included hears a WebAudio tone at its
+level (-20 dBFS for amplitude 0.1); with the tree excluded (`--process-only`)
+it hears nothing. So the viewer can get its audio by capturing the shell's
+main pid with its tree, on Windows 10 too. That tree is the whole shell (every
+window and webview, plus children it spawns, such as the recorder), never
+other applications; the recorder itself plays only a silent keep-alive and
+only on endpoint loopback. Wiring the viewer to it is the shell's job.
 
 ### Audio bench: `lookback-capture audio`
 
 ```powershell
 & $cap audio --list
 & $cap audio --seconds 10 --mic --pid 1234 --out audio.mp4
+& $cap audio --seconds 6 --pid 1234 --process-only   # without the process's children
 ```
 
 It prints the plan, then every second the level, packets, hops, the
@@ -138,7 +188,8 @@ measured device rate, clock resets, glitches and capture-thread allocation.
 With `--out`, it encodes the game (and mic) tracks into a RAM ring and writes
 an audio-only clip at the end. `--out` is refused unless
 `RetentionRules.CanPersist` allows it, so `--official-player` creates no
-encoder and writes nothing.
+encoder and writes nothing. A fallback from process loopback is printed
+when it happens.
 
 Measured on AETHER (Windows 10 19045): endpoint loopback of the Realtek
 speakers and the Yeti mic, both 48 kHz float stereo; clock fit 47999.9 Hz
@@ -297,8 +348,9 @@ design, sync model and allowlist are on [Present Hook](Present-Hook).
 
 ## Not yet
 
-- Process loopback is written but has never run: AETHER is build 19045 and
-  CI runners have no audio device.
+- The recorder logs only the plan at session start; a later process-loopback
+  fallback is on `WasapiSource.FallbackReason` and the `Log` option, which the
+  recorder does not pass yet.
 - The governor's runtime controller (stepping the tier down under pressure)
   is built and tested but not wired into the recorder's sessions yet.
 - A testbench mode for several recorders at once (lower tier, larger footage

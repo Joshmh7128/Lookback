@@ -96,4 +96,30 @@ internal static class Tools
 
         return x.Length == 0 ? 0 : Math.Sqrt(sum / x.Length);
     }
+
+    /// <summary>A 48 kHz mono PCM16 WAV of a sine with 50 ms fades, for another process to play.</summary>
+    public static void WriteToneWav(string path, double hz, double seconds, double amplitude)
+    {
+        const int rate = 48_000;
+        int frames = (int)(seconds * rate);
+        int fade = rate / 20;
+        using var w = new BinaryWriter(File.Create(path));
+        w.Write("RIFF"u8);
+        w.Write(36 + (frames * 2));
+        w.Write("WAVEfmt "u8);
+        w.Write(16);
+        w.Write((short)1);
+        w.Write((short)1);
+        w.Write(rate);
+        w.Write(rate * 2);
+        w.Write((short)2);
+        w.Write((short)16);
+        w.Write("data"u8);
+        w.Write(frames * 2);
+        for (int i = 0; i < frames; i++)
+        {
+            double gain = Math.Min(1.0, Math.Min(i, frames - i) / (double)fade);
+            w.Write((short)Math.Round(32767 * amplitude * gain * Math.Sin(2 * Math.PI * hz * i / rate)));
+        }
+    }
 }

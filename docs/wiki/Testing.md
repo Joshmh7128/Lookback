@@ -319,8 +319,8 @@ plain Win32 window built with the tests, and list it in a temporary profile.
 
 Windows-only tests skip elsewhere. The device tests also skip without a
 default render or capture device, and CI runners have none, so on CI the AAC
-tests run and the WASAPI ones skip. On AETHER everything runs except process
-loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
+tests run and the WASAPI ones skip. On AETHER everything runs, process loopback
+included (build 19045), except the pre-19041 fallback test. See [Live Capture](Live-Capture#live-audio).
 
 | File | Test | What it proves |
 |---|---|---|
@@ -330,10 +330,14 @@ loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
 | | `Encoding_allocates_nothing_after_the_first_packet` | 0 bytes allocated per `Encode` call |
 | `LoopbackTests.cs` | `Endpoint_loopback_hears_a_rendered_tone` | A quiet 997 Hz tone played through a render stream comes back through endpoint loopback at the right pitch; QPC stamps are current and monotonic; the clock fit is within 0.1% of nominal; hops cover the capture; 0 B per packet |
 | | `Default_device_change_reopens_and_the_timeline_carries_on` | A default-device notification re-opens the stream; the gap is filled and hops stay continuous |
-| | `Process_loopback_falls_back_only_where_allowed`, `Process_loopback_hears_this_process` | Before build 20348 a process-loopback request falls back to the endpoint and says why, or is refused when fallback isn't allowed; on 20348+ it hears this process's tone |
+| | `Process_loopback_falls_back_only_where_allowed` | Before build 19041 a process-loopback request falls back to the endpoint and says why, or is refused when fallback isn't allowed (skips on 19041+) |
+| | `Process_loopback_hears_this_process` | On 19041+ it hears this process's tone at its level; counted frames keep the clock fit (Windows 10 reports position 0); stamps current and monotonic; 0 B per packet |
+| | `Process_loopback_hears_only_the_target_process` | A child powershell plays 600 Hz while this process plays 997 Hz: process loopback of the child hears the 600 Hz tone and not the 997 Hz one |
+| | `Silent_process_loopback_falls_back_after_the_probe_only_where_allowed` (allowed, not allowed) | The target is silent while the endpoint plays: after the probe it switches to endpoint loopback (and hears the tone), or, with no fallback allowed (official players), stays on the process and hears nothing; `FallbackReason` and `Log` say why |
+| | `Process_loopback_of_an_exited_process_never_hangs` | Start returns at once and the source ends up on the endpoint |
 | | `Microphone_track_opens_and_streams` | The default mic streams at 48 kHz with current stamps and 0 B per packet |
 | `ResamplerTests.cs` | 5 tests | A unity ratio is a two-frame delay; 44.1, 96 and 47.99 kHz resample to 48 kHz keeping pitch, level and length; surround downmix cannot clip and drops LFE; PCM16, PCM24 and float decode |
-| `PolicyTests.cs` | 4 tests | Official player: never system loopback, encoder or mic; a live game falls back to system loopback before 20348 and says so; ephemeral is analysis only; invalid retention is refused |
+| `PolicyTests.cs` | 5 tests | Process loopback is tried from 19041; official player: never system loopback, encoder or mic, process loopback on Windows 10 with no fallback; a live game gets process loopback on Windows 10 with a fallback, and system loopback before 19041 (and says so); ephemeral is analysis only; invalid retention is refused |
 
 ## `Lookback.Calibration.Tests`: the clipper check
 

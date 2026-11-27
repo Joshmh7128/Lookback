@@ -169,24 +169,162 @@ public class LoopbackTests(ITestOutputHelper output)
         output.WriteLine($"{source.Description}: {source.FallbackReason}");
         Assert.Equal(AudioSourceKind.ProcessLoopback, source.Requested);
         Assert.Equal(AudioSourceKind.SystemLoopback, source.Kind);
-        Assert.Contains("20348", source.FallbackReason, StringComparison.Ordinal);
+        Assert.Contains("19041", source.FallbackReason, StringComparison.Ordinal);
     }
 
     [Fact]
     public void Process_loopback_hears_this_process()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "WASAPI is Windows only");
-        Assert.SkipUnless(AudioCapturePolicy.ProcessLoopbackSupported(AudioCapturePolicy.OsBuild), $"process loopback needs build 20348+, this is {AudioCapturePolicy.OsBuild}");
-        Assert.SkipUnless(HasDevice(render: true), "no default render device");
+        SkipUnlessProcessLoopback();
         var rec = new Recorder(48_000 * 10);
-        using WasapiSource source = WasapiSource.Start(new AudioSourceOptions { Kind = AudioSourceKind.ProcessLoopback, ProcessId = (uint)Environment.ProcessId }, rec.OnPcm);
+        using WasapiSource source = WasapiSource.Start(new AudioSourceOptions { Kind = AudioSourceKind.ProcessLoopback, ProcessId = (uint)Environment.ProcessId }, rec.OnPcm, rec.OnHop);
         Assert.True(source.Device is not null, $"process loopback did not open: {source.LastError}");
         PlayTone(TimeSpan.FromSeconds(1.2));
-        Thread.Sleep(300);
+        Thread.Sleep(1500);
+        long allocated = source.CaptureThreadAllocatedBytes;
         source.Dispose();
+        output.WriteLine($"{source.Description}: {source.Packets} packets, {rec.Frames} frames, {rec.Hops} hops, lag {rec.MinLagMs:F1}..{rec.MaxLagMs:F1} ms, " +
+            $"rate {source.MeasuredRate:F2}, resets {source.ClockResets}, allocated {allocated} B, fallback {source.FallbackReason ?? "none"}");
+
+        Assert.Equal(AudioSourceKind.ProcessLoopback, source.Kind);
+        Assert.True(source.ProcessAudioHeard);
         double amplitude = Tools.FindTone(rec.Left.AsSpan(0, rec.Frames), ToneHz, 48_000, out int toneAt);
         Assert.True(amplitude > 0.07, $"tone not captured (amplitude {amplitude:F4})");
+        Assert.True(amplitude < 0.13, $"tone came back at {amplitude:F4}, not 0.1");
         Assert.InRange(Tools.PeakFrequency(rec.Left.AsSpan(toneAt, 24_000), 48_000, ToneHz - 20, ToneHz + 20), ToneHz - 2, ToneHz + 2);
+
+        // Windows 10 reports device position 0 on every packet; counted frames keep the clock fit to one reset.
+        Assert.InRange(source.ClockResets, 1, 4); // plus one per stream start and stop in the target
+        Assert.InRange(rec.Frames, 48_000 * 2.4, 48_000 * 3.2);
+        Assert.InRange(rec.Hops * 480, rec.Frames * 0.95, rec.Frames * 1.05);
+        Assert.True(rec.MinLagMs > -25 && rec.MaxLagMs < 250, $"lag {rec.MinLagMs:F1}..{rec.MaxLagMs:F1} ms");
+        Assert.Equal(0, rec.Backwards);
+        Assert.Equal(0, allocated);
+    }
+
+    [Fact]
+    public void Process_loopback_hears_only_the_target_process()
+    {
+        SkipUnlessProcessLoopback();
+        const double ChildHz = 600;
+        string wav = Path.Combine(Path.GetTempPath(), $"lookback-tone-{Environment.ProcessId}.wav");
+        Tools.WriteToneWav(wav, ChildHz, seconds: 2.5, amplitude: 0.1);
+        try
+        {
+            using Process child = Process.Start(new ProcessStartInfo("powershell.exe", $"-NoProfile -NonInteractive -Command \"(New-Object System.Media.SoundPlayer '{wav}').PlaySync()\"")
+            {
+                CreateNoWindow = true,
+                UseShellExecute = false,
+            })!;
+            var rec = new Recorder(48_000 * 20);
+
+            // A long probe: other audio on the machine must not trigger the silence fallback while powershell starts.
+            using WasapiSource source = WasapiSource.Start(
+                new AudioSourceOptions { Kind = AudioSourceKind.ProcessLoopback, ProcessId = (uint)child.Id, ProcessLoopbackProbe = TimeSpan.FromSeconds(60) }, rec.OnPcm);
+            Assert.True(source.Device is not null, $"process loopback did not open: {source.LastError}");
+
+            // This process plays its own tone at the same time; process loopback of the child must not hear it.
+            PlayTone(TimeSpan.FromSeconds(1.5));
+            Assert.True(child.WaitForExit(TimeSpan.FromSeconds(20)), "the tone player did not finish");
+            Thread.Sleep(300);
+            source.Dispose();
+
+            ReadOnlySpan<float> got = rec.Left.AsSpan(0, rec.Frames);
+            double child600 = Tools.FindTone(got, ChildHz, 48_000, out int childAt);
+            double ours = Tools.FindTone(got, ToneHz, 48_000, out _);
+            output.WriteLine($"{source.Description}: {rec.Frames} frames, child tone {child600:F4} at {childAt / 48.0:F0} ms, this process's tone {ours:F4}, resets {source.ClockResets}");
+            Assert.Equal(AudioSourceKind.ProcessLoopback, source.Kind);
+            Assert.True(child600 > 0.07, $"the child's tone was not captured (amplitude {child600:F4})");
+            Assert.InRange(Tools.PeakFrequency(got.Slice(childAt, 24_000), 48_000, ChildHz - 20, ChildHz + 20), ChildHz - 2, ChildHz + 2);
+            Assert.True(ours < 0.005, $"process loopback heard another process's tone (amplitude {ours:F4})");
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Silent_process_loopback_falls_back_after_the_probe_only_where_allowed(bool allowFallback)
+    {
+        SkipUnlessProcessLoopback();
+        using Process idle = Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 15\"")
+        {
+            CreateNoWindow = true,
+            UseShellExecute = false,
+        })!;
+        try
+        {
+            var rec = new Recorder(48_000 * 20);
+            var logged = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            using WasapiSource source = WasapiSource.Start(
+                new AudioSourceOptions
+                {
+                    Kind = AudioSourceKind.ProcessLoopback,
+                    ProcessId = (uint)idle.Id,
+                    AllowEndpointFallback = allowFallback,
+                    ProcessLoopbackProbe = TimeSpan.FromSeconds(1),
+                    Log = logged.Enqueue,
+                },
+                rec.OnPcm);
+            Assert.Equal(AudioSourceKind.ProcessLoopback, source.Kind);
+
+            // The endpoint plays (this process's tone) while the target stays silent.
+            var sw = Stopwatch.StartNew();
+            PlayTone(TimeSpan.FromSeconds(2.5));
+            Thread.Sleep(500);
+            source.Dispose();
+            output.WriteLine($"after {sw.Elapsed.TotalSeconds:F1} s: {source.Kind}, opens {source.Opens}, reason: {source.FallbackReason}");
+
+            Assert.False(source.ProcessAudioHeard);
+            Assert.Contains("heard nothing", source.FallbackReason, StringComparison.Ordinal);
+            Assert.Equal([source.FallbackReason], logged);
+            if (allowFallback)
+            {
+                Assert.Equal(AudioSourceKind.SystemLoopback, source.Kind);
+                Assert.Equal(2, source.Opens);
+
+                // After the switch the endpoint is captured, tone included.
+                Assert.True(Tools.FindTone(rec.Left.AsSpan(0, rec.Frames), ToneHz, 48_000, out _) > 0.07, "endpoint loopback did not hear the tone after the fallback");
+            }
+            else
+            {
+                Assert.Equal(AudioSourceKind.ProcessLoopback, source.Kind); // official players never get system loopback
+                Assert.Equal(1, source.Opens);
+                Assert.True(Tools.FindTone(rec.Left.AsSpan(0, rec.Frames), ToneHz, 48_000, out _) < 0.005, "a no-fallback source heard another process");
+            }
+        }
+        finally
+        {
+            idle.Kill();
+        }
+    }
+
+    [Fact]
+    public void Process_loopback_of_an_exited_process_never_hangs()
+    {
+        SkipUnlessProcessLoopback();
+        using Process gone = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false })!;
+        gone.WaitForExit();
+        var sw = Stopwatch.StartNew();
+        using WasapiSource source = WasapiSource.Start(
+            new AudioSourceOptions { Kind = AudioSourceKind.ProcessLoopback, ProcessId = (uint)gone.Id, ProcessLoopbackProbe = TimeSpan.FromSeconds(1) }, null);
+        TimeSpan opened = sw.Elapsed;
+        PlayTone(TimeSpan.FromSeconds(2));
+        source.Dispose();
+        output.WriteLine($"opened in {opened.TotalMilliseconds:F0} ms as {source.Kind}; error {source.LastError ?? "none"}; reason {source.FallbackReason ?? "none"}");
+        Assert.True(opened < TimeSpan.FromSeconds(7), $"start took {opened}");
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(15));
+        Assert.Equal(AudioSourceKind.SystemLoopback, source.Kind);
+    }
+
+    private static void SkipUnlessProcessLoopback()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "WASAPI is Windows only");
+        Assert.SkipUnless(AudioCapturePolicy.ProcessLoopbackSupported(AudioCapturePolicy.OsBuild), $"process loopback needs build {AudioCapturePolicy.ProcessLoopbackMinBuild}+, this is {AudioCapturePolicy.OsBuild}");
+        Assert.SkipUnless(HasDevice(render: true), "no default render device");
     }
 
     [Fact]
