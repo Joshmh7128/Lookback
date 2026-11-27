@@ -16,6 +16,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live, run the desktop app |
 | [Desktop Shell](Desktop-Shell) | The Electron app: recorder management, clip library, timeline, ratings, and the official-player viewer that feeds calibration |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
+| [System Map](System-Map) | Where the code is today: what is built, in progress and planned, drawn as processes, the capture path and the rating loop |
 | [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
 | [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |
 | [Project Structure](Project-Structure) | Every folder and project, and how they depend on each other |

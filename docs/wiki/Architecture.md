@@ -1,7 +1,9 @@
 # Architecture
 
 This page shows the whole system, including the parts that later milestones
-build. Parts that exist today are marked **M0** or **M1**.
+build. Parts that exist today are marked **M0** or **M1**. For the current
+state of every component (built, in progress, planned), see the
+[System Map](System-Map).
 
 ## Processes
 
