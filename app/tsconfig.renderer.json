@@ -1,0 +1,12 @@
+{
+  // Renderer pages: browser ES modules, no Node types. They reach the main
+  // process only through the preload's contextBridge API.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/renderer/**/*.ts", "src/viewer/**/*.ts", "src/shared/**/*.d.ts"]
+}

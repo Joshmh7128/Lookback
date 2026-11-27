@@ -1,0 +1,255 @@
+// Types shared by the main process, the preloads and the renderer pages.
+// Declarations only: nothing here exists at run time, so a sandboxed preload
+// or a browser module can import it with `import type`.
+
+export type RecorderStatus = "stopped" | "starting" | "ready" | "exited" | "failed";
+
+/** What the shell knows about the recorder. Never carries the token. */
+export interface RecorderState {
+  status: RecorderStatus;
+  /** How the recorder was launched, for the overview, e.g. "dotnet Lookback.Recorder.dll". */
+  command: string | null;
+  pid: number | null;
+  pipe: string | null;
+  /** ws:// address of /events, without the token. */
+  endpoint: string | null;
+  /** True when the recorder serves the live profiler page. */
+  profiler: boolean;
+  /** True when the recorder accepts official-player frames at /ingest. */
+  ingest: boolean;
+  /** True when the recorder serves the calibration panel. */
+  calibrate: boolean;
+  /** Why the recorder is not running, when it stopped or failed. */
+  detail: string | null;
+  startedAt: number | null;
+}
+
+/** The main process's connection to the recorder's /events stream. */
+export interface StreamState {
+  status: "off" | "connecting" | "open" | "retrying";
+  /** Envelopes received since the shell started. */
+  received: number;
+  detail: string | null;
+}
+
+export interface Settings {
+  /** Recorder executable or .dll. Empty means find it automatically. */
+  recorderPath: string;
+  /** lookback-testbench executable or .dll, for the dataset browser. Empty means find it automatically. */
+  testbenchPath: string;
+  /** Datasets folder for the browser. Empty means the repository's datasets/. */
+  datasetsDir: string;
+  /** Profiles folder the calibration panel saves into. Empty means the repository's profiles/. */
+  profilesDir: string;
+  pipeName: string;
+  /** 0 picks a free port. */
+  webSocketPort: number;
+  /** Ask the recorder to serve the live profiler page. */
+  profilerPage: boolean;
+  /** Start the recorder when the app opens. */
+  autoStart: boolean;
+}
+
+export type EmbeddedView = "profiler" | "browse";
+
+export interface ViewBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface BrowseResult {
+  ok: boolean;
+  /** Last lines of the testbench output, or why it could not run. */
+  message: string;
+}
+
+export interface BrowseState {
+  /** True when a generated browser page exists. */
+  available: boolean;
+  builtAt: number | null;
+}
+
+/**
+ * Stars for a candidate's content ("is this moment a highlight worth
+ * keeping?"), not its video quality. 0 is unrated; 1 to 5 are stars.
+ */
+export type Rating = 0 | 1 | 2 | 3 | 4 | 5;
+
+export interface QaCheckView {
+  name: string;
+  passed: boolean;
+  value: number;
+  detail: string;
+}
+
+export interface CandidateView {
+  id: string;
+  sessionId: string;
+  startQpc: number;
+  endQpc: number;
+  peakQpc: number;
+  score: number;
+  modelScore: number | null;
+  highlight: number;
+  profile: string;
+  reasons: string[];
+  qa: { passed: boolean; checks: QaCheckView[] } | null;
+  /** Where the recorder saved the clip, once it has. */
+  savedPath: string | null;
+  rating: Rating;
+  /** True once the recorder acknowledged the rating (stored behind its retention rules); false while it lives only in the shell's memory. */
+  ratingStored: boolean;
+}
+
+/** A moment drawn on the timeline: a game event, a profile detection or a lifecycle change. */
+export interface TimelineMark {
+  kind: "event" | "profile" | "lifecycle";
+  qpc: number;
+  name: string;
+  detail: string;
+  confidence: number;
+}
+
+export interface SessionView {
+  id: string;
+  /** Arrival order; larger is newer. */
+  order: number;
+  title: string;
+  /** "live_game", "file", "official_player" or "unspecified". */
+  sourceKind: string;
+  /** "ephemeral", "owned", "permissioned", "open_license" or "unspecified". */
+  retention: string;
+  profile: string;
+  qpcFrequency: number;
+  startQpc: number;
+  lastQpc: number;
+  ended: boolean;
+  endReason: string | null;
+  events: number;
+  signalFrames: number;
+  /** True when the shell can preview this session's candidates (footage it opened, or saved clips). */
+  previewable: boolean;
+}
+
+export interface LibrarySessionSnapshot extends SessionView {
+  marks: TimelineMark[];
+  candidates: CandidateView[];
+}
+
+export interface LibrarySnapshot {
+  revision: number;
+  sessions: LibrarySessionSnapshot[];
+}
+
+/** A footage file the user opened for analysis. */
+export interface FootageJob {
+  id: string;
+  /** File name only; the full path stays in the main process. */
+  name: string;
+  profile: string;
+  /** "recorder": the recorder's analyze command; "testbench": lookback-testbench live into the recorder's pipe. */
+  via: "recorder" | "testbench" | null;
+  status: "starting" | "analysing" | "done" | "failed";
+  sessionId: string | null;
+  detail: string | null;
+}
+
+export interface FootageRequest {
+  /** Profile id; empty uses "generic". */
+  profile: string;
+  retention: "owned" | "permissioned" | "open-license";
+  /** Where the permission or licence is recorded; required unless owned. */
+  permissionRef: string;
+}
+
+/** What the renderer needs to play a candidate: a media URL and the window in seconds of that media. */
+export interface PreviewSource {
+  url: string;
+  start: number;
+  end: number;
+  /** "footage": the analysed file, seeked to the window; "clip": the saved clip file. */
+  kind: "footage" | "clip";
+}
+
+/** The API the main window's preload exposes as `window.lookback`. */
+export interface LookbackApi {
+  getState(): Promise<RecorderState>;
+  onState(listener: (state: RecorderState) => void): () => void;
+  startRecorder(): Promise<RecorderState>;
+  stopRecorder(): Promise<RecorderState>;
+  restartRecorder(): Promise<RecorderState>;
+  getLog(): Promise<string[]>;
+  onLog(listener: (line: string) => void): () => void;
+  getStream(): Promise<StreamState>;
+  onStream(listener: (state: StreamState) => void): () => void;
+  /** The viewer's ingest state, for the overview. */
+  onIngest(listener: (state: IngestState) => void): () => void;
+  /** Fired when an embedded page appears or disappears, e.g. after the recorder restarts. */
+  onEmbedded(listener: (available: boolean) => void): () => void;
+  onResized(listener: () => void): () => void;
+  getLibrary(): Promise<LibrarySnapshot>;
+  onLibrary(listener: (snapshot: LibrarySnapshot) => void): () => void;
+  rate(sessionId: string, candidateId: string, rating: Rating): Promise<boolean>;
+  /** Asks for a footage file in a dialog and analyses it; null when cancelled. */
+  openFootage(request: FootageRequest): Promise<FootageJob | null>;
+  getFootage(): Promise<FootageJob[]>;
+  onFootage(listener: (jobs: FootageJob[]) => void): () => void;
+  /** Profile ids for the footage picker. */
+  profiles(): Promise<string[]>;
+  preview(sessionId: string, candidateId: string): Promise<PreviewSource | null>;
+  forgetSession(sessionId: string): Promise<boolean>;
+  /** Show an embedded page over `bounds` (in CSS pixels of the main window), or hide it with null. */
+  showView(view: EmbeddedView | null, bounds: ViewBounds | null): Promise<boolean>;
+  getBrowseState(): Promise<BrowseState>;
+  buildBrowse(): Promise<BrowseResult>;
+  getSettings(): Promise<Settings>;
+  saveSettings(settings: Settings): Promise<Settings>;
+  /** Opens the official-player viewer, optionally with a pasted link. */
+  openViewer(link: string | null): Promise<boolean>;
+  /** Shows a clip the recorder saved in the file manager. */
+  revealClip(path: string): Promise<boolean>;
+}
+
+export type ViewerPlatform = "youtube" | "twitch";
+
+/** A video the viewer can play through an official embedded player. */
+export type EmbedSource =
+  | { platform: "youtube"; videoId: string; startSeconds: number }
+  | { platform: "twitch"; kind: "channel"; channel: string }
+  | { platform: "twitch"; kind: "video"; videoId: string };
+
+export type PlaybackStatus = "idle" | "loading" | "playing" | "paused" | "ended" | "error";
+
+/** What the viewer page reports to the main process. */
+export interface ViewerReport {
+  status: PlaybackStatus;
+  /** The player's rectangle in CSS pixels of the viewer page. */
+  rect: ViewBounds | null;
+}
+
+export interface IngestState {
+  /** "off": the recorder has no ingest endpoint; "idle": nothing playing. */
+  status: "off" | "idle" | "connecting" | "streaming" | "error";
+  framesSent: number;
+  framesDropped: number;
+  detail: string | null;
+}
+
+/** The API the viewer window's preload exposes as `window.lookbackViewer`. */
+export interface ViewerApi {
+  /** Parse a pasted link. Null when it is not a YouTube or Twitch video or channel. */
+  parse(input: string): Promise<EmbedSource | null>;
+  /** The source the shell asked the viewer to open, if any. */
+  initialSource(): Promise<EmbedSource | null>;
+  onOpen(listener: (source: EmbedSource) => void): () => void;
+  /** Profile ids for the picker; empty when no profiles folder is known. */
+  profiles(): Promise<string[]>;
+  /** The chosen source (null when cleared) and profile ("" lets the recorder decide). */
+  select(source: EmbedSource | null, profile: string): void;
+  report(report: ViewerReport): void;
+  onIngest(listener: (state: IngestState) => void): () => void;
+  /** Shows or hides the docked calibration panel. */
+  togglePanel(): void;
+}
