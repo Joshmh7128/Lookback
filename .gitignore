@@ -18,3 +18,4 @@ datasets/**/*
 !datasets/**/README.md
 testbench-out/
 dataset-out/
+browse-out/

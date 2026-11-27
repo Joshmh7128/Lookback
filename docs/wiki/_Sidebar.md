@@ -18,4 +18,5 @@
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
 - [Live Profiler](Live-Profiler)
+- [Dataset Browser](Dataset-Browser)
 - [Testing](Testing)

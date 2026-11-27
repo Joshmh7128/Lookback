@@ -18,6 +18,7 @@ const string Usage = """
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
       lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
+      lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
       lookback-testbench report <session-path-without-extension> [--video <file>]
       lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
                                      [--port <n>] [--no-wait] [--pipe <name>]
@@ -38,6 +39,12 @@ const string Usage = """
       `profiles` prints the tree.
       With a profile, the report gains an events lane, rule-margin lanes and a
       calibration overlay of the profile's HUD regions and the detected HUD mask.
+
+    Browse:
+      Writes one page for sifting the profile tree and the datasets: what each
+      profile identifies and from which signals and regions, how it is detected,
+      which events the labelled footage tests, and (with --results, the --out
+      folders of `dataset` runs) how well each event scores. Reads only.
 
     Retention:
       owned         your own footage (default)
@@ -60,6 +67,7 @@ try
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
         ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
+        ["browse", .. var rest] => await BrowseAsync(ParseFlags(rest), cts.Token),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
         ["live", string file, .. var rest] => await LiveAsync(file, ParseFlags(rest), cts.Token),
         _ => PrintUsage(),
@@ -256,6 +264,27 @@ static async Task<int> RobloxIdsAsync(Dictionary<string, string> flags, Cancella
 
     Console.WriteLine(write ? "\nIds written for every profile whose name matched." : "\nDry run. Add --write true to write ids where the name matches.");
     return results.Any(r => r.Problem is not null) ? 1 : 0;
+}
+
+static async Task<int> BrowseAsync(Dictionary<string, string> flags, CancellationToken ct)
+{
+    string output = Path.GetFullPath(flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "browse-out", "index.html")));
+    string? datasets = flags.GetValueOrDefault("datasets") ?? Lookback.Testbench.Browse.BrowserBuilder.FindDatasets(Environment.CurrentDirectory);
+    string[] results = flags.TryGetValue("results", out string? r) ? r.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : [];
+    string[] extra = [.. Extra(flags).SelectMany(TestbenchRunner.ExpandProfilePath)];
+    Lookback.Profiles.Model.ProfileCatalog catalog = extra.Length > 0 ? Lookback.Profiles.Model.ProfileCatalog.WithFiles(extra) : Lookback.Profiles.Model.ProfileCatalog.BuiltIn;
+
+    var data = Lookback.Testbench.Browse.BrowserBuilder.Build(catalog, datasets, results, output);
+    await Lookback.Testbench.Browse.BrowserWriter.WriteAsync(data, output, ct);
+    Console.WriteLine($"profiles {data.Profiles.Count} in {data.Games.Count} games");
+    Console.WriteLine($"datasets {data.Datasets.Count} manifests, {data.Datasets.Sum(d => d.Entries.Count)} entries" + (datasets is null ? "" : $" from {datasets}"));
+    foreach (string note in data.Notes)
+    {
+        Console.WriteLine($"note     {note}");
+    }
+
+    Console.WriteLine($"browser  {output}");
+    return 0;
 }
 
 static IReadOnlyList<string> Extra(Dictionary<string, string> flags) =>
