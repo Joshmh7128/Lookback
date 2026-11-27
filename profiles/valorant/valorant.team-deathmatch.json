@@ -1,0 +1,16 @@
+{
+  // Team Deathmatch: respawns, ultimates and loadout stages, first team to the kill target wins. No spike and no rounds.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile valorant.team-deathmatch.
+  "id": "valorant.team-deathmatch",
+  "displayName": "VALORANT: Team Deathmatch",
+  "version": 1,
+  "parent": "valorant",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "disable": ["spike_planted", "round_result", "ace"],
+  "composites": [
+    { "name": "killstreak", "of": "elimination", "atLeast": 5, "withinMs": 20000, "weight": 4.0, "clip": { "preMs": 10000, "postMs": 3000 } }
+  ]
+}

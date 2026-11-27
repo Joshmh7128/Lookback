@@ -7,14 +7,19 @@
   //   permissioned  someone else's footage used with their permission; permissionRef says where it is recorded
   //   open-license  footage under a licence that allows this use; permissionRef names the licence and source
   //
+  // profile: the deepest profile the footage shows (overwatch, overwatch.push...).
+  //   Scores detection and teaches fingerprints (lookback-testbench fingerprint).
   // labels: hand-marked moments, in seconds from the start of the file. Event names
   // match the profile (elimination, ultimate_used, death, round_result, multikill...).
+  // clips: stretches you would clip, in seconds; candidates are scored against them.
   "game": "overwatch",
   "entries": [
     {
       "file": "media/my-session-01.mp4",
       "source": "own recording, 1920x1080, default HUD",
       "retention": "owned",
+      "profile": "overwatch.push",
+      "clips": [ { "start": 36, "end": 48 }, { "start": 55, "end": 66 } ],
       "labels": [
         { "event": "elimination", "at": 42.3 },
         { "event": "elimination", "at": 44.1 },

@@ -7,7 +7,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Built-in profiles ship inside the assembly; a path to a JSON file loads others. -->
-    <EmbeddedResource Include="..\..\profiles\*.json" LogicalName="profiles.%(Filename).json" />
+    <EmbeddedResource Include="..\..\profiles\**\*.json" LogicalName="profiles.%(Filename).json" />
     <InternalsVisibleTo Include="Lookback.Profiles.Tests" />
   </ItemGroup>
 </Project>

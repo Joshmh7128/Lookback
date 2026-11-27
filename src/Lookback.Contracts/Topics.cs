@@ -6,6 +6,7 @@ public static class Topics
     public const string Session = "session";
     public const string GameLifecycle = "game.lifecycle";
     public const string GameEvent = "game.event";
+    public const string GameProfile = "game.profile";
     public const string SignalsVideo = "signals.video";
     public const string SignalsAudio = "signals.audio";
     public const string SignalsInput = "signals.input";

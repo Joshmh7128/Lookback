@@ -1,0 +1,107 @@
+{
+  // Rainbow Six Siege (Siege X): round-based tactical shooter with BattlEye
+  // and no public live game-state API. Vision and audio only. The game level
+  // carries the round rules shared by Bomb, Secure Area and Hostage; Team
+  // Deathmatch turns them off.
+  "id": "rainbow-six-siege",
+  "displayName": "Rainbow Six Siege",
+  "version": 1,
+  "level": "game",
+  "tags": ["shooter", "tactical", "anti-cheat"],
+  // DirectX and Vulkan builds. Verify the names against your install; the
+  // launcher-side BattlEye wrapper is not the game.
+  "executables": ["RainbowSix.exe", "RainbowSix_Vulkan.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Anti-cheat (BattlEye): external capture (Windows.Graphics.Capture) only. No injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9. Not yet checked against footage: calibrate with testbench analyze --profile rainbow-six-siege."
+  },
+  "regions": [
+    { "name": "round_timer",  "x": 0.25, "y": 0.00, "w": 0.50, "h": 0.10, "purpose": "Round timer, score and both teams' operator icons. The timer area turns red when the defuser is planted." },
+    { "name": "kill_feed",    "x": 0.72, "y": 0.10, "w": 0.27, "h": 0.22, "purpose": "Every elimination in the round." },
+    { "name": "score_popup",  "x": 0.52, "y": 0.50, "w": 0.16, "h": 0.14, "purpose": "Score pop-ups right of the crosshair: enemy killed, headshot, assist." },
+    { "name": "banner",       "x": 0.25, "y": 0.28, "w": 0.50, "h": 0.25, "purpose": "Round won, round lost, match result." },
+    { "name": "health",       "x": 0.02, "y": 0.86, "w": 0.18, "h": 0.10, "purpose": "Health, bottom left." },
+    { "name": "gadgets",      "x": 0.80, "y": 0.86, "w": 0.19, "h": 0.12, "purpose": "Ammunition and gadgets, bottom right." }
+  ],
+  "events": [
+    {
+      // Your elimination: a score pop-up right of the crosshair, with the kill sound.
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.5,
+      "cooldownMs": 250,
+      "whenAny": [ { "signal": "region.score_popup.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "region.kill_feed.activity", "above": 0.02, "withinMs": 600, "add": 0.2 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.2 }
+      ],
+      "clip": { "preMs": 7000, "postMs": 3000 }
+    },
+    {
+      "name": "kill_feed_activity",
+      "weight": 0.3,
+      "baseConfidence": 0.6,
+      "cooldownMs": 400,
+      "when": [ { "signal": "region.kill_feed.activity", "rise": 0.03 } ],
+      "clip": { "preMs": 4000, "postMs": 2000 }
+    },
+    {
+      // A breach charge, grenade or other explosion: a loud jump in level with a flash.
+      "name": "explosion",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "audio.rms_db", "rise": 15, "baselineAlpha": 0.01 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.08, "withinMs": 300, "add": 0.25 },
+        { "signal": "motion.energy", "above": 0.1, "withinMs": 400, "add": 0.1 }
+      ],
+      "clip": { "preMs": 5000, "postMs": 4000 }
+    },
+    {
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.6,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    },
+    {
+      // Death: the view cuts to cameras and drones, which are low in colour.
+      "name": "death",
+      "weight": 0.2,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.health.activity", "rise": 0.04 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 1000 }
+    },
+    {
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.15 },
+        { "signal": "region.banner.luma", "above": 0.4 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill",   "of": "elimination", "atLeast": 2, "withinMs": 4000,   "weight": 2.5, "clip": { "preMs": 7000, "postMs": 4000 } },
+    { "name": "triple_kill", "of": "elimination", "atLeast": 3, "withinMs": 10000,  "weight": 4.0, "clip": { "preMs": 10000, "postMs": 4000 } },
+    // Preparation plus action phase is about four minutes, so five eliminations inside that is an ace.
+    { "name": "ace",         "of": "elimination", "atLeast": 5, "withinMs": 240000, "weight": 6.0, "clip": { "preMs": 20000, "postMs": 5000 } },
+    { "name": "breach",      "of": "explosion",   "atLeast": 2, "withinMs": 5000,   "weight": 1.2, "clip": { "preMs": 6000, "postMs": 6000 } },
+    { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 10000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

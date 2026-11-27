@@ -33,7 +33,10 @@ The full walkthrough, with expected output and troubleshooting, is
   and the testbench with an interactive timeline viewer.
 - **Game profiles:** per-game data (HUD regions and event rules) on top of
   the game-agnostic signals, starting with Overwatch; a calibration view and
-  per-game dataset scoring.
+  per-game dataset scoring. Profiles form a tree (game, sub-game such as a
+  Roblox experience, mode), detected automatically at each level, with
+  fingerprints learned from labelled footage and clip candidates built from
+  the events.
 
 Live capture, the clipper and the Electron shell come in later milestones.
 
@@ -48,6 +51,12 @@ dotnet run --project src/Lookback.Recorder
 dotnet run --project src/Lookback.Testbench -- analyze my-clip.mp4 --out out
 dotnet run --project src/Lookback.Testbench -- analyze my-clip.mp4 --profile overwatch
 dotnet run --project src/Lookback.Testbench -- dataset datasets/overwatch/manifest.json
+<<<<<<< HEAD
+dotnet run --project src/Lookback.Testbench -- live my-clip.mp4 --profile overwatch
+=======
+dotnet run --project src/Lookback.Testbench -- fingerprint datasets/roblox/manifest.json
+dotnet run --project src/Lookback.Testbench -- profiles
+>>>>>>> origin/main
 ```
 
 The recorder prints one `LOOKBACK_READY {"pipe":…,"ws":…,"token":…}` line on
@@ -67,6 +76,7 @@ profiles/                 game profiles as JSON
 datasets/                 per-game dataset manifests (no media)
 src/Lookback.Recorder/    service host
 src/Lookback.Testbench/   footage CLI and timeline viewer
+src/Lookback.Profiler/    live event profiler page, for demos
 tests/                    xUnit v3 tests
 docs/                     architecture
 ```

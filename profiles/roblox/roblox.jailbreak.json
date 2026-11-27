@@ -1,0 +1,35 @@
+{
+  // Cops and robbers in an open world: robberies, arrests, escapes and chases.
+  "id": "roblox.jailbreak",
+  "displayName": "Jailbreak",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["open-world", "cops-and-robbers"],
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["245662005"], "roblox.place": ["606849621"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "jailbreak_banner", "x": 0.25, "y": 0.10, "w": 0.50, "h": 0.12, "purpose": "Notifications across the top: robbery started, arrested, bounty." }
+  ],
+  "events": [
+    {
+      "name": "notification",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "region.jailbreak_banner.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.2 } ],
+      "clip": { "preMs": 10000, "postMs": 4000 }
+    },
+    {
+      // Fast driving or flying: sustained high motion everywhere.
+      "name": "chase",
+      "weight": 0.7,
+      "baseConfidence": 0.4,
+      "cooldownMs": 8000,
+      "when": [ { "signal": "motion.coverage", "above": 0.6 }, { "signal": "motion.energy", "above": 0.08 } ],
+      "clip": { "preMs": 8000, "postMs": 6000 }
+    }
+  ]
+}

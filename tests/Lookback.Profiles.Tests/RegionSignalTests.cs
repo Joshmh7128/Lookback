@@ -72,14 +72,28 @@ public class RegionSignalTests
         var luma = new LumaPlane(100, 100);
         luma.Compute(f);
         var output = new float[4];
-        signal.Process(f, luma, output);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 100; i++)
+        // Warm up past tiered-JIT promotion: the runtime's own tier-up work can
+        // allocate on this thread during the first few hundred calls, which is
+        // not a per-frame allocation. A real one shows in every measurement, so
+        // take the smallest of a few.
+        for (int i = 0; i < 1000; i++)
         {
             signal.Process(f, luma, output);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        long fewest = long.MaxValue;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++)
+            {
+                signal.Process(f, luma, output);
+            }
+
+            fewest = Math.Min(fewest, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.Equal(0, fewest);
     }
 }

@@ -7,4 +7,10 @@ public sealed class RecorderOptions
 
     /// <summary>0 picks a free port.</summary>
     public int WebSocketPort { get; set; }
+
+    /// <summary>
+    /// Serve the live event profiler page next to the socket and print its
+    /// link on stdout as <c>LOOKBACK_PROFILER &lt;url&gt;</c>. Off by default.
+    /// </summary>
+    public bool Profiler { get; set; }
 }

@@ -1,0 +1,36 @@
+{
+  // A fast arena shooter experience. Eliminations show in a kill feed and as a
+  // notice in the middle of the screen.
+  "id": "roblox.arsenal",
+  "displayName": "Arsenal",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["shooter", "pvp"],
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["111958650"], "roblox.place": ["286090429"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Positions are estimates; calibrate against your own footage." },
+  "regions": [
+    { "name": "arsenal_kill_feed", "x": 0.74, "y": 0.40, "w": 0.26, "h": 0.22, "purpose": "Kill feed on the right." },
+    { "name": "arsenal_notice",    "x": 0.38, "y": 0.62, "w": 0.24, "h": 0.08, "purpose": "Your elimination notice below the crosshair." }
+  ],
+  "disable": ["centre_popup"],
+  "events": [
+    {
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.5,
+      "cooldownMs": 300,
+      "whenAny": [ { "signal": "region.arsenal_notice.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.25 },
+        { "signal": "region.arsenal_kill_feed.activity", "above": 0.03, "withinMs": 400, "add": 0.15 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill", "of": "elimination", "atLeast": 2, "withinMs": 3000, "weight": 2.5, "clip": { "preMs": 5000, "postMs": 3000 } },
+    { "name": "killstreak", "of": "elimination", "atLeast": 4, "withinMs": 10000, "weight": 4, "clip": { "preMs": 8000, "postMs": 3000 } }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  // Spike Rush: short rounds with orbs. Uses the round rules unchanged; rounds are shorter, so an ace comes sooner.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile valorant.spike-rush.
+  "id": "valorant.spike-rush",
+  "displayName": "VALORANT: Spike Rush",
+  "version": 1,
+  "parent": "valorant",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "composites": [
+    { "name": "ace", "of": "elimination", "atLeast": 5, "withinMs": 100000, "weight": 6.0, "clip": { "preMs": 20000, "postMs": 5000 } }
+  ]
+}

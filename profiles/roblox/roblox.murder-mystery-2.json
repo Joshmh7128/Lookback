@@ -1,0 +1,105 @@
+{
+  // Social deduction: one murderer, one sheriff, everyone else innocent. Rounds of a few minutes.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
+  "id": "roblox.murder-mystery-2",
+  "displayName": "Murder Mystery 2",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["social-deduction", "pvp"],
+  "ids": { "roblox.universe": ["66654135"], "roblox.place": ["142823291"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "mm2_role_banner",
+      "x": 0.25,
+      "y": 0.25,
+      "w": 0.5,
+      "h": 0.2,
+      "purpose": "Role reveal at round start; round result at the end."
+    },
+    {
+      "name": "mm2_notice",
+      "x": 0.3,
+      "y": 0.7,
+      "w": 0.4,
+      "h": 0.1,
+      "purpose": "Kill and coin notices above the hotbar."
+    }
+  ],
+  "disable": [
+    "centre_popup"
+  ],
+  "events": [
+    {
+      "name": "elimination",
+      "weight": 1.2,
+      "baseConfidence": 0.45,
+      "cooldownMs": 400,
+      "whenAny": [
+        {
+          "signal": "region.mm2_notice.activity",
+          "rise": 0.05
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 250,
+          "add": 0.25
+        }
+      ],
+      "clip": {
+        "preMs": 6000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "role_reveal",
+      "weight": 0.6,
+      "baseConfidence": 0.45,
+      "cooldownMs": 30000,
+      "when": [
+        {
+          "signal": "region.mm2_role_banner.activity",
+          "rise": 0.12
+        },
+        {
+          "signal": "region.mm2_role_banner.saturation",
+          "above": 0.25
+        }
+      ],
+      "clip": {
+        "preMs": 2000,
+        "postMs": 4000
+      }
+    },
+    {
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 20000,
+      "when": [
+        {
+          "signal": "region.mm2_role_banner.activity",
+          "rise": 0.12
+        }
+      ],
+      "clip": {
+        "preMs": 12000,
+        "postMs": 3000
+      }
+    }
+  ],
+  "composites": [
+    {
+      "name": "murder_spree",
+      "of": "elimination",
+      "atLeast": 3,
+      "withinMs": 8000,
+      "weight": 3
+    }
+  ]
+}

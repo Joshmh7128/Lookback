@@ -1,0 +1,103 @@
+{
+  // Marvel Rivals: 6v6 hero shooter with anti-cheat and no public live
+  // game-state API. Vision and audio only. Modes differ mainly in the
+  // objective HUD at the top, which is what their fingerprints will learn.
+  "id": "marvel-rivals",
+  "displayName": "Marvel Rivals",
+  "version": 1,
+  "level": "game",
+  "tags": ["shooter", "hero", "anti-cheat"],
+  // Verify the name against your install.
+  "executables": ["Marvel-Win64-Shipping.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Anti-cheat: external capture (Windows.Graphics.Capture) only. No injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9. Not yet checked against footage: calibrate with testbench analyze --profile marvel-rivals."
+  },
+  "regions": [
+    { "name": "objective",     "x": 0.33, "y": 0.00, "w": 0.34, "h": 0.12, "purpose": "Objective progress, timer and team portraits." },
+    { "name": "kill_feed",     "x": 0.74, "y": 0.10, "w": 0.25, "h": 0.20, "purpose": "Every knockout in the match, newest at the top." },
+    { "name": "ko_notice",     "x": 0.40, "y": 0.60, "w": 0.20, "h": 0.09, "purpose": "Your knockouts, assists and streak announcements below the crosshair." },
+    { "name": "banner",        "x": 0.25, "y": 0.28, "w": 0.50, "h": 0.25, "purpose": "Large centre text: round and match results." },
+    { "name": "health",        "x": 0.03, "y": 0.84, "w": 0.22, "h": 0.12, "purpose": "Health and hero portrait, bottom left." },
+    { "name": "ultimate",      "x": 0.46, "y": 0.80, "w": 0.08, "h": 0.14, "purpose": "Ultimate charge; it empties the moment the ultimate is used." },
+    { "name": "abilities",     "x": 0.70, "y": 0.84, "w": 0.27, "h": 0.13, "purpose": "Ability icons and cooldowns, bottom right." }
+  ],
+  "events": [
+    {
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.55,
+      "cooldownMs": 300,
+      "whenAny": [ { "signal": "region.ko_notice.activity", "rise": 0.05 } ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.25 },
+        { "signal": "region.kill_feed.activity", "above": 0.02, "withinMs": 600, "add": 0.15 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    },
+    {
+      "name": "kill_feed_activity",
+      "weight": 0.3,
+      "baseConfidence": 0.6,
+      "cooldownMs": 400,
+      "when": [ { "signal": "region.kill_feed.activity", "rise": 0.03 } ],
+      "clip": { "preMs": 4000, "postMs": 2000 }
+    },
+    {
+      // Ultimates in Rivals are loud and bright: meter empties, flash, voice line.
+      "name": "ultimate_used",
+      "weight": 1.3,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.ultimate.activity", "rise": 0.08 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.05, "withinMs": 500, "add": 0.2 },
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 400, "add": 0.1 }
+      ],
+      "clip": { "preMs": 3000, "postMs": 9000 }
+    },
+    {
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.6,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    },
+    {
+      // Death: the view cuts to a desaturated spectator view.
+      "name": "death",
+      "weight": 0.2,
+      "baseConfidence": 0.5,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.banner.saturation", "below": 0.12 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 1000 }
+    },
+    {
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.15 },
+        { "signal": "region.banner.luma", "above": 0.45 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill",   "of": "elimination",        "atLeast": 2, "withinMs": 4000, "weight": 2.5, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "triple_kill", "of": "elimination",        "atLeast": 3, "withinMs": 6000, "weight": 4.0, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "team_wipe",   "of": "elimination",        "atLeast": 6, "withinMs": 20000, "weight": 6.0, "clip": { "preMs": 12000, "postMs": 4000 } },
+    { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

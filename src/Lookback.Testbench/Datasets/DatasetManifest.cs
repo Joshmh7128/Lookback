@@ -53,7 +53,19 @@ internal sealed record DatasetEntry
     public string? Title { get; init; }
 
     public IReadOnlyList<Label> Labels { get; init; } = [];
+
+    /// <summary>
+    /// The deepest profile this footage shows, such as <c>roblox.arsenal</c> or
+    /// <c>overwatch.push</c>. Scores detection, and teaches fingerprints.
+    /// </summary>
+    public string? Profile { get; init; }
+
+    /// <summary>Stretches a person would clip, in seconds; candidates are scored against them.</summary>
+    public IReadOnlyList<ClipLabel> Clips { get; init; } = [];
 }
+
+/// <summary>A stretch of footage worth a clip, in seconds from the start of the file.</summary>
+internal sealed record ClipLabel(double Start, double End);
 
 /// <summary>A hand-marked moment: event name and time in seconds from the start of the file.</summary>
 internal sealed record Label(string Event, double At);

@@ -1,0 +1,33 @@
+{
+  // An action role-playing experience: combat, bosses, level-ups.
+  "id": "roblox.blox-fruits",
+  "displayName": "Blox Fruits",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["action-rpg", "pvp"],
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27. Add place ids of other worlds as you find them.
+  "ids": { "roblox.universe": ["994732206"], "roblox.place": ["2753915549"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No HUD regions yet; rules use whole-frame signals and the Roblox centre region." },
+  "events": [
+    {
+      // Big ability effects: bright, saturated, everywhere at once.
+      "name": "big_ability",
+      "weight": 0.9,
+      "baseConfidence": 0.4,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "flash.brighten", "above": 0.12 }, { "signal": "motion.coverage", "above": 0.5 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.2 } ]
+    },
+    {
+      "name": "level_up",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.centre.activity", "rise": 0.1 }, { "signal": "region.centre.luma", "above": 0.5 } ]
+    }
+  ],
+  "composites": [
+    { "name": "combo", "of": "big_ability", "atLeast": 3, "withinMs": 6000, "weight": 2 }
+  ]
+}

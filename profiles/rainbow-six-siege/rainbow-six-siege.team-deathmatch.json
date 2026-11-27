@@ -1,0 +1,16 @@
+{
+  // Team Deathmatch (Arcade): respawns, no objective and no rounds, so the round rules are off and a kill streak replaces the ace.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile rainbow-six-siege.team-deathmatch.
+  "id": "rainbow-six-siege.team-deathmatch",
+  "displayName": "Rainbow Six Siege: Team Deathmatch",
+  "version": 1,
+  "parent": "rainbow-six-siege",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "disable": ["round_result", "ace"],
+  "composites": [
+    { "name": "killstreak", "of": "elimination", "atLeast": 5, "withinMs": 25000, "weight": 4.0, "clip": { "preMs": 10000, "postMs": 3000 } }
+  ]
+}

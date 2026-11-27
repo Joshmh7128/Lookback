@@ -36,6 +36,9 @@ internal sealed record AnalyzeOptions
     public string? Profile { get; init; }
 
     public string? SessionId { get; init; }
+
+    /// <summary>Profile files added to the built-in tree (for example learned fingerprints or new experiences).</summary>
+    public IReadOnlyList<string> ExtraProfiles { get; init; } = [];
 }
 
 /// <summary>What one analysis produced.</summary>
@@ -46,7 +49,14 @@ internal sealed record AnalyzeResult(
     string? SessionBasePath,
     string? ReportPath,
     IReadOnlyList<GameEvent> Events,
-    IReadOnlyList<string> Warnings);
+    IReadOnlyList<string> Warnings)
+{
+    /// <summary>Every change of active profile (game, sub-game, mode), the first being the starting profile.</summary>
+    public IReadOnlyList<ProfileDetected> Detections { get; init; } = [];
+
+    /// <summary>Clip candidates built from the profile's events.</summary>
+    public IReadOnlyList<ClipCandidate> Candidates { get; init; } = [];
+}
 
 /// <summary>
 /// The testbench pipeline: footage file → FileSource → signal banks → bus →
@@ -60,7 +70,23 @@ internal static class TestbenchRunner
     public static async Task<AnalyzeResult> AnalyzeAsync(AnalyzeOptions o, IProgress<TimeSpan>? progress, CancellationToken ct)
     {
         string file = Path.GetFullPath(o.File);
-        GameProfile? profile = o.Profile is null ? null : GameProfileLoader.Load(o.Profile);
+        // A built-in id (any level: "roblox", "roblox.arsenal") or a profile file, which joins the built-in tree.
+        ProfileCatalog? catalog = null;
+        string? startId = null;
+        if (o.Profile is not null)
+        {
+            bool isFile = File.Exists(o.Profile);
+            string[] files = [.. o.ExtraProfiles.SelectMany(ExpandProfilePath), .. isFile ? [o.Profile] : Array.Empty<string>()];
+            catalog = files.Length > 0 ? ProfileCatalog.WithFiles(files) : ProfileCatalog.BuiltIn;
+            startId = isFile ? GameProfileLoader.Load(o.Profile).Id : o.Profile;
+            if (!catalog.Contains(startId))
+            {
+                throw new ArgumentException($"No profile '{startId}' (have: {string.Join(", ", catalog.All.Select(p => p.Id).Order(StringComparer.Ordinal))}).");
+            }
+        }
+
+        GameProfile? profile = startId is null ? null : catalog!.PathTo(startId)[0]; // the game at the root
+        IReadOnlyList<HudRegion> regions = profile is null ? [] : catalog!.SubtreeRegions(profile.Id);
         MediaInfo media = await MediaProbe.ProbeAsync(file, ct).ConfigureAwait(false);
         if (!media.HasVideo)
         {
@@ -75,7 +101,7 @@ internal static class TestbenchRunner
             PermissionRef = o.PermissionRef,
             Title = o.Title ?? Path.GetFileName(file),
             QpcFrequency = Frequency,
-            GameProfile = o.Game ?? profile?.Id ?? "",
+            GameProfile = o.Game ?? startId ?? "",
         };
 
         string? problem = RetentionRules.Validate(started);
@@ -85,11 +111,14 @@ internal static class TestbenchRunner
         }
 
         AnalysisFormat format = AnalysisFormat.Default;
-        IVideoSignal[] extra = profile is { Regions.Count: > 0 } ? [new RegionSignal(profile.Regions, format.Width, format.Height)] : [];
+        IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format.Width, format.Height)] : [];
         var warnings = new List<string>();
         if (profile is not null)
         {
-            warnings.AddRange(MissingSignals(profile, format, extra).Select(s => $"profile '{profile.Id}' uses unknown signal '{s}'; rules using it never fire"));
+            foreach (GameProfile p in catalog!.Subtree(profile.Id))
+            {
+                warnings.AddRange(MissingSignals(p, format, extra).Select(s => $"profile '{p.Id}' uses unknown signal '{s}'; rules using it never fire"));
+            }
         }
 
         var header = new EnvelopeFactory(new ManualClock(Frequency), sessionId, "testbench").Create(Topics.Session, 0);
@@ -97,6 +126,8 @@ internal static class TestbenchRunner
 
         using var bus = new InProcessEventBus();
         using IEventSubscription eventTap = bus.Subscribe(Topics.GameEvent, capacity: 1 << 20);
+        using IEventSubscription profileTap = bus.Subscribe(Topics.GameProfile, capacity: 1 << 16);
+        using IEventSubscription candidateTap = bus.Subscribe(Topics.ClipCandidate, capacity: 1 << 16);
         SessionLogRecorder? recorder = null;
         string? basePath = null;
         if (RetentionRules.CanPersist(started))
@@ -107,7 +138,7 @@ internal static class TestbenchRunner
             recorder = new SessionLogRecorder(bus, writer, sessionId);
         }
 
-        ProfileRunner? runner = profile is null ? null : new ProfileRunner(bus, profile, sessionId, Frequency);
+        ProfileRunner? runner = startId is null ? null : new ProfileRunner(bus, catalog!, startId, DetectionMethod.Manual, sessionId, Frequency);
         FootageAnalysisResult result;
         try
         {
@@ -156,24 +187,41 @@ internal static class TestbenchRunner
             events.Add(e!.GameEvent);
         }
 
+        var detections = new List<ProfileDetected>();
+        while (profileTap.TryRead(out Envelope? e))
+        {
+            detections.Add(e!.ProfileDetected);
+        }
+
+        var candidates = new List<ClipCandidate>();
+        while (candidateTap.TryRead(out Envelope? e))
+        {
+            candidates.Add(e!.ClipCandidate);
+        }
+
         string? reportPath = null;
         if (basePath is not null)
         {
             reportPath = basePath + ".html";
             TimelineData timeline = await TimelineBuilder.BuildAsync(basePath, RelativeHref(o.OutputDirectory, file), ct).ConfigureAwait(false);
-            AddCalibration(timeline, profile, result.HudMask);
+            AddCalibration(timeline, regions, result.HudMask);
             await ReportWriter.WriteAsync(timeline, reportPath, ct).ConfigureAwait(false);
         }
 
-        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings);
+        return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates };
     }
 
+    /// <summary>A profile file, or every <c>*.json</c> under a folder.</summary>
+    internal static IEnumerable<string> ExpandProfilePath(string path) =>
+        Directory.Exists(path) ? Directory.EnumerateFiles(path, "*.json", SearchOption.AllDirectories).Order(StringComparer.Ordinal) : [path];
+
     /// <summary>Adds the profile's regions and the learned HUD mask, so the report doubles as a calibration view.</summary>
-    internal static void AddCalibration(TimelineData timeline, GameProfile? profile, HudMask? mask)
+    internal static void AddCalibration(TimelineData timeline, IReadOnlyList<HudRegion> regions, HudMask? mask)
     {
-        if (profile is not null)
+        ArgumentNullException.ThrowIfNull(timeline);
+        ArgumentNullException.ThrowIfNull(regions);
         {
-            timeline.Regions.AddRange(profile.Regions.Select(r => new TimelineData.RegionBox(r.Name, r.X, r.Y, r.W, r.H, r.Purpose)));
+            timeline.Regions.AddRange(regions.Select(r => new TimelineData.RegionBox(r.Name, r.X, r.Y, r.W, r.H, r.Purpose)));
         }
 
         if (mask is not null)
