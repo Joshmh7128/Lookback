@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Clip ratings and the learned clip scorer: rating store, feature schema, ONNX inference and per-game calibration. Platform-neutral.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Core\Lookback.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Lookback.Scoring.Tests" />
+  </ItemGroup>
+</Project>

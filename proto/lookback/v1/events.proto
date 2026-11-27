@@ -29,6 +29,7 @@ message Envelope {
     ClipSaved clip_saved = 17;
     GameEvent game_event = 18;
     ProfileDetected profile_detected = 19;
+    ClipRating clip_rating = 20;
   }
 }
 
@@ -199,6 +200,12 @@ message ClipCandidate {
   float highlight_probability = 7;
   string game_profile = 8;
   repeated string reasons = 9;
+  // Game-agnostic features for the learned scorer, positional against
+  // `feature_schema` (for example "clip-features/1", defined in
+  // ml/feature_schema.json). Empty until the clipper computes them; a
+  // missing value is NaN.
+  repeated float features = 10 [packed = true];
+  string feature_schema = 11;
 }
 
 message QaCheck {
@@ -212,6 +219,9 @@ message QaReport {
   string candidate_id = 1;
   bool passed = 2;
   repeated QaCheck checks = 3;
+  // 0..1: the candidate's highlight probability when QA ran, calibrated
+  // per game when a learned model covers the game (see ClipCandidate).
+  float highlight_probability = 4;
 }
 
 message ClipSaved {
@@ -219,4 +229,17 @@ message ClipSaved {
   string path = 2;
   fixed64 start_qpc = 3;
   fixed64 end_qpc = 4;
+}
+
+// ---------------------------------------------------------------- ratings
+
+// A person's rating of a clip candidate's content: is this a highlight?
+// Published on topic "clip.rating" by the recorder when the shell sends a
+// rating. Stars are 1..5, or 0 to clear a rating; video quality is never
+// rated here. Ratings are training labels for the learned scorer and are
+// persisted only for sessions RetentionRules allows to persist.
+message ClipRating {
+  string candidate_id = 1;
+  string session_id = 2;
+  uint32 stars = 3;
 }

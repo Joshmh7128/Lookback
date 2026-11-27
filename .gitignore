@@ -19,3 +19,9 @@ datasets/**/*
 testbench-out/
 dataset-out/
 browse-out/
+
+# Learned scorer: local venv, training outputs and caches
+ml/.venv/
+ml/out/
+__pycache__/
+.pytest_cache/

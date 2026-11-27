@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Lookback.Contracts.V1;
+using Lookback.Scoring.Ratings;
 using Lookback.Stream.SessionLog;
 using Lookback.Testbench;
 using Lookback.Testbench.Datasets;
@@ -16,6 +17,8 @@ const string Usage = """
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>]
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
+      lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
+                                        [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
       lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
       lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
@@ -39,6 +42,14 @@ const string Usage = """
       `profiles` prints the tree.
       With a profile, the report gains an events lane, rule-margin lanes and a
       calibration overlay of the profile's HUD regions and the detected HUD mask.
+
+    Rate:
+      Analyses each entry, then asks for 1 to 5 stars per clip candidate on its
+      content (5 = a highlight; video quality is not rated). Ratings go to
+      <datasets>/<game>/ratings.jsonl (default: the folder above the manifest's)
+      and train the learned scorer (see ml/). Candidates already rated are
+      skipped unless --again. --play plays each candidate with ffplay first;
+      typing p plays it on demand. --model shows a trained model's probability.
 
     Browse:
       Writes one page for sifting the profile tree and the datasets: what each
@@ -65,6 +76,7 @@ try
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
         ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
+        ["rate", string manifest, .. var rest] => await RateAsync(manifest, ParseFlags(rest), cts.Token),
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
         ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
         ["browse", .. var rest] => await BrowseAsync(ParseFlags(rest), cts.Token),
@@ -211,6 +223,27 @@ static async Task<int> FingerprintAsync(string manifest, Dictionary<string, stri
     return 0;
 }
 
+static async Task<int> RateAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
+{
+    var options = new RateOptions
+    {
+        Manifest = manifest,
+        OutputDirectory = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "rate-out")),
+        DatasetRoot = flags.GetValueOrDefault("datasets"),
+        ProfileOverride = flags.GetValueOrDefault("profile"),
+        ExtraProfiles = Extra(flags),
+        Again = flags.ContainsKey("again"),
+        AutoPlay = flags.ContainsKey("play"),
+        ModelDirectory = flags.GetValueOrDefault("model"),
+    };
+
+    RateSummary s = await RateRunner.RunAsync(options, Console.In, Console.Out, new FfplayPlayer(), ct);
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+        $"\nrated    {s.Rated} of {s.Candidates} candidates ({s.Cleared} cleared, {s.Skipped} skipped, {s.AlreadyRated} already rated, {s.Refused} refused){(s.Quit ? ", stopped early" : "")}"));
+    Console.WriteLine($"ratings  {Path.Combine(s.DatasetRoot, "<game>", RatingStore.FileName)}");
+    return s.Refused > 0 ? 2 : 0;
+}
+
 static int PrintProfiles(Dictionary<string, string> flags)
 {
     Lookback.Profiles.Model.ProfileCatalog catalog = Lookback.Profiles.Model.ProfileCatalog.BuiltIn;
@@ -334,7 +367,7 @@ static Dictionary<string, string> ParseFlags(string[] args)
     var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i] is "--loop" or "--no-wait")
+        if (args[i] is "--loop" or "--no-wait" or "--again" or "--play")
         {
             flags[args[i][2..]] = "true";
             continue;

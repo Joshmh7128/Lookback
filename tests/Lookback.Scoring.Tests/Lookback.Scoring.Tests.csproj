@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Lookback.Scoring\Lookback.Scoring.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Written by `python -m lookback_ml.make_fixture`; shared with the ml tests. -->
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\ml\feature_schema.json" Link="Fixtures\feature_schema.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\ml\tests\data\rating_sample.jsonl" Link="Fixtures\rating_sample.jsonl" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

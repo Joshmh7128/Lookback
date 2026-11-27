@@ -12,6 +12,7 @@
     <Project Path="src/Lookback.Profiles/Lookback.Profiles.csproj" />
     <Project Path="src/Lookback.Recorder/Lookback.Recorder.csproj" />
     <Project Path="src/Lookback.Replay/Lookback.Replay.csproj" />
+    <Project Path="src/Lookback.Scoring/Lookback.Scoring.csproj" />
     <Project Path="src/Lookback.Signals/Lookback.Signals.csproj" />
     <Project Path="src/Lookback.Stream/Lookback.Stream.csproj" />
     <Project Path="src/Lookback.Testbench/Lookback.Testbench.csproj" />
@@ -23,6 +24,7 @@
     <Project Path="tests/Lookback.Governor.Tests/Lookback.Governor.Tests.csproj" />
     <Project Path="tests/Lookback.Profiles.Tests/Lookback.Profiles.Tests.csproj" />
     <Project Path="tests/Lookback.Replay.Tests/Lookback.Replay.Tests.csproj" />
+    <Project Path="tests/Lookback.Scoring.Tests/Lookback.Scoring.Tests.csproj" />
     <Project Path="tests/Lookback.Signals.Tests/Lookback.Signals.Tests.csproj" />
     <Project Path="tests/Lookback.Stream.Tests/Lookback.Stream.Tests.csproj" />
     <Project Path="tests/Lookback.Testbench.Tests/Lookback.Testbench.Tests.csproj" />

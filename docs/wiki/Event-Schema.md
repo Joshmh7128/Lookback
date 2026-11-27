@@ -40,7 +40,14 @@ classDiagram
     Envelope --> ClipSaved
     Envelope --> GameEvent
     Envelope --> ProfileDetected
+    Envelope --> ClipRating
     QaReport --> QaCheck
+    ClipRating ..> ClipCandidate : candidate_id
+    class ClipRating {
+        string candidate_id
+        string session_id
+        uint32 stars
+    }
     SignalFrame ..> SignalSchema : schema_id
     class ProfileDetected {
         string profile_id
@@ -100,6 +107,8 @@ classDiagram
         optional float model_score
         float highlight_probability
         string[] reasons
+        float[] features
+        string feature_schema
     }
     class QaCheck {
         string name
@@ -150,10 +159,27 @@ rules applied when.
 **`ClipCandidate`** is a proposed clip: its window, the peak inside it,
 the heuristic score, an optional model score (`optional` so "not scored yet"
 differs from 0), the calibrated `highlight_probability`, and human-readable
-`reasons`.
+`reasons`. `features` (field 10, packed floats) and `feature_schema`
+(field 11, for example `clip-features/1`) carry the game-agnostic feature
+vector the learned scorer reads; `features` is positional against the schema
+in `ml/feature_schema.json`, a missing value is NaN, and both are empty until
+the clipper computes them. When a learned model covers the candidate's game,
+`model_score` is the model's raw probability and `highlight_probability` the
+probability after that game's calibration; otherwise `model_score` stays
+unset and the heuristic stands. See [Clip Scoring](Clip-Scoring).
 
 **`QaReport`** lists the QA checks run on a candidate, each with a pass flag,
-a measured value and detail.
+a measured value and detail. `highlight_probability` (field 4) is the
+candidate's highlight probability when QA ran, so a QA threshold on it can
+be read straight from the report.
+
+**`ClipRating`** (field 20) is a person's content rating of one candidate:
+is this a highlight? `stars` is 1 to 5, or 0 to clear an earlier rating;
+video quality is never rated here. The shell sends a `rate` request, the
+recorder acknowledges it and publishes a `ClipRating` on `clip.rating`, and
+`RatingSink` stores it, but only for a session `RetentionRules` allows to
+persist (see [Data Retention](Data-Retention)). Ratings become training
+labels, `(stars − 1) / 4`.
 
 **`ClipSaved`** records a clip written to disk.
 
@@ -187,6 +213,7 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `clip.candidate` | `ClipCandidate` (today built from profile events; source `profile.<game>.candidates`) |
 | `qa.report` | `QaReport` |
 | `clip.saved` | `ClipSaved` |
+| `clip.rating` | `ClipRating`: a person's 1 to 5 star content rating of a candidate |
 
 Subscriptions use patterns: an exact name, `*` for everything, or a prefix
 ending in `.*`. `Topics.Matches("signals.*", "signals.video")` is true;

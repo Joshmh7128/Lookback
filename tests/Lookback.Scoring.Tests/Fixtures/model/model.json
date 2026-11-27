@@ -1,0 +1,117 @@
+{
+  "format": "lookback.scorer/1",
+  "featureSchema": "clip-features/1",
+  "featureNames": [
+    "heuristic_score",
+    "duration_s",
+    "event_count",
+    "event_kinds",
+    "max_contribution",
+    "mean_contribution",
+    "event_density",
+    "peak_position",
+    "motion_z",
+    "flash_z",
+    "red_edge_z",
+    "hud_activity_z",
+    "loudness_z",
+    "onset_rate",
+    "scene_cuts",
+    "black_fraction",
+    "frozen_fraction",
+    "silent_fraction",
+    "video_coverage",
+    "audio_coverage"
+  ],
+  "featureMeans": [
+    0.4965589032258064,
+    9.94997256321839,
+    2.056179775280899,
+    1.0879120879120878,
+    0.5045549662921347,
+    0.3634152906976743,
+    0.20887543956043964,
+    0.47506821978021974,
+    0.036087911111111086,
+    -0.13451605555555549,
+    0.07478295604395604,
+    0.02581207692307694,
+    -0.1421549450549451,
+    1.9158115888888894,
+    0.1032400108695652,
+    0.010543285714285715,
+    0.014112786516853937,
+    0.20278765517241384,
+    1.0,
+    0.9560439560439561
+  ],
+  "input": "features",
+  "output": "probabilities",
+  "positiveColumn": 1,
+  "games": [
+    "synth-a",
+    "synth-b"
+  ],
+  "calibration": {
+    "global": {
+      "a": 0.94659624915274,
+      "b": 0.0071814827964342106,
+      "n": 94
+    },
+    "profiles": {
+      "synth-a": {
+        "a": 0.9453259083647739,
+        "b": -0.32592460157078,
+        "n": 46
+      },
+      "synth-a.mode1": {
+        "a": 0.9430409960225471,
+        "b": -0.433790338239138,
+        "n": 23
+      },
+      "synth-a.mode2": {
+        "a": 0.9497116730362153,
+        "b": -0.49273118952925266,
+        "n": 23
+      },
+      "synth-b": {
+        "a": 0.941549140582449,
+        "b": 0.32727094288235425,
+        "n": 48
+      }
+    }
+  },
+  "training": {
+    "trainedAt": "2026-11-27T17:28:38+00:00",
+    "rows": 94,
+    "sessions": 8,
+    "C": 0.1,
+    "strength": 20.0,
+    "overall": {
+      "heuristic": {
+        "auc": 0.852227,
+        "log_loss": 0.590123,
+        "brier": 0.080298,
+        "ece": 0.047261,
+        "precision_at_3": 0.666667,
+        "n": 94
+      },
+      "model": {
+        "auc": 0.87247,
+        "log_loss": 0.584245,
+        "brier": 0.075959,
+        "ece": 0.039303,
+        "precision_at_3": 0.708333,
+        "n": 94
+      },
+      "calibrated": {
+        "auc": 0.87247,
+        "log_loss": 0.536549,
+        "brier": 0.056323,
+        "ece": 0.055067,
+        "precision_at_3": 0.708333,
+        "n": 94
+      }
+    }
+  }
+}

@@ -13,10 +13,19 @@ lookback-testbench report <session-path-without-extension> [--video <file>]
 lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
                                [--port <n>] [--no-wait] [--pipe <name>] [--retention ...]
 lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
+lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
+                                        [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
 ```
 
 `live` plays the footage in real time into the [live profiler](Live-Profiler)
 instead of analysing it as fast as possible; see that page.
+
+`rate` is the terminal fallback to the shell's rating UI: it analyses each
+manifest entry, then asks for 1 to 5 stars per candidate on its content
+(5 = a highlight). `p` plays the candidate with ffplay, Enter skips, `0`
+clears, `q` stops. Ratings go to `datasets/<game>/ratings.jsonl` through
+`RatingStore`, so the entry's retention is checked first; a second pass skips
+what is rated unless `--again`. See [Clip Scoring](Clip-Scoring).
 
 `browse` writes the [Dataset Browser](Dataset-Browser): one page for sifting profiles, datasets and their scores. It needs no ffmpeg.
 

@@ -24,6 +24,7 @@ src/
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
+  Lookback.Scoring/           clip ratings, feature schema, ONNX scorer + per-game calibration
   Lookback.Governor/          budget policy and runtime controller
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
@@ -40,11 +41,13 @@ tests/
   Lookback.Governor.Tests/
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
   Lookback.Testbench.Tests/
+  Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
+ml/                           Python: train, calibrate, evaluate, export the learned scorer
 docs/
   architecture.md             repository summary
   wiki/                       source of this wiki
 .github/workflows/
-  ci.yml                      build + test on Windows and Linux
+  ci.yml                      build + test on Windows and Linux; ml job (pytest) on Linux
   wiki.yml                    publishes docs/wiki to the GitHub wiki
 ```
 
@@ -57,6 +60,8 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 flowchart TB
     R[Lookback.Recorder<br/>exe] --> PF[Lookback.Profiler] --> S[Lookback.Stream]
     TB[Lookback.Testbench<br/>exe] --> PF & S & PR[Lookback.Profiles]
+    TB --> SC[Lookback.Scoring] --> C
+    SC --> ORT[Microsoft.ML.OnnxRuntime<br/>CPU]
     PR --> SG[Lookback.Signals]
     PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
@@ -88,6 +93,7 @@ flowchart TB
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
+| `Lookback.Scoring` | `Ratings/*`, `Features/ClipFeatureSchema.cs`, `Model/*`, `LearnedClipScorer.cs` | [Clip scoring](Clip-Scoring): ratings on disk behind `RetentionRules`, the bus sink, the feature schema, ONNX inference and per-game calibration |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |

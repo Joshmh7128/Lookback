@@ -20,6 +20,7 @@
 - [Game Profiles](Game-Profiles)
 - [Profiles and Local Datasets](Local-Datasets)
 - [Testbench](Testbench)
+- [Clip Scoring](Clip-Scoring)
 - [Live Profiler](Live-Profiler)
 - [Official-Player Calibration](Official-Player-Calibration)
 - [Live Capture](Live-Capture)

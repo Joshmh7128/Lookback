@@ -144,6 +144,56 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | `LiveTests.cs` | `RelayReleasesInFootageOrderAtFootageTime` | Out-of-order envelopes come out in QPC order, each at its footage time scaled by speed (manual clock) |
 | | `LivePlaysTheClipIntoTheProfilerSocket` | `live` with the generic profile: a socket client with the page's origin gets `SessionStarted` first, three schemas (video, audio, rules), every frame and hop, and the end, paced over real time |
 | | `LiveRefusesPermissionedFootageWithoutAReference` | Retention is checked before anything starts |
+| `RateTests.cs` | `Stars_skip_play_clear_and_quit` | The `rate` loop: digits store stars, Enter skips, `p` plays the candidate's window, `0` clears, anything else repeats the help, `q` stops |
+| | `Already_rated_candidates_are_skipped_unless_again` | A second pass asks only about unrated candidates; `--again` asks about all of them and the last answer wins |
+| | `Ephemeral_sessions_are_refused_and_nothing_is_written` | A rating of an official-player session is refused through `RatingStore` and the folder stays empty |
+| | `Rates_candidates_from_a_manifest` | Generated footage with a flash: one candidate, rated 5, lands in `datasets/boxgame/ratings.jsonl` as `owned` with label 1 and `clip-features/1` features; the next pass has nothing left to ask |
+
+## `Lookback.Scoring.Tests`
+
+The learned scorer and ratings. Platform-neutral, so they run on Windows and Linux.
+
+| File | Test | What it proves |
+|---|---|---|
+| `RatingStoreTests.cs` | `Owned_session_rating_is_appended_with_features_and_label` | A rating of owned footage is stored with its soft label (4 stars is 0.75), profile and features; NaN features become null |
+| | `Line_matches_the_sample_the_ml_tests_read` | The exact line written equals `ml/tests/data/rating_sample.jsonl`, which the Python tests load, so the two sides agree on the format |
+| | `Sessions_that_may_not_persist_are_refused_and_nothing_touches_disk` (7 cases) | Ephemeral (official player, file, live), an official player marked owned, unspecified retention, and third-party footage without a permission reference are all refused before any folder is created |
+| | `Third_party_footage_with_a_permission_reference_is_stored` | Permissioned and open-licence footage with a reference is stored, reference included |
+| | `Unknown_session_is_refused` | No session header, no write: retention is never guessed |
+| | `Malformed_ratings_are_refused` | Stars above 5, missing ids, or a candidate that is not the rated one |
+| | `Game_ids_that_are_not_safe_folder_names_are_refused` | `../escape`, spaces, drive paths and empty ids never become folders |
+| | `Candidate_without_features_gets_the_floor_features` | Heuristic score, duration and peak position are filled from the candidate alone |
+| | `Last_line_wins_and_zero_stars_clears` | Append-only history, current rating per candidate |
+| | `Torn_last_line_is_skipped_on_read` | A half-written line is counted and skipped |
+| | `Concurrent_appends_each_land_on_their_own_line` | 200 parallel appends give 200 whole lines |
+| | `Rows_hold_numbers_and_ids_only` | The line's keys are exactly the documented ones |
+| `RatingSinkTests.cs` | `Persists_a_rating_joined_to_its_candidate_and_session` | `session`, `clip.candidate` then `clip.rating` on the bus become one stored line with the candidate's scores |
+| | `Official_player_session_ratings_are_refused_and_nothing_is_written` | The sink refuses and counts the refusal; the folder stays empty |
+| | `Unknown_session_is_refused_unless_the_lookup_knows_it` | A rating for a session not seen on the bus is refused unless `SessionLookup` supplies its header |
+| | `Rating_without_a_session_id_takes_the_envelopes` | An empty `session_id` falls back to the envelope's |
+| | `Republished_candidate_replaces_the_remembered_one` | A candidate published again (say, with features) is the one joined |
+| | `Forgets_the_oldest_candidates_past_the_limit` | Memory is bounded; a forgotten candidate's rating is stored without features |
+| `LearnedClipScorerTests.cs` | `Inference_and_calibration_match_python` | The committed fixture model gives, through ONNX Runtime in C#, the raw and calibrated probabilities Python recorded in `expected.json` (within 1e-5), including imputed missing values and games the model does not cover |
+| | `Calibration_lookup_is_deepest_profile_first` | Mode, then game; a game the model was not trained on has none |
+| | `Platt_identity_and_clamping` | Identity calibration changes nothing; 0 and 1 are clamped |
+| | `Heuristic_stands_without_a_model` | No model folder: the heuristic probability stays and a stale `model_score` is cleared |
+| | `Broken_model_is_reported_and_skipped` | A corrupt `model.onnx` or a wrong format is reported and clipping carries on with the heuristic |
+| | `Wrong_schema_keeps_the_heuristic_but_floor_features_score` | Features of another schema are not read; a bare candidate is scored from its floor features when the clock frequency is known |
+| | `Qa_report_gets_the_highlight_probability` | `QaReport.highlight_probability` copies the scored value |
+| | `Scoring_is_thread_safe` | 64 parallel scores agree |
+| `ClipFeatureSchemaTests.cs` | `Matches_ml_feature_schema_json` | The C# feature list is exactly `ml/feature_schema.json` |
+| | `Floor_features_come_from_the_candidate_alone`, `Attach_sets_the_schema_and_rejects_the_wrong_length` | The vector helpers |
+| | `New_fields_survive_a_round_trip` | `ClipRating`, `ClipCandidate.features` and `QaReport.highlight_probability` serialise and parse |
+
+## `ml/` (Python, CI job `ml`)
+
+Run with `python -m pytest` in `ml/` (see [Clip Scoring](Clip-Scoring#running-it)).
+
+| File | What it proves |
+|---|---|
+| `test_data.py` | Rows with retention other than owned, permissioned or open-license, or third-party rows without a `permissionRef`, or rows filed under another game's folder, stop training; last line wins and 0 clears; torn lines are skipped; missing features load as NaN; too few ratings, sessions or examples of each class are refused; the C#-written sample line loads |
+| `test_metrics_and_calibration.py` | AUC (with ties), log loss, Brier, ECE and precision@k on hand-checked inputs; Platt recovers known parameters; few ratings stay near the parent; lookup is deepest profile first |
+| `test_train.py` | On synthetic ratings the model beats the heuristic on held-out sessions and calibration lowers log loss and Brier; ONNX matches scikit-learn; games with too few ratings keep the heuristic; the CLI trains, and writes nothing when it refuses; the committed fixture still reproduces `expected.json`; the fixture regenerates |
 
 ## `Lookback.Capture.Tests`
 

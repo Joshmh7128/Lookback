@@ -29,6 +29,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Profiles and Local Datasets](Local-Datasets) | Profile structure, and how the local dataset is built, weighted, stored and compared |
 | [Game Profiles](Game-Profiles) | Per-game data: HUD regions, event rules, Overwatch, calibration, datasets and scoring |
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
+| [Clip Scoring](Clip-Scoring) | Ratings, the clip feature schema, training, per-game calibration and ONNX scoring (M4) |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
 | [Live Capture](Live-Capture) | WGC/DXGI capture, the analysis tap, NV12 + CFR encode clock, Media Foundation encoders, the `lookback-capture` bench |
@@ -44,7 +45,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
-| M4 | Training, ONNX scoring, calibration | Planned |
+| M4 | Training, ONNX scoring, calibration | In progress: ratings store, training, export, calibration and C# scoring built on synthetic data; waiting on real ratings and the clipper's features |
 | M5 | Transcode, VMAF report, audio checks | Planned |
 | M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |
 | M7 | Memory module (secondary) | Planned |
