@@ -1,5 +1,7 @@
+using Lookback.Calibration.Check;
 using Lookback.Calibration.Probe;
 using Lookback.Calibration.Profiles;
+using Lookback.Clipper;
 using Lookback.Contracts;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
@@ -23,6 +25,12 @@ namespace Lookback.Calibration;
 /// lives in memory until the session ends. The only thing that can leave it
 /// is <see cref="CalibrationEdits"/> the user confirms, through
 /// <see cref="CalibrationWriter"/>.
+/// <para>
+/// The clipper runs on the player's frames too (video only: the viewer sends
+/// no audio), and its candidates feed <see cref="Check"/>, where the user can
+/// judge them to see how accurate the clipper is. The check is memory only and
+/// is cleared when the player stops.
+/// </para>
 /// </summary>
 public sealed class OfficialPlayerSession : IAsyncDisposable
 {
@@ -40,7 +48,7 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
 
     private sealed record Pipeline(
         string SessionId, SessionStarted Started, EnvelopeFactory Factory, VideoSignalBank Bank, SignalPublisher Publisher,
-        ProfileRunner? Runner, ThresholdTuner? Tuner, GameProfile? Resolved);
+        ProfileRunner? Runner, ClipperRunner Clipper, ThresholdTuner? Tuner, GameProfile? Resolved);
 
     public OfficialPlayerSession(IEventBus bus, ProfileCatalog catalog, string platform, IClock? clock = null)
     {
@@ -53,7 +61,14 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         _frame = new VideoFrame(_format.Width, _format.Height);
         _probe = new CalibrationProbe(_format, _clock.Frequency);
         _baseId = $"official-{platform}-{_clock.Now:x}";
+        Check = new ClipperCheck(_clock.Frequency);
     }
+
+    /// <summary>The clipper check for this player: candidates, judgments and missed-highlight marks, in memory only.</summary>
+    public ClipperCheck Check { get; }
+
+    /// <summary>The playback clock's origin (QPC); playback time is <c>(qpc - OriginQpc) / frequency</c>.</summary>
+    public long OriginQpc => _originQpc;
 
     public string Platform { get; }
 
@@ -125,7 +140,12 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         var factory = new EnvelopeFactory(_clock, sessionId, "official-player");
         var publisher = new SignalPublisher(_bus, new EnvelopeFactory(_clock, sessionId, "signals.video"),
             Topics.SignalsVideo, SignalPublisher.VideoSchemaId, SignalFamily.Video, bank.Names);
-        ProfileRunner? runner = profileId is null ? null : new ProfileRunner(_bus, catalog, profileId, DetectionMethod.Manual, sessionId, _clock.Frequency);
+        // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
+        ProfileRunner? runner = profileId is null ? null : new ProfileRunner(_bus, catalog, profileId, DetectionMethod.Manual, sessionId, _clock.Frequency, publishCandidates: false);
+        ClipperRunner clipper = profileId is null
+            ? new ClipperRunner(_bus, sessionId, _clock.Frequency)
+            : new ClipperRunner(_bus, catalog, profileId, sessionId, _clock.Frequency);
+        clipper.CandidateFinished += (_, e) => Check.Add(e.Output.Candidate, e.Output.Qa);
         ThresholdTuner? tuner = resolved is null ? null : new ThresholdTuner(Owners(catalog, profileId!, resolved), bank.Names, _clock.Frequency);
 
         long now = _clock.Now;
@@ -135,7 +155,7 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         publisher.PublishSchema(now);
         lock (_gate)
         {
-            _pipeline = new Pipeline(sessionId, started, factory, bank, publisher, runner, tuner, resolved);
+            _pipeline = new Pipeline(sessionId, started, factory, bank, publisher, runner, clipper, tuner, resolved);
         }
     }
 
@@ -178,6 +198,9 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         _pipeline?.Tuner?.Mark(eventName, at);
     }
 
+    /// <summary>The user saw a highlight now; the check counts whether the clipper finds it.</summary>
+    public void MarkMissed() => Check.MarkMissed(_probe.LastQpc);
+
     /// <summary>Tries edits live: the session restarts on the catalog with them applied.</summary>
     public Task ApplyAsync(CalibrationEdits edits)
     {
@@ -197,6 +220,7 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
 
         await StopPipelineAsync(old, "player stopped").ConfigureAwait(false);
         _probe.ClearMarks();
+        Check.Reset(); // nothing of the video outlives the player
     }
 
     private async Task StopPipelineAsync(Pipeline? p, string reason)
@@ -206,10 +230,13 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
             return;
         }
 
+        // The profile flushes its last events first; the clipper waits on them.
         if (p.Runner is not null)
         {
             await p.Runner.DisposeAsync().ConfigureAwait(false);
         }
+
+        await p.Clipper.DisposeAsync().ConfigureAwait(false);
 
         Envelope end = p.Factory.Create(Topics.Session, _clock.Now);
         end.SessionEnded = new SessionEnded { Reason = reason };

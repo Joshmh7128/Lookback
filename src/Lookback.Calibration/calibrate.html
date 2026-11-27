@@ -18,6 +18,10 @@
   table { width:100%; border-collapse:collapse; } td, th { text-align:left; padding:4px 6px; border-bottom:1px solid var(--line); vertical-align:top; }
   th { font-weight:600; color:var(--muted); font-size:12px; } code { font-size:12px; }
   .banner { padding:8px 10px; border:1px solid var(--line); border-radius:6px; background:var(--panel); margin:8px 0; }
+  .stars button { padding:2px 7px; margin-right:2px; } .stars button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .score { font-variant-numeric:tabular-nums; font-size:20px; font-weight:600; } .tiles { display:flex; gap:16px; flex-wrap:wrap; margin:6px 0 10px; }
+  .tiles div { min-width:120px; } .tiles span { display:block; color:var(--muted); font-size:12px; }
+  td.num { font-variant-numeric:tabular-nums; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -46,6 +50,16 @@
     <button id="save" class="primary">Save selected to profile…</button>
     <span id="result" class="muted"></span>
   </div>
+
+  <h2>4. Clipper check</h2>
+  <p class="muted" id="checkNote">The clipper proposes moments from this video. Rate each one on content (is it a highlight?), and press <b>M</b> or the button when you see a highlight it should catch. Nothing here is stored.</p>
+  <div class="tiles" id="checkTiles"></div>
+  <div class="row"><button id="missed">Missed a highlight (M)</button><button id="checkReset">Reset the check</button></div>
+  <table style="margin-top:8px"><thead><tr><th>At</th><th>Length</th><th>Score</th><th>Why</th><th>QA</th><th>Your rating</th></tr></thead><tbody id="checkRows"></tbody></table>
+  <h2 style="font-size:13px">By reason</h2>
+  <table><thead><tr><th>Reason</th><th>Proposed</th><th>Rated</th><th>Mean stars</th><th>Rated 4–5</th></tr></thead><tbody id="checkReasons"></tbody></table>
+  <h2 style="font-size:13px">By heuristic score</h2>
+  <table><thead><tr><th>Score</th><th>Proposed</th><th>Rated</th><th>Mean stars</th></tr></thead><tbody id="checkBands"></tbody></table>
 </main>
 <script>
 const token = new URLSearchParams(location.hash.slice(1)).get('token');
@@ -70,7 +84,9 @@ ws.onmessage = ev => {
 
 $('profile').onchange = () => send({ type: 'profile', id: $('profile').value });
 document.addEventListener('keydown', e => {
-  if (!state || !state.events || e.target.tagName === 'SELECT') return;
+  if (e.target.tagName === 'SELECT') return;
+  if ((e.key === 'm' || e.key === 'M') && state && state.playing) { send({ type: 'missed' }); return; }
+  if (!state || !state.events) return;
   const n = parseInt(e.key, 10);
   if (n >= 1 && n <= state.events.length) send({ type: 'mark', event: state.events[n - 1] });
 });
@@ -82,6 +98,46 @@ function selection() {
   return { regions, thresholds };
 }
 $('apply').onclick = () => send({ type: 'apply', ...selection() });
+$('missed').onclick = () => send({ type: 'missed' });
+$('checkReset').onclick = () => send({ type: 'check-reset' });
+const pct = v => v === null || v === undefined ? '—' : `${Math.round(v * 100)}%`;
+const num = (v, d = 1) => v === null || v === undefined ? '—' : v.toFixed(d);
+const mmss = t => { const s = Math.max(0, Math.round(t)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+let checkSig = null;
+function renderCheck() {
+  const c = state.check;
+  // State arrives every 500 ms; rebuild only on change, or a star button replaced between mousedown and mouseup loses the click.
+  const sig = c ? JSON.stringify(c) : '';
+  if (sig === checkSig) return;
+  checkSig = sig;
+  if (!c) { $('checkRows').replaceChildren(); $('checkTiles').replaceChildren(); return; }
+  const st = c.stats;
+  const tile = (label, value, sub) => { const d = el('div'); d.append(el('span', {}, label), el('div', { class: 'score' }, value)); if (sub) d.appendChild(el('span', {}, sub)); return d; };
+  $('checkTiles').replaceChildren(
+    tile('Precision', pct(st.precision), `${st.good} of ${st.judged} rated 4–5`),
+    tile('Recall', pct(st.recall), `${st.marksNotFound} missed of ${st.missedMarks} marked`),
+    tile('Mean rating', num(st.meanStars), `${st.judged} rated`),
+    tile('Proposed', String(st.proposed), `${st.proposed - st.judged} not rated yet`));
+  const rows = $('checkRows'); rows.replaceChildren();
+  for (const k of c.recent) {
+    const tr = el('tr');
+    const stars = el('td', { class: 'stars' });
+    for (let n = 1; n <= 5; n++) {
+      const b = el('button', { class: k.stars === n ? 'on' : '', title: `${n} star${n > 1 ? 's' : ''}` }, String(n));
+      b.onclick = () => send({ type: 'judge', candidateId: k.id, stars: k.stars === n ? 0 : n });
+      stars.appendChild(b);
+    }
+    tr.append(el('td', { class: 'num' }, mmss(k.start)), el('td', { class: 'num' }, `${num(k.end - k.start)} s`), el('td', { class: 'num' }, num(k.score, 2)),
+      el('td', { class: 'muted' }, k.reasons.join('; ')), el('td', { class: k.qa ? 'ok' : 'warn' }, k.qa ? 'ok' : 'fails'), stars);
+    rows.appendChild(tr);
+  }
+  if (!c.recent.length) rows.appendChild(el('tr')).appendChild(el('td', { colspan: 6, class: 'muted' }, 'No candidates yet. They appear several seconds after the moment (the clipper waits until nothing can still extend it).'));
+  const reasons = $('checkReasons'); reasons.replaceChildren();
+  for (const r of st.byReason) reasons.appendChild(el('tr')).append(el('td', {}, r.reason), el('td', { class: 'num' }, String(r.candidates)), el('td', { class: 'num' }, String(r.judged)), el('td', { class: 'num' }, num(r.meanStars)), el('td', { class: 'num' }, pct(r.precision)));
+  const bands = $('checkBands'); bands.replaceChildren();
+  for (const b of st.byScore) bands.appendChild(el('tr')).append(el('td', {}, b.band), el('td', { class: 'num' }, String(b.candidates)), el('td', { class: 'num' }, String(b.judged)), el('td', { class: 'num' }, num(b.meanStars)));
+}
 $('save').onclick = () => {
   const s = selection();
   const lines = [...Object.entries(s.regions).map(([n, r]) => `region ${n}: ${rectText(r)}`), ...s.thresholds.map(t => `${t.event} condition ${t.index}: ${t.value}`)];
@@ -134,6 +190,7 @@ function render() {
     th.appendChild(tr);
   }
   if (!(state.thresholds || []).length) th.appendChild(el('tr', {}, '')).appendChild(el('td', { colspan: 5, class: 'muted' }, 'Mark an event three times to get threshold proposals.'));
+  renderCheck();
 }
 </script>
 </body>

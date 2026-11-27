@@ -268,6 +268,20 @@ public sealed class CalibrationHost : IAsyncDisposable
             case "apply":
                 await session.ApplyAsync(Edits(msg!)).ConfigureAwait(false);
                 return Ok("apply");
+            case "judge":
+                // In memory only: a rating of a video you are watching is never stored.
+                if (!session.Check.Judge((string?)msg!["candidateId"] ?? throw new ArgumentException("judge needs a candidateId."), msg["stars"]?.GetValue<int>() ?? throw new ArgumentException("judge needs stars (0 to 5).")))
+                {
+                    throw new KeyNotFoundException("No such candidate in the check.");
+                }
+
+                return Ok("judge");
+            case "missed":
+                session.MarkMissed();
+                return Ok("missed");
+            case "check-reset":
+                session.Check.Reset();
+                return Ok("check-reset");
             case "save":
                 if (_writer is null)
                 {
@@ -327,6 +341,7 @@ public sealed class CalibrationHost : IAsyncDisposable
 
         state["profile"] = s.ProfileId;
         state["frames"] = s.VideoFrames;
+        state["check"] = Check(s);
         CalibrationProbe probe = s.Probe;
         state["grid"] = new JsonObject { ["cols"] = probe.Columns, ["rows"] = probe.Rows, ["static"] = Cells(probe.StaticCells()) };
         IReadOnlyDictionary<string, int> marks = probe.MarkCounts();
@@ -371,6 +386,36 @@ public sealed class CalibrationHost : IAsyncDisposable
 
         state["thresholds"] = thresholds;
         return state.ToJsonString();
+    }
+
+    /// <summary>The clipper check's view: the newest candidates (times in playback seconds) and the scores so far.</summary>
+    private static JsonObject Check(OfficialPlayerSession s)
+    {
+        double freq = s.Check.Frequency;
+        double At(long qpc) => Math.Round((qpc - s.OriginQpc) / freq, 1);
+        var recent = new JsonArray();
+        foreach (Check.CheckCandidate c in s.Check.Recent(50))
+        {
+            recent.Add(new JsonObject
+            {
+                ["id"] = c.Id,
+                ["start"] = At(c.StartQpc),
+                ["end"] = At(c.EndQpc),
+                ["peak"] = At(c.PeakQpc),
+                ["score"] = Math.Round(c.Score, 2),
+                ["reasons"] = new JsonArray([.. c.Reasons.Select(r => (JsonNode)r)]),
+                ["qa"] = c.QaPassed,
+                ["stars"] = c.Stars,
+            });
+        }
+
+        Check.CheckStats st = s.Check.Stats();
+        return new JsonObject
+        {
+            ["note"] = "Nothing here is stored: judgments and marks live in memory and are cleared when the player stops. Ratings that train the scorer come only from your own footage.",
+            ["recent"] = recent,
+            ["stats"] = JsonSerializer.SerializeToNode(st, Json),
+        };
     }
 
     private static JsonObject Rect(double x, double y, double w, double h) => new() { ["x"] = x, ["y"] = y, ["w"] = w, ["h"] = h };

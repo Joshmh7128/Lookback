@@ -331,6 +331,14 @@ loopback (build 19045). See [Live Capture](Live-Capture#live-audio).
 | `ResamplerTests.cs` | 5 tests | A unity ratio is a two-frame delay; 44.1, 96 and 47.99 kHz resample to 48 kHz keeping pitch, level and length; surround downmix cannot clip and drops LFE; PCM16, PCM24 and float decode |
 | `PolicyTests.cs` | 4 tests | Official player: never system loopback, encoder or mic; a live game falls back to system loopback before 20348 and says so; ephemeral is analysis only; invalid retention is refused |
 
+## `Lookback.Calibration.Tests`: the clipper check
+
+| File | Test | What it proves |
+|---|---|---|
+| `ClipperCheckTests.cs` | `Precision_recall_and_breakdowns_follow_the_judgments` | Precision, recall (marked moments found or missed), mean rating, per-reason and per-score breakdowns on hand-made candidates; duplicates ignored; QA failures shown |
+| | `Tolerance_clearing_and_reset` | A mark just past a window still counts as covered; 0 clears a rating; reset forgets everything |
+| | `The_clipper_runs_on_player_frames_and_its_candidates_are_judged_in_memory_only` | The real clipper on an official-player session's frames (video only) proposes candidates for flashes; judging and missed marks work through the panel's commands and show in its state; nothing is written; stopping the player clears the check |
+
 ## `Lookback.Recorder.Tests`
 
 | File | Test | What it proves |
