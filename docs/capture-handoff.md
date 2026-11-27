@@ -166,8 +166,21 @@ Rebase on main before merging; they touch this file's rows too.
    `new ProfileRunner(bus, catalog, gameId, method, sessionId, freq, publishCandidates: false)`
    and `new ClipperRunner(bus, catalog, gameId, sessionId, freq)`; for an
    unknown game `new ClipperRunner(bus, sessionId, freq)`. Dispose the
-   ProfileRunner first at session end. Game detection (`Lookback.Detection`)
-   and M4's `RatingStore`/`RatingSink` plug in here too.
+   ProfileRunner first at session end. M4's `RatingStore`/`RatingSink` plug
+   in here too.
+   Hosting game detection (PR #20, `src/Lookback.Detection.Windows`):
+   `await using DetectionRunner d = WindowsDetection.CreateRunner(bus);`
+   (1 s poll, built-in profiles, user allow/deny list in
+   `%LOCALAPPDATA%\Lookback\detection.json`). `d.Changed` fires on the poll
+   thread after the `game.lifecycle` envelope is published, with `Kind`
+   Detected, Focused, Unfocused, WindowChanged or Exited. On Detected or
+   WindowChanged call `WindowsDetection.TryCaptureTarget(c.Game)` (null if the
+   window is gone) and start or retarget the capture session. Honour
+   `c.Game.Policy` (`AllowPresentHook`, `AllowMemoryReading`); never relax it.
+   Wire `d.HintsChanged += g => profileRunner.ApplyHints(g.Hints, now)` and
+   call `ApplyHints` once right after starting the ProfileRunner. If the
+   capture session reuses `c.Game.Id` as its session id, publish one lifecycle
+   envelope again after `SessionStarted` (`StreamSnapshot` resets per session).
 7. Present-hook DLL (M6).
 
 Windows projects target `net10.0-windows10.0.22621.0` with
