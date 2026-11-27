@@ -18,6 +18,12 @@ public class LoaderTests
     [Theory]
     [InlineData("overwatch")]
     [InlineData("generic")]
+    [InlineData("valorant")]
+    [InlineData("cs2")]
+    [InlineData("fortnite")]
+    [InlineData("rainbow-six-siege")]
+    [InlineData("marvel-rivals")]
+    [InlineData("rust")]
     public void BuiltInProfilesAreValidAndUseOnlyRealSignals(string id)
     {
         GameProfile p = GameProfileLoader.Load(id);

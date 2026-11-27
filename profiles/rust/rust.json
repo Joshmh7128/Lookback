@@ -1,0 +1,95 @@
+{
+  // Rust: open-world survival shooter with anti-cheat (Easy Anti-Cheat) and no
+  // public live game-state API. Vision and audio only. Rust has no kill feed
+  // and no kill notice, so fights are read from the hit marker, sound and
+  // damage cues, and raids from runs of explosions. There are no modes:
+  // official, community and modded servers share one HUD.
+  "id": "rust",
+  "displayName": "Rust",
+  "version": 1,
+  "level": "game",
+  "executables": ["RustClient.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Anti-cheat (Easy Anti-Cheat): external capture (Windows.Graphics.Capture) only. No injection, no memory reads."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9. Not yet checked against footage: calibrate with testbench analyze --profile rust."
+  },
+  "regions": [
+    { "name": "crosshair",     "x": 0.47, "y": 0.46, "w": 0.06, "h": 0.08, "purpose": "Centre of the screen, where the hit marker appears when your shot lands." },
+    { "name": "centre_text",   "x": 0.25, "y": 0.30, "w": 0.50, "h": 0.30, "purpose": "Death screen and other large centre text." },
+    { "name": "notifications", "x": 0.82, "y": 0.55, "w": 0.17, "h": 0.25, "purpose": "Item pick-up and crafting notices, right side." },
+    { "name": "vitals",        "x": 0.82, "y": 0.83, "w": 0.17, "h": 0.15, "purpose": "Health, hydration and food bars, bottom right." },
+    { "name": "belt",          "x": 0.32, "y": 0.88, "w": 0.36, "h": 0.11, "purpose": "Belt hotbar, bottom centre." }
+  ],
+  "events": [
+    {
+      // A shot that lands: the hit marker flashes at the crosshair with its tick sound.
+      "name": "hit_confirmed",
+      "weight": 0.4,
+      "baseConfidence": 0.45,
+      "cooldownMs": 150,
+      "when": [ { "signal": "region.crosshair.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 150, "add": 0.25 } ],
+      "clip": { "preMs": 5000, "postMs": 3000 }
+    },
+    {
+      // Taking damage: the vitals bars move while the screen edge flashes red.
+      "name": "taking_damage",
+      "weight": 0.3,
+      "baseConfidence": 0.5,
+      "cooldownMs": 1000,
+      "when": [
+        { "signal": "region.vitals.activity", "rise": 0.03 },
+        { "signal": "flash.red_edge", "above": 0.04 }
+      ],
+      "clip": { "preMs": 4000, "postMs": 3000 }
+    },
+    {
+      // C4, rockets, satchels and explosive ammo: a loud jump in level, usually with a flash.
+      "name": "explosion",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "audio.rms_db", "rise": 15, "baselineAlpha": 0.01 } ],
+      "boosts": [
+        { "signal": "flash.brighten", "above": 0.08, "withinMs": 300, "add": 0.25 },
+        { "signal": "audio.peak_db", "above": -3, "withinMs": 200, "add": 0.1 }
+      ],
+      "clip": { "preMs": 5000, "postMs": 5000 }
+    },
+    {
+      // The death screen: the view cuts and the centre fills with dark, grey text.
+      "name": "death",
+      "weight": 0.3,
+      "baseConfidence": 0.45,
+      "cooldownMs": 10000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.centre_text.saturation", "below": 0.12 },
+        { "signal": "luma.mean", "below": 0.3 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 1000 }
+    },
+    {
+      "name": "loot_burst",
+      "weight": 0.15,
+      "baseConfidence": 0.5,
+      "cooldownMs": 1000,
+      "when": [ { "signal": "region.notifications.activity", "rise": 0.04 } ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    }
+  ],
+  "composites": [
+    // A gunfight: several hits landed in a few seconds.
+    { "name": "gunfight", "of": "hit_confirmed", "atLeast": 3, "withinMs": 5000,  "weight": 2.0, "clip": { "preMs": 8000, "postMs": 5000 } },
+    { "name": "spray_down", "of": "hit_confirmed", "atLeast": 6, "withinMs": 6000, "weight": 3.0, "clip": { "preMs": 8000, "postMs": 5000 } },
+    // A raid: a run of explosions inside a minute.
+    { "name": "raid",     "of": "explosion",     "atLeast": 4, "withinMs": 60000, "weight": 3.0, "clip": { "preMs": 15000, "postMs": 10000 } },
+    { "name": "big_loot", "of": "loot_burst",    "atLeast": 4, "withinMs": 8000,  "weight": 0.8, "clip": { "preMs": 4000, "postMs": 4000 } }
+  ]
+}

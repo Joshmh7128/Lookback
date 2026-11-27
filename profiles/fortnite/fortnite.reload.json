@@ -1,0 +1,15 @@
+{
+  // Reload: small map, quick matches and respawns while your squad is alive, so eliminations come faster and a death is less final.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile fortnite.reload.
+  "id": "fortnite.reload",
+  "displayName": "Fortnite: Reload",
+  "version": 1,
+  "parent": "fortnite",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "composites": [
+    { "name": "killstreak", "of": "elimination", "atLeast": 5, "withinMs": 30000, "weight": 4.0, "clip": { "preMs": 12000, "postMs": 3000 } }
+  ]
+}

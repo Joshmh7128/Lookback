@@ -1,0 +1,116 @@
+{
+  // Counter-Strike 2: a round-based tactical shooter with VAC. The game offers
+  // Game State Integration, but Lookback stays game-agnostic and does not use
+  // it on the clipping path: this profile is vision and audio only, the same
+  // as every other. The game level carries the bomb-defusal round rules shared
+  // by Premier, Competitive, Casual and Wingman; Deathmatch and Arms Race turn
+  // them off.
+  "id": "cs2",
+  "displayName": "Counter-Strike 2",
+  "version": 1,
+  "level": "game",
+  "executables": ["cs2.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "Anti-cheat (VAC): external capture (Windows.Graphics.Capture) only. No injection, no memory reads, no Game State Integration on the clipping path."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Region positions are estimates of the default HUD at 16:9 and default HUD scale. Players often change HUD scale and colour; calibrate with testbench analyze --profile cs2."
+  },
+  "regions": [
+    { "name": "radar",       "x": 0.00, "y": 0.00, "w": 0.18, "h": 0.30, "purpose": "Radar, top left. Mostly for learning mode fingerprints." },
+    { "name": "round_timer", "x": 0.40, "y": 0.00, "w": 0.20, "h": 0.08, "purpose": "Round timer and team score. The timer becomes a red bomb icon once the bomb is planted." },
+    { "name": "banner",      "x": 0.28, "y": 0.09, "w": 0.44, "h": 0.12, "purpose": "Round result banner (Counter-Terrorists win, Terrorists win)." },
+    { "name": "kill_feed",   "x": 0.70, "y": 0.06, "w": 0.29, "h": 0.22, "purpose": "Every elimination, newest at the bottom. Entries involving you have a red outline, which is what makes them yours." },
+    { "name": "health",      "x": 0.00, "y": 0.92, "w": 0.22, "h": 0.08, "purpose": "Health and armour, bottom left." },
+    { "name": "ammo",        "x": 0.82, "y": 0.92, "w": 0.18, "h": 0.08, "purpose": "Ammunition, bottom right." }
+  ],
+  "events": [
+    {
+      // Your elimination: a kill-feed entry with a red outline. There is no
+      // notice under the crosshair, so the kill feed's red content is the cue.
+      "name": "elimination",
+      "weight": 1.0,
+      "baseConfidence": 0.5,
+      "cooldownMs": 250,
+      "when": [
+        { "signal": "region.kill_feed.activity", "rise": 0.02 },
+        { "signal": "region.kill_feed.red", "rise": 0.03 }
+      ],
+      "boosts": [
+        { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.2 },
+        { "signal": "audio.rms_db", "above": -20, "withinMs": 300, "add": 0.1 }
+      ],
+      "clip": { "preMs": 6000, "postMs": 3000 }
+    },
+    {
+      "name": "kill_feed_activity",
+      "weight": 0.3,
+      "baseConfidence": 0.6,
+      "cooldownMs": 400,
+      "when": [ { "signal": "region.kill_feed.activity", "rise": 0.03 } ],
+      "clip": { "preMs": 4000, "postMs": 2000 }
+    },
+    {
+      "name": "bomb_planted",
+      "weight": 0.7,
+      "baseConfidence": 0.5,
+      "cooldownMs": 30000,
+      "when": [ { "signal": "region.round_timer.red", "rise": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 500, "add": 0.15 } ],
+      "clip": { "preMs": 8000, "postMs": 4000 }
+    },
+    {
+      // Flashbanged: the whole frame goes near white. Funny more than impressive, so low weight.
+      "name": "flashed",
+      "weight": 0.3,
+      "baseConfidence": 0.5,
+      "cooldownMs": 3000,
+      "when": [
+        { "signal": "flash.brighten", "above": 0.3 },
+        { "signal": "luma.mean", "above": 0.85 }
+      ],
+      "clip": { "preMs": 4000, "postMs": 4000 }
+    },
+    {
+      "name": "low_health",
+      "weight": 0.2,
+      "baseConfidence": 0.6,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "flash.red_edge", "above": 0.06 } ],
+      "clip": { "preMs": 3000, "postMs": 3000 }
+    },
+    {
+      "name": "death",
+      "weight": 0.2,
+      "baseConfidence": 0.45,
+      "cooldownMs": 5000,
+      "when": [
+        { "signal": "scene.cut", "above": 0.3 },
+        { "signal": "region.health.activity", "rise": 0.04 }
+      ],
+      "clip": { "preMs": 8000, "postMs": 1000 }
+    },
+    {
+      "name": "round_result",
+      "weight": 0.8,
+      "baseConfidence": 0.4,
+      "cooldownMs": 20000,
+      "when": [
+        { "signal": "region.banner.activity", "rise": 0.12 },
+        { "signal": "region.banner.luma", "above": 0.35 }
+      ],
+      "clip": { "preMs": 15000, "postMs": 5000 }
+    }
+  ],
+  "composites": [
+    { "name": "multikill",   "of": "elimination", "atLeast": 2, "withinMs": 4000,   "weight": 2.5, "clip": { "preMs": 6000, "postMs": 4000 } },
+    { "name": "triple_kill", "of": "elimination", "atLeast": 3, "withinMs": 8000,   "weight": 4.0, "clip": { "preMs": 8000, "postMs": 4000 } },
+    // A round lasts 1:55 plus the 40 s bomb timer, so five eliminations inside that is an ace.
+    { "name": "ace",         "of": "elimination", "atLeast": 5, "withinMs": 155000, "weight": 6.0, "clip": { "preMs": 20000, "postMs": 5000 } },
+    { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
+  ]
+}

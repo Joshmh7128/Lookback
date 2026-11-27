@@ -1,0 +1,16 @@
+{
+  // Wingman: 2v2 bomb defusal on small maps with shorter rounds. Wiping both enemies is the ace of this mode.
+  // Detected from a visual fingerprint learned from labelled footage
+  // (lookback-testbench fingerprint <manifest>). Until then, choose it by hand
+  // with --profile cs2.wingman.
+  "id": "cs2.wingman",
+  "displayName": "Counter-Strike 2: Wingman",
+  "version": 1,
+  "parent": "cs2",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet; inherited regions are uncalibrated estimates." },
+  "disable": ["ace"],
+  "composites": [
+    { "name": "wingman_wipe", "of": "elimination", "atLeast": 2, "withinMs": 130000, "weight": 3.5, "clip": { "preMs": 15000, "postMs": 4000 } }
+  ]
+}

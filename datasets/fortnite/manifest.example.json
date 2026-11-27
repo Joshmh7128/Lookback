@@ -1,0 +1,31 @@
+{
+  // Copy to manifest.json next to your footage. File paths are relative to this file.
+  // Media is never committed (see .gitignore): only manifests are.
+  //
+  // retention:
+  //   owned         your own recordings (default)
+  //   permissioned  someone else's footage used with their permission; permissionRef says where it is recorded
+  //   open-license  footage under a licence that allows this use; permissionRef names the licence and source
+  //
+  // profile: the deepest profile the footage shows (fortnite.zero-build...).
+  //   Scores detection and teaches mode fingerprints (lookback-testbench fingerprint).
+  // labels: hand-marked moments, in seconds from the start of the file. Event names
+  // match the profile (elimination, multikill, squad_wipe, build_fight, victory_royale, death...).
+  // clips: stretches you would clip, in seconds; candidates are scored against them.
+  "game": "fortnite",
+  "entries": [
+    {
+      "file": "media/my-session-01.mp4",
+      "source": "own recording, 1920x1080, default HUD",
+      "retention": "owned",
+      "profile": "fortnite.zero-build",
+      "clips": [ { "start": 112, "end": 126 } ],
+      "labels": [
+        { "event": "elimination", "at": 120.4 },
+        { "event": "elimination", "at": 124.9 },
+        { "event": "multikill", "at": 124.9 },
+        { "event": "victory_royale", "at": 410.0 }
+      ]
+    }
+  ]
+}
