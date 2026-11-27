@@ -55,7 +55,19 @@ public sealed class WebSocketBridgeOptions
     /// connects; consumers treat them as idempotent.
     /// </summary>
     public bool ReplaySnapshot { get; init; } = true;
+
+    /// <summary>
+    /// Extra WebSocket endpoints, such as the official-player frame ingest.
+    /// Each gets the same Origin and token checks as <c>/events</c> before
+    /// its handler sees the socket.
+    /// </summary>
+    public IReadOnlyList<BridgeSocket> Sockets { get; init; } = [];
 }
+
+/// <summary>A WebSocket endpoint the bridge accepts at <paramref name="Path"/> and hands to <paramref name="Handler"/>.</summary>
+/// <param name="Path">Request path, starting with <c>/</c>.</param>
+/// <param name="Handler">Runs for the life of the socket; return to close it. The token stops shutdown.</param>
+public sealed record BridgeSocket(string Path, Func<WebSocket, CancellationToken, Task> Handler);
 
 /// <summary>A self-contained HTML page the bridge serves at <paramref name="Path"/>.</summary>
 /// <param name="Path">Request path, starting with <c>/</c>.</param>
@@ -94,6 +106,14 @@ public sealed class WebSocketBridge : IAsyncDisposable
             if (!page.Path.StartsWith('/') || page.Path == "/events")
             {
                 throw new ArgumentException($"Invalid page path '{page.Path}'.", nameof(options));
+            }
+        }
+
+        foreach (BridgeSocket socket in _options.Sockets)
+        {
+            if (!socket.Path.StartsWith('/') || socket.Path == "/events" || _options.Pages.Any(p => p.Path == socket.Path))
+            {
+                throw new ArgumentException($"Invalid socket path '{socket.Path}'.", nameof(options));
             }
         }
     }
@@ -139,6 +159,10 @@ public sealed class WebSocketBridge : IAsyncDisposable
         WebApplication app = builder.Build();
         app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15) });
         app.Map("/events", HandleAsync);
+        foreach (BridgeSocket socket in _options.Sockets)
+        {
+            app.Map(socket.Path, (HttpContext c) => HandleSocketAsync(c, socket));
+        }
         foreach (BridgePage page in _options.Pages)
         {
             byte[] body = Encoding.UTF8.GetBytes(page.Html);
@@ -175,25 +199,68 @@ public sealed class WebSocketBridge : IAsyncDisposable
         await context.Response.Body.WriteAsync(body, context.RequestAborted).ConfigureAwait(false);
     }
 
-    private async Task HandleAsync(HttpContext context)
+    /// <summary>Origin and token checks shared by every socket; sets the status and returns false on refusal.</summary>
+    private bool Admit(HttpContext context)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
-            return;
+            return false;
         }
 
         string? origin = context.Request.Headers.Origin;
         if (origin is not null && !_origins.Contains(origin))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
-            return;
+            return false;
         }
 
         string? token = context.Request.Query["token"];
         if (token is null || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(token), Encoding.UTF8.GetBytes(Token)))
         {
             context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task HandleSocketAsync(HttpContext context, BridgeSocket endpoint)
+    {
+        if (!Admit(context))
+        {
+            return;
+        }
+
+        using WebSocket socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+        using var closed = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, _shutdown.Token);
+        try
+        {
+            await endpoint.Handler(socket, closed.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (WebSocketException)
+        {
+        }
+
+        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        {
+            try
+            {
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (WebSocketException)
+            {
+            }
+        }
+    }
+
+    private async Task HandleAsync(HttpContext context)
+    {
+        if (!Admit(context))
+        {
             return;
         }
 
