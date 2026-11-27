@@ -60,6 +60,8 @@ public sealed class MfVideoEncoder : IDisposable
     private long _submitted;
     private long _emitted;
     private volatile bool _disposed;
+    private volatile EncodePhase _phase;
+    private volatile EncodePhase _outputPhase;
 
     private MfVideoEncoder(GpuDevice gpu, VideoEncoderSettings settings, IPacketSink sink, int trackId, long qpcFrequency, IMFTransform mft, string name, bool hardware)
     {
@@ -112,6 +114,9 @@ public sealed class MfVideoEncoder : IDisposable
     public string Name { get; }
 
     public bool IsHardware { get; }
+
+    /// <summary>Where the encoding thread and the encoder's event thread are, for stall diagnosis.</summary>
+    public (EncodePhase Input, EncodePhase Output) Phase => (_phase, _outputPhase);
 
     /// <summary>Frames the encoder had no room for (it was behind).</summary>
     public long Dropped { get; private set; }
@@ -210,8 +215,10 @@ public sealed class MfVideoEncoder : IDisposable
 
         Slot slot = _pool[_next];
         _next = (_next + 1) % PoolSize;
+        _phase = EncodePhase.WaitingForGpuLock;
         lock (_gpu.Lock)
         {
+            _phase = EncodePhase.Copying;
             _gpu.Context.CopyResource(slot.Texture, nv12);
         }
 
@@ -221,6 +228,7 @@ public sealed class MfVideoEncoder : IDisposable
 
         try
         {
+            _phase = EncodePhase.ProcessInput;
             _mft.ProcessInput(0, slot.Sample, 0);
         }
         catch (SharpGenException)
@@ -228,6 +236,10 @@ public sealed class MfVideoEncoder : IDisposable
             Interlocked.Decrement(ref _submitted);
             Dropped++;
             return false;
+        }
+        finally
+        {
+            _phase = EncodePhase.Idle;
         }
 
         if (!IsHardware)
@@ -338,6 +350,7 @@ public sealed class MfVideoEncoder : IDisposable
         {
             while (true)
             {
+                _outputPhase = EncodePhase.WaitingForEvent;
                 using IMFMediaEvent e = _events!.GetEvent(0);
                 switch (e.EventType)
                 {
@@ -345,6 +358,7 @@ public sealed class MfVideoEncoder : IDisposable
                         _needInput.Release();
                         break;
                     case MediaEventTypes.TransformHaveOutput:
+                        _outputPhase = EncodePhase.ProcessOutput;
                         DrainOutput();
                         break;
                     case MediaEventTypes.TransformDrainComplete:
@@ -556,6 +570,18 @@ public sealed class MfVideoEncoder : IDisposable
             Texture.Dispose();
         }
     }
+}
+
+/// <summary>What an encoder thread is doing right now; a phase that never changes while frames are due is a stall.</summary>
+public enum EncodePhase
+{
+    Idle,
+    WaitingForGpuLock,
+    Converting,
+    Copying,
+    ProcessInput,
+    WaitingForEvent,
+    ProcessOutput,
 }
 
 /// <summary>Process-wide Media Foundation startup. Call once before creating encoders.</summary>

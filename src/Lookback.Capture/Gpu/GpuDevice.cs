@@ -79,6 +79,7 @@ public sealed class GpuDevice : IDisposable
     /// <summary>The WARP software rasteriser, for tests on machines without a GPU (CI).</summary>
     public static GpuDevice CreateWarp()
     {
+        // WARP has no video support (no ID3D11VideoDevice), so Nv12Converter needs a real adapter.
         D3D11.D3D11CreateDevice(IntPtr.Zero, DriverType.Warp, DeviceCreationFlags.BgraSupport, [FeatureLevel.Level_11_0], out ID3D11Device? device).CheckError();
         return new GpuDevice(device!, null, "WARP", 0, isWarp: true);
     }

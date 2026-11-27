@@ -15,6 +15,7 @@ automatically when `main` changes, so the wiki always matches the code.
 |---|---|
 | [Quickstart](Quickstart) | Build, analyse a clip, open the report, watch events fire live |
 | [Architecture](Architecture) | The whole system: processes, data flow, recording tiers, milestones |
+| [System Map](System-Map) | Where the code is today: what is built, in progress and planned, drawn as processes, the capture path and the rating loop |
 | [Detection Walkthrough](Detection-Walkthrough) | How frames and audio become game events with no game API, stage by stage, with a worked example |
 | [Detection Design Notes](Detection-Design-Notes) | Why detection is built this way: trade-offs, limits, measurement, common questions |
 | [Project Structure](Project-Structure) | Every folder and project, and how they depend on each other |
@@ -32,6 +33,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | [Testbench](Testbench) | The footage CLI and the interactive timeline viewer |
 | [Live Profiler](Live-Profiler) | Watch every event fire in real time, for demos and profile debugging |
 | [Dataset Browser](Dataset-Browser) | Sift profiles and datasets: what each profile identifies, its key signals and regions, coverage and scores |
+| [Live Capture](Live-Capture) | WGC/DXGI capture, the analysis tap, NV12 + CFR encode clock, Media Foundation encoders, the `lookback-capture` bench |
 | [Testing](Testing) | What each test proves |
 
 ## Status
@@ -43,7 +45,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
 | Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | In progress: [Clipper v1](Clipper) built (curve, peaks, fusion with profile events, QA gates) |
-| M3 | Live capture, encode, replay ring, disk store, resource governor | Planned |
+| M3 | Live capture, encode, replay ring, disk store, resource governor | In progress: capture, analysis, video encode, ring, store and governor policy done; audio, governor probe and recorder wiring under way |
 | M4 | Training, ONNX scoring, calibration | Planned |
 | M5 | Transcode, VMAF report, audio checks | Planned |
 | M6 | D3D11/D3D12 present hook, DXGI duplication, HDR | Planned |

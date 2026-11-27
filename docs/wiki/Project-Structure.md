@@ -23,6 +23,12 @@ src/
   Lookback.Profiles/          game profiles: regions, rules, event detector
   Lookback.Clipper/           excitement curve, peaks, candidate fusion, QA gates
   Lookback.Profiler/          live event profiler page (served by the bridge)
+  Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
+  Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
+  Lookback.Governor/          budget policy and runtime controller
+  Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
+  Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
+  Lookback.Capture.Cli/       lookback-capture bench (Windows)
   Lookback.Recorder/          service executable
   Lookback.Testbench/         footage CLI + HTML timeline viewer
 tests/
@@ -31,6 +37,10 @@ tests/
   Lookback.Signals.Tests/
   Lookback.Profiles.Tests/
   Lookback.Clipper.Tests/
+  Lookback.Calibration.Tests/
+  Lookback.Replay.Tests/
+  Lookback.Governor.Tests/
+  Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
   Lookback.Testbench.Tests/
 docs/
   architecture.md             repository summary
@@ -84,13 +94,19 @@ flowchart TB
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
+| `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
+| `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
+| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |
+| `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
+| `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
+| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
 
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Detection`, `Lookback.Capture`, `Lookback.Gpu`, `Lookback.Encode`,
-`Lookback.Replay`, `Lookback.Audio`, `Lookback.Quality`,
-`Lookback.Governor`, `Lookback.Memory`, `native/hook`, `app/`, `ml/`.
+`Lookback.Detection`, `Lookback.Audio`, `Lookback.Quality`,
+`Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
+`Lookback.Capture/Gpu`.)
 
 ```mermaid
 flowchart TB

@@ -180,6 +180,20 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | | `LivePlaysTheClipIntoTheProfilerSocket` | `live` with the generic profile: a socket client with the page's origin gets `SessionStarted` first, four schemas (video, audio, rules, the clipper's curve), every frame and hop, and the end, paced over real time |
 | | `LiveRefusesPermissionedFootageWithoutAReference` | Retention is checked before anything starts |
 
+## `Lookback.Capture.Tests`
+
+Windows only (they skip elsewhere). Encoder tests also need ffmpeg/ffprobe.
+See [Live Capture](Live-Capture#tests).
+
+| File | Test | Proves |
+|---|---|---|
+| `DownscalerTests.cs` | `Sixteen_by_nine_fills_the_frame_in_bgra_order` | The WARP compute downscale keeps BGRA order and fills 384x216 from 16:9 |
+| | `Four_by_three_is_pillarboxed_like_file_source` | 4:3 is pillarboxed with the same bars as FileSource |
+| `EncoderTests.cs` | `Software_h264_on_warp_round_trips_through_the_muxer` | Software H.264 on WARP takes NV12 DXGI surface buffers; 120 frames through the ring and `ClipWriter` read back as 120 frames, keyframes at 0 and 2 s, no B-frames, no decode errors |
+| | `Software_h264_on_the_gpu_reads_converter_output` | The same from `Nv12Converter` output on a real adapter |
+| | `Hardware_encoder_round_trips_through_the_muxer` (H.264, HEVC) | Every display adapter's hardware MFT: all frames out, `Dispose` drains in under 3 s, same clip checks |
+| `EncodeTickerTests.cs` | `Irregular_capture_becomes_constant_rate_packets` | Slow, bursty, then absent capture still gives one packet per tick at constant spacing, repeats counted, nothing skipped or busy |
+
 ## Testing approach
 
 - **Deterministic time.** `ManualClock` and hand-set `qpc` values; no test
