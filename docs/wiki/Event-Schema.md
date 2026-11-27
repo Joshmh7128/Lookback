@@ -39,8 +39,18 @@ classDiagram
     Envelope --> QaReport
     Envelope --> ClipSaved
     Envelope --> GameEvent
+    Envelope --> ProfileDetected
     QaReport --> QaCheck
     SignalFrame ..> SignalSchema : schema_id
+    class ProfileDetected {
+        string profile_id
+        repeated string path
+        ProfileLevel level
+        DetectionMethod method
+        float confidence
+        fixed64 at_qpc
+        repeated string evidence
+    }
     class GameEvent {
         string name
         string game_profile
@@ -129,6 +139,14 @@ boosts); `weight` is how much the moment matters to the clipper; `evidence`
 lists, in words, the conditions and boosts that made it fire, so a person
 can see why.
 
+**`ProfileDetected`** (field 19) says which profile is active: the game, a
+sub-game beneath it (a Roblox experience) or a mode. `path` lists the tree
+from the game down. `method` says how it was decided: the executable, a hint
+(launch arguments or the client's own log), a visual fingerprint, or chosen
+by hand. It is published on `game.profile` at the start and whenever the
+active profile changes, so the clipper and the viewer always know which
+rules applied when.
+
 **`ClipCandidate`** is a proposed clip: its window, the peak inside it,
 the heuristic score, an optional model score (`optional` so "not scored yet"
 differs from 0), the calibrated `highlight_probability`, and human-readable
@@ -146,6 +164,8 @@ a measured value and detail.
 | `SourceKind` | `LIVE_GAME`, `FILE`, `OFFICIAL_PLAYER` |
 | `Retention` | `EPHEMERAL`, `OWNED`, `PERMISSIONED`, `OPEN_LICENSE` |
 | `GraphicsApi` | `D3D11`, `D3D12`, `VULKAN`, `OPENGL` |
+| `ProfileLevel` | `GAME`, `SUBGAME`, `MODE` |
+| `DetectionMethod` | `EXECUTABLE`, `HINT`, `VISUAL`, `MANUAL` |
 | `SignalFamily` | `VIDEO`, `AUDIO`, `INPUT`, `RULES` (a profile's rule margins, for viewers) |
 
 Every enum starts with an `_UNSPECIFIED = 0` value, as proto3 requires, so a
@@ -163,7 +183,8 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `signals.video`, `signals.audio`, `signals.input` | `SignalSchema`, `SignalFrame` |
 | `signals.rules` | `SignalSchema`, `SignalFrame`: one margin per profile condition, published by the profile runner |
 | `game.event` | `GameEvent` |
-| `clip.candidate` | `ClipCandidate` |
+| `game.profile` | `ProfileDetected` |
+| `clip.candidate` | `ClipCandidate` (today built from profile events; source `profile.<game>.candidates`) |
 | `qa.report` | `QaReport` |
 | `clip.saved` | `ClipSaved` |
 

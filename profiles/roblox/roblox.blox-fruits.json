@@ -1,0 +1,37 @@
+{
+  // An action role-playing experience: combat, bosses, level-ups.
+  "id": "roblox.blox-fruits",
+  "displayName": "Blox Fruits",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "detect": {
+    // Each sea is its own place; add the ids you see in the client log.
+    "hints": [
+      { "source": "launchArgs", "regex": "placeId(?:%3D|=)(\\d+)", "values": ["2753915549"] },
+      { "source": "log", "regex": "place (\\d+)", "values": ["2753915549"] }
+    ]
+  },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No HUD regions yet; rules use whole-frame signals and the Roblox centre region." },
+  "events": [
+    {
+      // Big ability effects: bright, saturated, everywhere at once.
+      "name": "big_ability",
+      "weight": 0.9,
+      "baseConfidence": 0.4,
+      "cooldownMs": 2000,
+      "when": [ { "signal": "flash.brighten", "above": 0.12 }, { "signal": "motion.coverage", "above": 0.5 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 250, "add": 0.2 } ]
+    },
+    {
+      "name": "level_up",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 5000,
+      "when": [ { "signal": "region.centre.activity", "rise": 0.1 }, { "signal": "region.centre.luma", "above": 0.5 } ]
+    }
+  ],
+  "composites": [
+    { "name": "combo", "of": "big_ability", "atLeast": 3, "withinMs": 6000, "weight": 2 }
+  ]
+}

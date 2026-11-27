@@ -2,6 +2,7 @@ using Lookback.Contracts;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
 using Lookback.Core.Time;
+using Lookback.Profiles.Candidates;
 using Lookback.Profiles.Model;
 
 namespace Lookback.Profiles.Detection;
@@ -10,7 +11,9 @@ namespace Lookback.Profiles.Detection;
 /// Runs a profile live on the bus: subscribes to <c>signals.video</c> and
 /// <c>signals.audio</c>, merges them into time order, runs the detector, and
 /// publishes <c>game.event</c> envelopes plus a <c>signals.rules</c> frame of
-/// condition margins per video frame. The same component serves live capture
+/// condition margins per video frame. Given a catalog it runs a whole game
+/// tree and publishes <c>game.profile</c> whenever the active sub-game or mode
+/// changes. The same component serves live capture
 /// and footage replays.
 /// </summary>
 public sealed class ProfileRunner : IAsyncDisposable
@@ -24,6 +27,9 @@ public sealed class ProfileRunner : IAsyncDisposable
     private readonly TimeOrderedMerger<Envelope> _merger;
     private readonly EnvelopeFactory _events;
     private readonly EnvelopeFactory _rules;
+    private readonly EnvelopeFactory _candidates;
+    private readonly CandidateBuilder _builder;
+    private readonly List<ClipCandidate> _closed = [];
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _pump;
     private readonly Lock _gate = new();
@@ -31,24 +37,58 @@ public sealed class ProfileRunner : IAsyncDisposable
     private long _eventCount;
 
     public ProfileRunner(IEventBus bus, GameProfile profile, string sessionId, long frequency, int capacity = 65_536)
+        : this(bus, new ProfileCatalog([profile ?? throw new ArgumentNullException(nameof(profile))]), profile.Id, DetectionMethod.Manual, sessionId, frequency, capacity)
+    {
+    }
+
+    public ProfileRunner(IEventBus bus, ProfileCatalog catalog, string startId, DetectionMethod method, string sessionId, long frequency, int capacity = 65_536)
     {
         ArgumentNullException.ThrowIfNull(bus);
-        ArgumentNullException.ThrowIfNull(profile);
+        ArgumentNullException.ThrowIfNull(catalog);
         _bus = bus;
+        GameProfile profile = catalog.PathTo(startId)[0];
         Profile = profile;
-        _detector = new ProfileEventDetector(profile, frequency);
+        _detector = new ProfileEventDetector(catalog, startId, frequency, method);
         _merger = new TimeOrderedMerger<Envelope>(TimeSpan.FromSeconds(2)); // wall time: output depends on QPC only
         _merger.Register(1);
         _merger.Register(2);
         _events = new EnvelopeFactory(new ManualClock(frequency), sessionId, $"profile.{profile.Id}");
         _rules = new EnvelopeFactory(new ManualClock(frequency), sessionId, $"profile.{profile.Id}.rules");
+        _candidates = new EnvelopeFactory(new ManualClock(frequency), sessionId, $"profile.{profile.Id}.candidates");
+        _builder = new CandidateBuilder(sessionId, frequency);
         SessionId = sessionId;
         _video = bus.Subscribe(Topics.SignalsVideo, capacity);
         _audio = bus.Subscribe(Topics.SignalsAudio, capacity);
         _pump = Task.WhenAll(PumpAsync(_video, 1, _cts.Token), PumpAsync(_audio, 2, _cts.Token));
     }
 
+    /// <summary>The game at the root of the tree being run.</summary>
     public GameProfile Profile { get; }
+
+    /// <summary>The profile currently detected.</summary>
+    public string ActiveProfileId
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _detector.ActiveProfileId;
+            }
+        }
+    }
+
+    /// <summary>Live detection facts; a hint match is published at once.</summary>
+    public void ApplyHints(DetectionContext context, long at)
+    {
+        lock (_gate)
+        {
+            ProfileDetected? d = _detector.ApplyHints(context, at);
+            if (d is not null)
+            {
+                PublishDetection(d);
+            }
+        }
+    }
 
     public string SessionId { get; }
 
@@ -104,9 +144,17 @@ public sealed class ProfileRunner : IAsyncDisposable
     private void Process(List<Envelope> frames)
     {
         var found = new List<GameEvent>();
+        var detections = new List<ProfileDetected>();
         foreach (Envelope e in frames)
         {
-            if (_detector.OnFrame(e.SignalFrame, found))
+            bool video = _detector.OnFrame(e.SignalFrame, found, detections);
+            foreach (ProfileDetected d in detections)
+            {
+                PublishDetection(d);
+            }
+
+            detections.Clear();
+            if (video)
             {
                 PublishMargins((long)e.SignalFrame.WindowStartQpc, (long)e.SignalFrame.WindowEndQpc);
             }
@@ -141,6 +189,13 @@ public sealed class ProfileRunner : IAsyncDisposable
         _bus.Publish(env);
     }
 
+    private void PublishDetection(ProfileDetected d)
+    {
+        Envelope env = _events.Create(Topics.GameProfile, (long)d.AtQpc);
+        env.ProfileDetected = d;
+        _bus.Publish(env);
+    }
+
     private void Publish(List<GameEvent> found)
     {
         foreach (GameEvent g in found)
@@ -149,9 +204,23 @@ public sealed class ProfileRunner : IAsyncDisposable
             env.GameEvent = g;
             _bus.Publish(env);
             Interlocked.Increment(ref _eventCount);
+            _builder.Add(g, _closed);
         }
 
         found.Clear();
+        PublishCandidates();
+    }
+
+    private void PublishCandidates()
+    {
+        foreach (ClipCandidate c in _closed)
+        {
+            Envelope env = _candidates.Create(Topics.ClipCandidate, (long)c.PeakQpc);
+            env.ClipCandidate = c;
+            _bus.Publish(env);
+        }
+
+        _closed.Clear();
     }
 
     /// <summary>Processes everything queued, flushes the merger and detector, then stops.</summary>
@@ -171,6 +240,8 @@ public sealed class ProfileRunner : IAsyncDisposable
             var found = new List<GameEvent>();
             _detector.Flush(found);
             Publish(found);
+            _builder.Flush(_closed);
+            PublishCandidates();
         }
 
         _video.Dispose();

@@ -28,12 +28,27 @@ internal static class TimelineBuilder
         double maxSeconds = 0;
 
         var events = new List<TimelineData.EventMark>();
+        var profiles = new List<(double At, ProfileDetected D)>();
+        var candidates = new List<TimelineData.CandidateMark>();
+        double Sec(ulong q) => QpcTime.ToTimeSpan((long)q, frequency).TotalSeconds;
         await foreach (Envelope e in reader.ReadAsync(cancellationToken: ct).ConfigureAwait(false))
         {
+            if (e.PayloadCase == Envelope.PayloadOneofCase.ProfileDetected)
+            {
+                profiles.Add((Sec(e.ProfileDetected.AtQpc), e.ProfileDetected));
+                continue;
+            }
+
+            if (e.PayloadCase == Envelope.PayloadOneofCase.ClipCandidate)
+            {
+                ClipCandidate c = e.ClipCandidate;
+                candidates.Add(new TimelineData.CandidateMark(c.CandidateId, Sec(c.StartQpc), Sec(c.EndQpc), Sec(c.PeakQpc), c.HeuristicScore, c.HighlightProbability, c.GameProfile, [.. c.Reasons]));
+                continue;
+            }
+
             if (e.PayloadCase == Envelope.PayloadOneofCase.GameEvent)
             {
                 GameEvent g = e.GameEvent;
-                double Sec(ulong q) => QpcTime.ToTimeSpan((long)q, frequency).TotalSeconds;
                 events.Add(new TimelineData.EventMark(g.Name, Sec(g.AtQpc), Sec(g.WindowStartQpc), Sec(g.WindowEndQpc), g.Confidence, g.Weight, [.. g.Evidence]));
                 continue;
             }
@@ -131,6 +146,15 @@ internal static class TimelineBuilder
         }
 
         data.Events.AddRange(events.OrderBy(x => x.At));
+        data.Candidates.AddRange(candidates.OrderBy(x => x.Start));
+        profiles.Sort((a, b) => a.At.CompareTo(b.At));
+        for (int i = 0; i < profiles.Count; i++)
+        {
+            ProfileDetected d = profiles[i].D;
+            double end = i + 1 < profiles.Count ? profiles[i + 1].At : maxSeconds;
+            data.ProfileSpans.Add(new TimelineData.ProfileSpan(d.ProfileId, profiles[i].At, end, d.Method.ToString(), d.Confidence, [.. d.Evidence]));
+        }
+
         data.Profile = string.IsNullOrEmpty(header.GameProfile) ? null : header.GameProfile;
 
         return data;

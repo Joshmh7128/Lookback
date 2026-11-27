@@ -131,7 +131,8 @@ public class ProfileTests(FootageFixture fixture) : IClassFixture<FootageFixture
         string rel = Path.GetRelativePath(dir, fixture.File).Replace('\\', '/');
         File.WriteAllText(manifest, $$"""{ "game": "generic", "entries": [ { "file": "{{rel}}", "labels": [ { "event": "impact", "at": 2.0 } ] } ] }""");
 
-        var (entries, overall) = await DatasetRunner.RunAsync(manifest, Path.Combine(dir, "out"), 0.5, null, ct);
+        DatasetResult result = await DatasetRunner.RunAsync(manifest, Path.Combine(dir, "out"), 0.5, null, ct);
+        var (entries, overall) = (result.Entries, result.Overall);
         Assert.Single(entries);
         EventScore impact = overall.Single(s => s.Event == "impact");
         Assert.Equal(1, impact.TruePositives);

@@ -68,10 +68,12 @@ public static class GameProfileLoader
         ArgumentNullException.ThrowIfNull(p);
         var problems = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(p.Id) || p.Id.Any(c => !(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-')))
+        if (string.IsNullOrWhiteSpace(p.Id) || p.Id.Split('.').Any(part => part.Length == 0 || part.Any(c => !(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-'))))
         {
-            problems.Add("id must be lower-case letters, digits and dashes.");
+            problems.Add("id must be lower-case letters, digits and dashes, with dots between levels.");
         }
+
+        ValidateHierarchy(p, problems);
 
         foreach (HudRegion r in p.Regions)
         {
@@ -126,7 +128,7 @@ public static class GameProfileLoader
 
         foreach (CompositeRule c in p.Composites)
         {
-            if (!eventNames.Contains(c.Of))
+            if (!eventNames.Contains(c.Of) && string.IsNullOrEmpty(p.Parent)) // a child may build on inherited events; the catalog checks those
             {
                 problems.Add($"composite '{c.Name}' refers to unknown event '{c.Of}'.");
             }
@@ -145,6 +147,59 @@ public static class GameProfileLoader
         return problems;
     }
 
+    private static void ValidateHierarchy(GameProfile p, List<string> problems)
+    {
+        bool root = string.IsNullOrEmpty(p.Parent);
+        if (root != (p.Level == ProfileLevelKind.Game))
+        {
+            problems.Add("a game has no parent; a subgame or mode must name one.");
+        }
+
+        if (!root && !p.Id.StartsWith(p.Parent + ".", StringComparison.Ordinal))
+        {
+            problems.Add($"id must start with the parent id: '{p.Parent}.'.");
+        }
+
+        if (!root && p.Executables.Count > 0)
+        {
+            problems.Add("only a game lists executables; children are detected beneath it.");
+        }
+
+        if (root && (p.Detect.Hints.Count > 0 || p.Detect.Visual.Count > 0))
+        {
+            problems.Add("a game is detected by its executables; detect hints and fingerprints are for subgames and modes.");
+        }
+
+        foreach (Condition c in p.Detect.Visual)
+        {
+            if ((c.Above.HasValue ? 1 : 0) + (c.Below.HasValue ? 1 : 0) != 1 || c.Rise.HasValue)
+            {
+                problems.Add($"fingerprint condition on '{c.Signal}' must set exactly one of above or below.");
+            }
+        }
+
+        if (p.Detect.MinScore is <= 0 or > 1 || p.Detect.WindowSeconds <= 0 || p.Detect.HoldSeconds < 0)
+        {
+            problems.Add("detect: minScore must be in (0, 1], windowSeconds positive, holdSeconds not negative.");
+        }
+
+        foreach (DetectHint h in p.Detect.Hints)
+        {
+            try
+            {
+                var re = new System.Text.RegularExpressions.Regex(h.Regex, System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(100));
+                if (h.Values.Count > 0 && re.GetGroupNumbers().Length < 2)
+                {
+                    problems.Add($"hint '{h.Regex}' lists values but has no capture group to compare them with.");
+                }
+            }
+            catch (ArgumentException ex)
+            {
+                problems.Add($"hint '{h.Regex}' is not a valid regular expression: {ex.Message}");
+            }
+        }
+    }
+
     /// <summary>Signals the profile's rules use that are not in <paramref name="available"/>.</summary>
     public static IReadOnlyList<string> ValidateSignals(GameProfile p, IReadOnlySet<string> available)
     {
@@ -152,6 +207,7 @@ public static class GameProfileLoader
         ArgumentNullException.ThrowIfNull(available);
         return p.Events
             .SelectMany(e => e.When.Concat(e.WhenAny).Select(c => c.Signal).Concat(e.Boosts.Select(b => b.Signal)))
+            .Concat(p.Detect.Visual.Select(c => c.Signal))
             .Where(s => !available.Contains(s))
             .Distinct()
             .ToArray();

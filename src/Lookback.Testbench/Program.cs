@@ -10,12 +10,20 @@ const string Usage = """
     Usage:
       lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|open-license|ephemeral]
                                         [--permission-ref <ref>] [--title <text>] [--game <name>]
-                                        [--profile <id-or-path>]
+                                        [--profile <id-or-path>] [--profiles <file-or-folder>]
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
+                                        [--profiles <file-or-folder>]
+      lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
+      lookback-testbench profiles
       lookback-testbench report <session-path-without-extension> [--video <file>]
 
     Profiles:
-      Built in: generic, overwatch. A path to a profile JSON file also works.
+      Profiles form a tree: game, then sub-game (a Roblox experience), then mode.
+      Start from a game (--profile roblox) and the sub-game and mode are detected;
+      or start lower (--profile roblox.arsenal) to choose them by hand. A path to
+      a profile JSON file also works. --profiles adds profile files to the tree,
+      for example the learned fingerprints that `fingerprint` writes.
+      `profiles` prints the tree.
       With a profile, the report gains an events lane, rule-margin lanes and a
       calibration overlay of the profile's HUD regions and the detected HUD mask.
 
@@ -35,6 +43,8 @@ try
     {
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
         ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
+        ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
+        ["profiles"] => PrintProfiles(),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
         _ => PrintUsage(),
     };
@@ -67,6 +77,7 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
         Title = flags.GetValueOrDefault("title"),
         Game = flags.GetValueOrDefault("game"),
         Profile = flags.GetValueOrDefault("profile"),
+        ExtraProfiles = Extra(flags),
     };
 
     var progress = new Progress<TimeSpan>(t => Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"\r  analysed {t:hh\\:mm\\:ss}")));
@@ -84,12 +95,25 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
         Console.WriteLine($"warning  {warning}");
     }
 
+    foreach (ProfileDetected d in r.Detections)
+    {
+        double at = d.AtQpc / (double)TestbenchRunner.Frequency;
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"profile  {at,7:0.0} s  {d.ProfileId} ({d.Method.ToString().ToLowerInvariant()}, {d.Confidence:P0})"));
+    }
+
     if (options.Profile is not null)
     {
         Console.WriteLine($"events   {r.Events.Count} from profile '{options.Profile}'");
         foreach (var group in r.Events.GroupBy(e => e.Name, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"         {group.Key,-24} {group.Count(),5}"));
+        }
+
+        Console.WriteLine($"clips    {r.Candidates.Count} candidates");
+        foreach (ClipCandidate c in r.Candidates.OrderByDescending(c => c.HeuristicScore).Take(10))
+        {
+            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+                $"         {c.StartQpc / (double)TestbenchRunner.Frequency,7:0.0}-{c.EndQpc / (double)TestbenchRunner.Frequency,-7:0.0} s  score {c.HeuristicScore,5:0.00}  {string.Join(", ", c.Reasons)}"));
         }
     }
 
@@ -100,11 +124,24 @@ static async Task<int> DatasetAsync(string manifest, Dictionary<string, string> 
 {
     string output = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "dataset-out"));
     double tolerance = double.Parse(flags.GetValueOrDefault("tolerance", "1.0"), CultureInfo.InvariantCulture);
-    var (entries, overall) = await DatasetRunner.RunAsync(manifest, output, tolerance, flags.GetValueOrDefault("profile"), ct);
+    DatasetResult result = await DatasetRunner.RunAsync(manifest, output, tolerance, flags.GetValueOrDefault("profile"), ct, Extra(flags));
+    IReadOnlyList<EventScore> overall = result.Overall;
 
-    foreach (DatasetEntryResult e in entries)
+    foreach (DatasetEntryResult e in result.Entries)
     {
-        Console.WriteLine($"{e.File}: {e.Events} events, report {e.Report}");
+        string detection = e.ExpectedProfile is null ? "" : string.Create(CultureInfo.InvariantCulture, $", detected {e.FinalProfile} (expected {e.ExpectedProfile}, right {e.DetectionAccuracy:P0} of the time)");
+        Console.WriteLine($"{e.File}: {e.Events} events{detection}, report {e.Report}");
+    }
+
+    if (result.DetectionAccuracy is { } accuracy)
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"\ndetection  right profile {accuracy:P0} of labelled time"));
+    }
+
+    if (result.Candidates is { } c)
+    {
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"candidates {c.TruePositives} match labelled clips, {c.FalsePositives} extra, {c.FalseNegatives} missed: precision {Pct(c.Precision)}, recall {Pct(c.Recall)}, mean overlap {c.MeanIoU:0.00}"));
     }
 
     Console.WriteLine();
@@ -120,6 +157,53 @@ static async Task<int> DatasetAsync(string manifest, Dictionary<string, string> 
 
     static string Pct(double v) => double.IsNaN(v) ? "-" : v.ToString("P0", CultureInfo.InvariantCulture);
 }
+
+static async Task<int> FingerprintAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
+{
+    string output = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "fingerprint-out"));
+    IReadOnlyList<LearnedFingerprint> learned = await FingerprintLearner.RunAsync(manifest, output, Extra(flags), ct);
+    foreach (LearnedFingerprint f in learned)
+    {
+        Console.WriteLine($"{f.Profile}  ({f.PositiveFrames} frames of it, {f.NegativeFrames} of others)");
+        if (f.Problem is not null)
+        {
+            Console.WriteLine($"  not learned: {f.Problem}");
+            continue;
+        }
+
+        foreach (LearnedCondition c in f.Conditions)
+        {
+            Console.WriteLine("  " + FingerprintLearner.Describe(c));
+        }
+
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"  minScore {f.MinScore:0.00}"));
+    }
+
+    Console.WriteLine($"\nprofiles  {Path.Combine(output, "learned")}  (use with --profiles, then check with the dataset command)");
+    return 0;
+}
+
+static int PrintProfiles()
+{
+    Lookback.Profiles.Model.ProfileCatalog catalog = Lookback.Profiles.Model.ProfileCatalog.BuiltIn;
+    foreach (var game in catalog.All.Where(p => string.IsNullOrEmpty(p.Parent)).OrderBy(p => p.Id, StringComparer.Ordinal))
+    {
+        foreach (var p in catalog.Subtree(game.Id))
+        {
+            int depth = catalog.PathTo(p.Id).Count - 1;
+            var resolved = catalog.Resolve(p.Id);
+            string how = p.Level == Lookback.Profiles.Model.ProfileLevelKind.Game
+                ? string.Join(", ", p.Executables)
+                : $"{p.Detect.Hints.Count} hints, {(p.Detect.Visual.Count == 0 ? "no fingerprint yet" : $"{p.Detect.Visual.Count}-condition fingerprint")}";
+            Console.WriteLine($"{new string(' ', depth * 2)}{p.Id.PadRight(28 - (depth * 2))} {p.Level.ToString().ToLowerInvariant(),-8} {resolved.Events.Count,2} events  {how}");
+        }
+    }
+
+    return 0;
+}
+
+static IReadOnlyList<string> Extra(Dictionary<string, string> flags) =>
+    flags.TryGetValue("profiles", out string? p) ? [p] : [];
 
 static async Task<int> ReportAsync(string session, Dictionary<string, string> flags, CancellationToken ct)
 {

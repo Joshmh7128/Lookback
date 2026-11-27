@@ -1,0 +1,65 @@
+{
+  // Roblox: one executable, thousands of experiences (sub-games) inside it.
+  // The game level covers what every experience shares: the Roblox client's
+  // own interface and the game-agnostic signals. Experiences add their own HUD
+  // regions and rules beneath it, and each can have modes beneath that.
+  "id": "roblox",
+  "displayName": "Roblox",
+  "version": 1,
+  "level": "game",
+  "executables": ["RobloxPlayerBeta.exe"],
+  "capturePolicy": {
+    "allowPresentHook": false,
+    "allowMemoryReading": false,
+    "notes": "The client ships anti-tamper protection: external capture only. Experience detection uses the launch arguments and the client's own log file, never the process's memory."
+  },
+  "reference": {
+    "aspect": "16:9",
+    "calibrated": false,
+    "notes": "Core interface positions are estimates for the default desktop layout at 16:9. Check them with the calibration overlay."
+  },
+  "regions": [
+    { "name": "topbar",      "x": 0.00, "y": 0.00, "w": 0.22, "h": 0.07, "purpose": "Roblox menu and chat buttons; present in every experience." },
+    { "name": "player_list", "x": 0.78, "y": 0.05, "w": 0.22, "h": 0.35, "purpose": "Player list and leaderstats, when the experience shows them." },
+    { "name": "chat",        "x": 0.00, "y": 0.07, "w": 0.33, "h": 0.30, "purpose": "Chat window." },
+    { "name": "centre",      "x": 0.30, "y": 0.30, "w": 0.40, "h": 0.40, "purpose": "Where most experiences put pop-ups, rewards and round banners." },
+    { "name": "hotbar",      "x": 0.30, "y": 0.88, "w": 0.40, "h": 0.12, "purpose": "Backpack hotbar (tools)." }
+  ],
+  "events": [
+    {
+      "name": "impact",
+      "weight": 0.6,
+      "baseConfidence": 0.4,
+      "cooldownMs": 500,
+      "when": [ { "signal": "flash.brighten", "above": 0.08 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 200, "add": 0.3 } ]
+    },
+    {
+      // A pop-up, reward or round banner in the middle of the screen.
+      "name": "centre_popup",
+      "weight": 0.5,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "region.centre.activity", "rise": 0.06 } ],
+      "boosts": [ { "signal": "spectral.onset", "above": 0.5, "withinMs": 300, "add": 0.2 } ]
+    },
+    {
+      // Respawn or teleport: the whole picture changes at once.
+      "name": "respawn_or_teleport",
+      "weight": 0.3,
+      "baseConfidence": 0.4,
+      "cooldownMs": 3000,
+      "when": [ { "signal": "scene.cut", "above": 0.5 } ]
+    },
+    {
+      "name": "loud_moment",
+      "weight": 0.4,
+      "baseConfidence": 0.4,
+      "cooldownMs": 1500,
+      "when": [ { "signal": "audio.rms_db", "rise": 12, "baselineAlpha": 0.01 } ]
+    }
+  ],
+  "composites": [
+    { "name": "action_burst", "of": "impact", "atLeast": 3, "withinMs": 5000, "weight": 1.5 }
+  ]
+}

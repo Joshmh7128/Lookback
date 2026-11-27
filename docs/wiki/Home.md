@@ -34,6 +34,7 @@ automatically when `main` changes, so the wiki always matches the code.
 | M0 | Schema, bus, pipes, WebSocket bridge, session log, recorder host, CI | Done |
 | M1 | FileSource, video and audio signals, testbench and timeline viewer | Done (GPU downscale moves to M3 with live capture) |
 | Profiles | Game profiles as data, Overwatch first, event detector, calibration view, dataset scoring | In review |
+| Profile tree | Game, sub-game and mode profiles (Roblox experiences), detection at each level, learned fingerprints, clip candidates | In review |
 | M2 | Game identifier, Clipper v1, rating UI, official-player viewer | Planned |
 | M3 | Live capture, encode, replay ring, disk store, resource governor | Planned |
 | M4 | Training, ONNX scoring, calibration | Planned |

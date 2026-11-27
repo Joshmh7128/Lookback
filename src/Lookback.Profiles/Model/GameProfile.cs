@@ -17,7 +17,22 @@ public sealed record GameProfile
 
     public int Version { get; init; } = 1;
 
-    /// <summary>Executable names that identify the game during live detection.</summary>
+    /// <summary>
+    /// Id of the profile this one refines. Empty for a game. A sub-game (a
+    /// Roblox experience) names its game; a mode names its game or sub-game.
+    /// The id must start with the parent's id and a dot: <c>roblox.arsenal</c>.
+    /// </summary>
+    public string? Parent { get; init; }
+
+    public ProfileLevelKind Level { get; init; } = ProfileLevelKind.Game;
+
+    /// <summary>How to tell that this profile, rather than its siblings, is being played.</summary>
+    public DetectSpec Detect { get; init; } = new();
+
+    /// <summary>Inherited events and composites this profile switches off.</summary>
+    public IReadOnlyList<string> Disable { get; init; } = [];
+
+    /// <summary>Executable names that identify the game during live detection. Games only.</summary>
     public IReadOnlyList<string> Executables { get; init; } = [];
 
     public CapturePolicy CapturePolicy { get; init; } = new();
@@ -32,6 +47,61 @@ public sealed record GameProfile
 
     /// <summary>Moments recognised from patterns of other events.</summary>
     public IReadOnlyList<CompositeRule> Composites { get; init; } = [];
+}
+
+/// <summary>Where a profile sits in the tree.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<ProfileLevelKind>))]
+public enum ProfileLevelKind
+{
+    Game,
+    Subgame,
+    Mode,
+}
+
+/// <summary>
+/// Detection for a sub-game or mode. <see cref="Hints"/> are exact facts the
+/// platform exposes outside the game process (launch arguments, the window
+/// title, the launcher's own log file); any one match decides. Otherwise the
+/// <see cref="Visual"/> fingerprint is scored over a sliding window of frames.
+/// </summary>
+public sealed record DetectSpec
+{
+    public IReadOnlyList<DetectHint> Hints { get; init; } = [];
+
+    /// <summary>Conditions (above or below) on video signals that hold while this profile is on screen.</summary>
+    public IReadOnlyList<Condition> Visual { get; init; } = [];
+
+    /// <summary>Length of the window the fingerprint is averaged over.</summary>
+    public double WindowSeconds { get; init; } = 10;
+
+    /// <summary>Average fraction of conditions that must hold, 0..1.</summary>
+    public double MinScore { get; init; } = 0.8;
+
+    /// <summary>How long a new fingerprint match must lead before the active profile switches.</summary>
+    public double HoldSeconds { get; init; } = 5;
+}
+
+/// <summary>Where a hint is read from. All are outside the game process.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<HintSource>))]
+public enum HintSource
+{
+    LaunchArgs,
+    WindowTitle,
+    Log,
+}
+
+/// <summary>
+/// A regular expression over a hint source. With <see cref="Values"/>, the
+/// first capture group must equal one of the values (for example a Roblox
+/// place id); without it, any match counts.
+/// </summary>
+public sealed record DetectHint
+{
+    public required HintSource Source { get; init; }
+
+    public required string Regex { get; init; }
+
+    public IReadOnlyList<string> Values { get; init; } = [];
 }
 
 /// <summary>
