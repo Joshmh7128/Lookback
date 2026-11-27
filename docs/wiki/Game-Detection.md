@@ -23,7 +23,7 @@ process is opened, read, injected or hooked, so it is safe beside anti-cheat.
 | Window mode | No frame and covering its monitor is **borderless**; `SHQueryUserNotificationState` reports **exclusive fullscreen** for the foreground window; anything else is **windowed** | Every poll |
 | Focus | The process that owns `GetForegroundWindow` | Every poll |
 | Engine | `UnityPlayer.dll` or `<Game>_Data` beside the executable is Unity; `Binaries\Win64\*-Shipping.exe` is Unreal | Once, from the disk, not the process |
-| Adapter | DXGI outputs: the adapter that drives the window's monitor | When the monitor changes |
+| Adapter | The display-config API (`QueryDisplayConfig`): the adapter whose source drives the window's monitor, the same LUID DXGI reports. Never a DXGI factory (see below) | When the monitor changes |
 
 It polls (default once a second) instead of using WMI's
 `Win32_ProcessStartTrace`, which needs administrator rights, or ETW, which
@@ -31,6 +31,17 @@ would add a kernel trace session for little gain at one game every few hours.
 A poll is one process snapshot and one window enumeration, with handles
 opened only for candidate processes: about 3 ms on AETHER with 324
 processes running, once a second.
+
+### Why no DXGI in the detector
+
+Creating a DXGI factory and enumerating adapters loads every adapter's
+driver into the process. On AETHER that stalled NVENC mid-encode: the
+encode-clock test (`EncodeTickerTests`) missed 33 ms ticks in 3 of 9
+full test runs while a detection test enumerated DXGI, and in 0 of 8 once
+the adapter came from `QueryDisplayConfig` instead. Detection runs beside
+live encoding, so it never touches DXGI. `WindowsDetection.TryCaptureTarget`
+(which calls `CaptureTarget.ForWindow`) does, once, when the recorder asks
+for a target.
 
 ## Which program is a game
 

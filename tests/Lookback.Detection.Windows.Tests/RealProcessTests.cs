@@ -178,7 +178,8 @@ public sealed class RealProcessTests
                 Assert.False(start.Game.Policy.AllowPresentHook);
                 Assert.False(start.Game.Policy.AllowMemoryReading);
 
-                if (CaptureTarget.Outputs().Any())
+                // One DXGI enumeration (inside CaptureTarget.ForWindow): the API under test. Detection itself never creates a DXGI factory.
+                if (start.Game.AdapterLuid != 0)
                 {
                     CaptureTarget? target = WindowsDetection.TryCaptureTarget(start.Game);
                     Assert.NotNull(target);

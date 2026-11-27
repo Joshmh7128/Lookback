@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
-using Lookback.Capture.Targets;
 using Lookback.Contracts.V1;
 using Lookback.Detection.Probe;
 using static Lookback.Detection.Windows.NativeMethods;
@@ -138,20 +137,88 @@ public sealed unsafe class WindowsSystemProbe : ISystemProbe
             return luid;
         }
 
-        try
+        luid = DisplayAdapterLuid((nint)monitor);
+        if (luid != 0)
         {
-            _luids.Clear(); // monitors come and go: rebuild the map when one is missing
-            foreach ((long l, int _, Vortice.DXGI.OutputDescription d) in CaptureTarget.Outputs())
-            {
-                _luids[(ulong)d.Monitor] = l;
-            }
+            _luids[monitor] = luid; // HMONITORs are not reused while the monitor stays attached
         }
-        catch (Exception ex) when (ex is COMException or SharpGen.Runtime.SharpGenException or DllNotFoundException)
+
+        return luid;
+    }
+
+    /// <summary>
+    /// The LUID of the adapter that scans out <paramref name="monitor"/>, from
+    /// the display-config API: the monitor's GDI device name (<c>\\.\DISPLAY1</c>)
+    /// matched to the active path whose source has that name. Deliberately not
+    /// DXGI: creating a DXGI factory and enumerating adapters loads every
+    /// adapter's driver and was measured stalling a hardware encoder on the
+    /// same GPU (missed 33 ms ticks on NVENC), and detection runs beside live
+    /// encoding. Same LUID as <c>DXGI_ADAPTER_DESC.AdapterLuid</c>.
+    /// </summary>
+    internal static long DisplayAdapterLuid(nint monitor)
+    {
+        var mi = new MonitorInfoEx { CbSize = (uint)sizeof(MonitorInfoEx) };
+        if (!GetMonitorInfoEx(monitor, &mi))
         {
             return 0;
         }
 
-        return _luids.GetValueOrDefault(monitor);
+        var device = new ReadOnlySpan<char>(mi.SzDevice, 32);
+        int nul = device.IndexOf('\0');
+        device = device[..(nul < 0 ? 32 : nul)];
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (GetDisplayConfigBufferSizes(QdcOnlyActivePaths, out uint paths, out uint modes) != 0 || paths == 0)
+            {
+                return 0;
+            }
+
+            byte[] pathBuf = new byte[paths * PathInfoSize];
+            byte[] modeBuf = new byte[Math.Max(1, modes) * ModeInfoSize];
+            fixed (byte* p = pathBuf)
+            fixed (byte* m = modeBuf)
+            {
+                int status = QueryDisplayConfig(QdcOnlyActivePaths, ref paths, p, ref modes, m, 0);
+                if (status == 122 /* ERROR_INSUFFICIENT_BUFFER: the topology changed between the calls */)
+                {
+                    continue;
+                }
+
+                if (status != 0)
+                {
+                    return 0;
+                }
+
+                for (uint i = 0; i < paths; i++)
+                {
+                    byte* path = p + (i * PathInfoSize);
+                    // DISPLAYCONFIG_PATH_SOURCE_INFO { LUID adapterId; UINT32 id; ... } at the start of the path.
+                    var name = new SourceDeviceName
+                    {
+                        Type = DisplayConfigDeviceInfoGetSourceName,
+                        Size = (uint)sizeof(SourceDeviceName),
+                        AdapterLow = *(uint*)path,
+                        AdapterHigh = *(int*)(path + 4),
+                        Id = *(uint*)(path + 8),
+                    };
+                    if (DisplayConfigGetDeviceInfo(&name) != 0)
+                    {
+                        continue;
+                    }
+
+                    var source = new ReadOnlySpan<char>(name.ViewGdiDeviceName, 32);
+                    int end = source.IndexOf('\0');
+                    if (source[..(end < 0 ? 32 : end)].Equals(device, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ((long)name.AdapterHigh << 32) | name.AdapterLow;
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        return 0;
     }
 
     private static void ReadProcesses(List<ProcessEntry> into)

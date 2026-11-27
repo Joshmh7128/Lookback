@@ -136,4 +136,49 @@ internal static unsafe partial class NativeMethods
 
     [LibraryImport("shell32.dll")]
     public static partial int SHQueryUserNotificationState(out int state);
+
+    public const uint QdcOnlyActivePaths = 2;
+    public const int DisplayConfigDeviceInfoGetSourceName = 1;
+    public const int PathInfoSize = 72;
+    public const int ModeInfoSize = 64;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MonitorInfoEx
+    {
+        public uint CbSize;
+        public Rect RcMonitor;
+        public Rect RcWork;
+        public uint DwFlags;
+        public fixed char SzDevice[32];
+    }
+
+    /// <summary>DISPLAYCONFIG_SOURCE_DEVICE_NAME: header (type, size, adapter LUID, source id), then the GDI device name.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct SourceDeviceName
+    {
+        public int Type;
+        public uint Size;
+        public uint AdapterLow;
+        public int AdapterHigh;
+        public uint Id;
+        public fixed char ViewGdiDeviceName[32];
+    }
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetMonitorInfoEx(nint monitor, MonitorInfoEx* info);
+
+    /// <summary>
+    /// The display-config (CCD) API. Unlike creating a DXGI factory, it loads
+    /// no graphics drivers into this process, so it does not stall an encoder
+    /// running on the same GPU.
+    /// </summary>
+    [LibraryImport("user32.dll")]
+    public static partial int GetDisplayConfigBufferSizes(uint flags, out uint paths, out uint modes);
+
+    [LibraryImport("user32.dll")]
+    public static partial int QueryDisplayConfig(uint flags, ref uint paths, byte* pathInfo, ref uint modes, byte* modeInfo, nint topology);
+
+    [LibraryImport("user32.dll")]
+    public static partial int DisplayConfigGetDeviceInfo(SourceDeviceName* request);
 }
