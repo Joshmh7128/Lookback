@@ -196,6 +196,8 @@ what it must not match.
 | Timeline report | `<session>.html` | Self-contained page; it links to the footage rather than copying it | Under 1 MB plus the mel image | With its log |
 | Scores | `<out>/scores.json` | JSON | KB | Overwritten on each run |
 | Learned fingerprints | `<out>/learned/*.json` | Profile JSON | KB | Overwritten on each run |
+| Ratings | `datasets/<game>/ratings.jsonl` (git-ignored) | JSON lines, append-only: one line per rating, the last line per candidate wins, 0 stars clears. See [Clip Scoring](Clip-Scoring) | About 1 KB per rating | You delete them |
+| Learned scorer | `--out` of `python -m lookback_ml.train` (default `ml/out/model/`, git-ignored): `model.onnx`, `model.json`, `report.json`, `report.md` | ONNX plus JSON | KB | Overwritten on each training run |
 
 Nothing is written for an **ephemeral** session. An official YouTube or
 Twitch player can only be ephemeral, and `RetentionRules` refuses anything
@@ -209,8 +211,9 @@ permission or licence is recorded.
 |---|---|---|
 | Feature log for live sessions | M3 | The same session log, written while you play, kept after the video ring is overwritten. The target is about 80 MB per hour, down from about 180 MB per hour today, by storing the mel bands at a lower rate, so past sessions can be rescored when a profile improves |
 | Clip store and resource governor | M3 | Saved clips on disk, with quality and storage budgets sized from your PC's specs. Old cached data is cleared automatically |
-| Ratings | M2 | You rate clips in the app. Ratings join the dataset as labels on candidates |
-| Learned scorer | M4 | A small model (ONNX, run locally) trained on your ratings and on candidate features. It replaces the placeholder 1 − e^(−score) and calibrates per game |
+| Rating UI | M2 | You rate clips in the Electron shell (1 to 5 stars on content). The storage, the bus sink and the terminal fallback (`lookback-testbench rate`) are built; see [Clip Scoring](Clip-Scoring) |
+| Learned scorer | M4 | Training, ONNX export, per-game calibration and C# inference are built and tested on synthetic ratings ([Clip Scoring](Clip-Scoring)). Still to come: the clipper filling the full feature vector, and training on real ratings |
+| Candidate export | M4 | `dataset` writes `candidates.jsonl` with features and labels from manifest `clips` (IoU ≥ 0.3), a second source of training labels |
 | Similarity search | M4 | Embeddings of candidates, so you can find clips like this one in your own library |
 
 ## Source files
@@ -225,3 +228,6 @@ permission or licence is recorded.
 | `src/Lookback.Testbench/Catalog/RobloxIdResolver.cs` | Looks up and verifies Roblox universe and place ids (a curation tool; not used during detection) |
 | `src/Lookback.Stream/SessionLog/*` | The session log and its index |
 | `src/Lookback.Contracts/RetentionRules.cs` | What may be stored |
+| `src/Lookback.Scoring/Ratings/RatingStore.cs` | Ratings on disk, gated by retention |
+| `src/Lookback.Testbench/Datasets/RateRunner.cs` | `rate`: star ratings in the terminal |
+| `ml/` | Training, calibration, evaluation and export of the learned scorer |

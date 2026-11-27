@@ -1,9 +1,9 @@
 # Architecture
 
 This page shows the whole system, including the parts that later milestones
-build. Parts that exist today are marked **M0** or **M1**. For the current
-state of every component (built, in progress, planned), see the
-[System Map](System-Map).
+build. Parts that exist today are marked with their milestone (**M0**, **M1**,
+**M2**, **M3**); unmarked parts are still planned. For the current state of
+every component (built, in progress, planned), see the [System Map](System-Map).
 
 ## Processes
 
@@ -23,6 +23,8 @@ flowchart LR
         CAP[Capture backends<br/>WGC · DXGI dup · hook · FileSource]
         GPU[GPU downscale + convert<br/>M3]
         ENC[Hardware encode<br/>M3]
+        AUD[WASAPI loopback + mic<br/>M3]
+        AAC[AAC encode<br/>M3]
         RING[RAM replay ring<br/>M3]
         DISK[Disk session store<br/>M3]
         GOV[Resource governor<br/>M3]
@@ -39,10 +41,10 @@ flowchart LR
     end
 
     subgraph Clipper["Lookback.Clipper (C#)"]
-        NORM[Per-game normalisation]
-        CAND[Candidates]
-        SCORE[ONNX scoring]
-        QA[Per-candidate QA]
+        NORM[Per-game normalisation<br/>M2]
+        CAND[Candidates<br/>M2]
+        SCORE[ONNX scoring<br/>M4]
+        QA[Per-candidate QA<br/>M2 v1]
     end
 
     subgraph Shell["Electron shell"]
@@ -52,6 +54,8 @@ flowchart LR
     G -- present --> H -- shared texture + fence --> CAP
     G -. WGC window capture .-> CAP
     DET --> CAP --> GPU --> ENC --> RING --> DISK
+    AUD --> AAC --> RING
+    AUD -- 10 ms hops --> AS
     GOV -. budgets .-> RING & DISK & ENC
     GPU -- small frames --> VS
     VS & AS & IS --> BUS
@@ -65,7 +69,7 @@ flowchart LR
 |---|---|---|
 | `Lookback.Recorder` | C# | Detection, capture, GPU work, encode, replay ring, disk store, audio, governor, the bus and its transports |
 | `Lookback.Signals` | C# | Video, audio and input feature extraction; session feature log |
-| `Lookback.Clipper` | C# | Normalisation, excitement curve, candidates, scoring, QA |
+| `Lookback.Clipper` | C# | Normalisation, excitement curve, candidates, scoring, QA ([Clipper](Clipper); runs beside the profile runner today, in the testbench and later in the recorder) |
 | `Lookback.Testbench` | C# CLI | Runs footage files through Signals and Clipper |
 | `native/hook` | C++ | Present hook for D3D11/D3D12; the only native code, because it lives inside the game |
 | `app/` | Electron + TypeScript | Library, live timeline, ratings, official-player viewer ([Desktop Shell](Desktop-Shell)) |
@@ -134,6 +138,14 @@ Detection reads only what the OS shows about other programs: no memory
 reads, no injection, no hooks. Its profile match carries the capture policy
 the recorder must honour. See [Game Detection](Game-Detection).
 
+## Live audio (M3)
+
+WASAPI loopback (and the mic) is stamped in QPC through `SampleClock`,
+resampled to 48 kHz stereo at the measured device rate, then encoded to AAC
+into the replay ring and cut into 10 ms hops for the audio signals.
+Official-player sessions never get system loopback or the encoder. Details
+in [Live Capture](Live-Capture#live-audio).
+
 ## Recording tiers (M3)
 
 | Tier | Contents | Default retention | Size at 1080p60 HEVC 20 Mbps |
@@ -155,30 +167,33 @@ are platform-neutral and tested without the hardware.
 
 ```mermaid
 flowchart LR
-    S[Signals<br/>video · audio · input] --> N[Per-game z-scores]
-    S --> GP[Game profile rules<br/>game.event]
-    GP --> SC
-    N --> C[Excitement curve]
-    C --> P[Peak detection<br/>with hysteresis]
-    P --> W["Windows [t−pre, t+post]"]
-    W --> M[Merge overlaps]
-    M --> SC[Score<br/>heuristic → ONNX]
-    SC --> QA[QA gates]
+    S[Signals<br/>video · audio · input] --> N["Per-game z-scores<br/>M2 ✓"]
+    S --> GP[Game profile rules<br/>game.event ✓]
+    GP --> M
+    N --> C["Excitement curve<br/>M2 ✓"]
+    C --> P["Peak detection<br/>with hysteresis ✓"]
+    P --> W["Windows [t−pre, t+post] ✓"]
+    W --> M["Merge overlaps,<br/>dedupe with events ✓"]
+    M --> SC["Score<br/>heuristic ✓ → ONNX (M4)"]
+    SC --> QA["QA gates<br/>v1 ✓"]
     QA --> OUT[clip.candidate + qa.report]
     OUT --> R[Ratings in the app]
     R --> T[Training] --> SC
 ```
 
+Clipper v1 (M2) builds everything up to the QA gates; see [Clipper](Clipper).
+Scoring is a bounded heuristic until the learned scorer (M4) replaces it.
+
 Game profiles sit beside the excitement curve, not in place of it. A profile
 names moments in one game (an Overwatch elimination) from the same
 game-agnostic signals measured inside that game's HUD regions; the clipper
-weighs those named moments alongside the generic curve. See
-[Game Profiles](Game-Profiles).
+fuses those named moments with peaks of the generic curve into one candidate
+set. See [Game Profiles](Game-Profiles) and [Clipper](Clipper).
 
 ## Milestones
 
 ```mermaid
 flowchart LR
-    M0[M0 foundation ✓] --> M1[M1 signals on footage ✓] --> GPR[Game profiles] --> M2[M2 clipper + viewer] --> M3[M3 live capture]
+    M0[M0 foundation ✓] --> M1[M1 signals on footage ✓] --> GPR[Game profiles] --> M2["M2 clipper v1 ✓<br/>+ rating UI, viewer"] --> M3[M3 live capture]
     M3 --> M4[M4 learned scoring] --> M5[M5 quality reports] --> M6[M6 present hook + HDR] --> M7[M7 memory module]
 ```

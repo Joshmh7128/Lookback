@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>__TITLE__ · Lookback timeline</title>
 <style>
-  :root { --bg:#111317; --panel:#1a1d23; --ink:#e7e9ee; --dim:#8b92a0; --line:#2a2f38; --video:#5aa9ff; --audio:#f0a35a; --head:#ff5a5a; --rules:#b38cff; --event:#5ee0b5; }
+  :root { --bg:#111317; --panel:#1a1d23; --ink:#e7e9ee; --dim:#8b92a0; --line:#2a2f38; --video:#5aa9ff; --audio:#f0a35a; --head:#ff5a5a; --rules:#b38cff; --event:#5ee0b5; --clipper:#ff8fb1; }
   * { box-sizing:border-box; }
   body { margin:0; font:13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
   header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; gap:24px; align-items:baseline; flex-wrap:wrap; }
@@ -33,7 +33,7 @@
   .family-rules b { color:var(--rules); } .family-events b { color:var(--event); }
   .lane.events canvas { height:46px; cursor:pointer; }
   .lane.spans canvas { height:26px; cursor:pointer; }
-  .family-profile b { color:#ffd24a; } .family-candidates b { color:#ff8fb1; }
+  .family-profile b { color:#ffd24a; } .family-candidates b { color:#ff8fb1; } .family-clipper b { color:var(--clipper); }
   #axis { margin-left:170px; height:20px; position:relative; color:var(--dim); font-size:11px; }
   #axis span { position:absolute; transform:translateX(-50%); }
   .note { color:var(--dim); margin-top:14px; }
@@ -63,7 +63,8 @@
   <div id="lanes"></div>
   <p class="note">Each lane is scaled to its own range. Audio lanes show the maximum per 100 ms. The mel lane is a log-mel spectrogram, low frequencies at the bottom.
   Rule lanes show each condition's margin over its threshold: above the dashed zero line the condition holds.
-  The profile lane shows which game, sub-game or mode was active; the candidates lane shows the clips built from the events (darker is a higher score).
+  The profile lane shows which game, sub-game or mode was active. The candidates lane shows the clipper's candidate windows: the profile's events fused with peaks of the excitement curve (stronger colour is a higher score; grey with a red edge failed QA; hover for the reasons and every QA check).
+  The excitement lane is the clipper's curve, a weighted mean of robust z-scores of the signals, with its high and low thresholds dashed; the clipper.z lanes are each component's z-score.
   In the events lane, the tick is the moment, the band is the clip window and the height is the confidence; hover for the evidence.</p>
 </main>
 <script type="application/json" id="timeline">__DATA__</script>
@@ -81,7 +82,7 @@
 
   const lanes = [];
   const css = getComputedStyle(document.documentElement);
-  const colour = f => css.getPropertyValue({ audio: '--audio', rules: '--rules', events: '--event' }[f] || '--video').trim();
+  const colour = f => css.getPropertyValue({ audio: '--audio', rules: '--rules', events: '--event', clipper: '--clipper' }[f] || '--video').trim();
   const NO_SIGNAL = -1e8; // the rules family writes -1e9 where a signal is missing
 
   // Calibration overlay: profile regions and the HUD mask learned from this footage.
@@ -144,12 +145,30 @@
 
   if (data.candidates.length) {
     const top = Math.max(...data.candidates.map(c => c.score), 1e-6);
-    addSpans(`candidates (${data.candidates.length})`, 'candidates', data.candidates,
-      c => `rgba(255, 143, 177, ${0.25 + 0.75 * c.score / top})`,
+    const failed = c => c.qa && !c.qa.passed;
+    const passing = data.candidates.filter(c => c.qa && c.qa.passed).length;
+    addSpans(`candidates (${data.candidates.length}, ${passing} pass QA)`, 'candidates', data.candidates,
+      c => failed(c) ? 'rgba(140, 146, 160, 0.45)' : `rgba(255, 143, 177, ${0.25 + 0.75 * c.score / top})`,
       c => [`candidate ${c.id}: ${c.start.toFixed(1)}-${c.end.toFixed(1)} s, peak ${c.peak.toFixed(1)} s`,
-        `  score ${c.score.toFixed(2)}  probability ${c.probability.toFixed(2)}  profile ${c.profile}`, ...c.reasons.map(x => '  ' + x)].join('\n'),
+        `  score ${c.score.toFixed(2)}  probability ${c.probability.toFixed(2)}  profile ${c.profile || '(none)'}`, ...c.reasons.map(x => '  ' + x),
+        ...(c.qa ? [`  QA ${c.qa.passed ? 'passed' : 'FAILED'}`, ...c.qa.checks.map(k => `    ${k.passed ? 'ok  ' : 'FAIL'} ${k.name}: ${k.detail}`)] : [])].join('\n'),
       c => c.start);
+    // QA failures get a red edge on top of the bar.
+    const lane = lanes[lanes.length - 1], draw = lane.draw;
+    lane.draw = (ctx, w, h) => {
+      draw(ctx, w, h);
+      ctx.fillStyle = '#ff5d5d';
+      for (const c of data.candidates.filter(failed)) {
+        const x0 = c.start / duration * w, x1 = Math.max(x0 + 2, c.end / duration * w);
+        ctx.fillRect(x0, 3, x1 - x0 - 1, 2);
+      }
+    };
   }
+
+  // The clipper's curve sits under the candidates it produced, with its thresholds dashed.
+  const curveLane = data.lanes.find(l => l.name === 'clipper.excitement');
+  const thresholds = data.lanes.filter(l => l.name === 'clipper.high' || l.name === 'clipper.low');
+  if (curveLane) addSeries(curveLane, thresholds, 'excitement');
 
   if (data.events.length) {
     const names = [...new Set(data.events.map(e => e.name))].sort();
@@ -177,7 +196,7 @@
     lanes[lanes.length - 1].seekTo = t => { const e = near(t); return e ? e.at : t; };
   }
 
-  for (const lane of data.lanes) {
+  function addSeries(lane, guides, label) {
     const v = lane.values;
     let min = Infinity, max = -Infinity;
     const rules = lane.family === 'rules';
@@ -185,7 +204,7 @@
     if (!isFinite(min)) { min = 0; max = 1; }
     if (rules) { min = Math.min(min, 0); max = Math.max(max, 0); }
     if (max - min < 1e-9) { max = min + 1; }
-    addLane(lane.name, lane.family, (ctx, w, h) => {
+    addLane(label, lane.family, (ctx, w, h) => {
       ctx.strokeStyle = colour(lane.family);
       ctx.fillStyle = colour(lane.family) + '33';
       ctx.beginPath();
@@ -207,7 +226,22 @@
         ctx.setLineDash([4, 3]); ctx.strokeStyle = css.getPropertyValue('--dim');
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.setLineDash([]);
       }
+      for (const g of guides) {
+        // A threshold that can change with the active profile: a dashed step line.
+        ctx.setLineDash([4, 3]); ctx.strokeStyle = css.getPropertyValue('--dim'); ctx.beginPath();
+        for (let px = 0; px < w; px++) {
+          const i = Math.min(g.values.length - 1, Math.floor(px / w * duration / g.step));
+          const y = h - 2 - ((i >= 0 ? g.values[i] : 0) - min) / (max - min) * (h - 4);
+          if (px === 0) ctx.moveTo(px, y); else ctx.lineTo(px, y);
+        }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
     }, t => { const i = Math.floor(t / lane.step); return i >= 0 && i < v.length && v[i] > NO_SIGNAL ? v[i] : null; });
+  }
+
+  for (const lane of data.lanes) {
+    if (lane === curveLane || thresholds.includes(lane)) continue;
+    addSeries(lane, [], lane.name);
   }
 
   if (data.mel.length) {

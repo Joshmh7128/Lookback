@@ -36,9 +36,9 @@ An official-player session stops at the dashed red line: the converter,
 clock, encoders, ring and store are never created, so nothing exists that
 could reach disk. Every timestamp is raw QPC; media time is derived only when
 muxing. Measured on AETHER: WGC at 144 fps in, NVENC HEVC 1080p60 out at
-60.0 fps with no skipped ticks. AMF HEVC on the iGPU can deadlock with WGC
-because the encoder shares the capture device's lock; the fix in progress is a
-separate encoder device plus a stall watchdog. See [Live Capture](Live-Capture).
+60.0 fps with no skipped ticks. A lock-order inversion between WGC and the
+encoder used to deadlock capture; one device lock fixed it, and a watchdog now
+swaps stalled encoders or ends the recorder instead of hanging. See [Live Capture](Live-Capture).
 
 ## From signals to clips to a learned scorer
 
@@ -67,13 +67,13 @@ the shell's memory.
 | WGC and DXGI capture, GPU downscale, NV12 converter, live session | Capture | Done |
 | Media Foundation encoders (NVENC, AMF, software), CFR encode clock, `--encode` bench | Encode · Capture.Cli | Done (#15) |
 | Electron shell: library, timeline, 1–5 star rating with previews and Open footage, official-player viewer and ingest sender | `app/` | Done (#17); ratings in memory until the recorder stores them |
-| WASAPI loopback and mic, AAC encoder | Audio · Encode | In progress |
+| WASAPI loopback and mic, AAC encoder, `audio` bench | Audio · Encode · Capture.Cli | Done (#16); process loopback untested (needs build 20348+) |
 | Governor Windows probe, `lookback-capture probe` | Governor.Windows | Done (#14) |
-| Clipper v1: normalisation, excitement curve, peaks, windows, merge, QA gates | Clipper | In progress (M2) |
+| [Clipper v1](Clipper): normalisation, excitement curve, peaks, windows, fusion with profile events, QA gates; `ClipperRunner` | Clipper | Done (#19, M2); hosted in the testbench, recorder hosting with the wiring |
 | Game detection: process and window watcher, profile matching, allow/deny lists, debounced `GameLifecycle`, `lookback-detect` bench ([Game Detection](Game-Detection)) | Detection · Detection.Windows | Done (#20); the recorder wiring hosts it |
-| Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference | Scoring · `ml/` | In progress (M4) |
+| Scoring plumbing: `ClipRating`, RatingStore, training, ONNX inference ([Clip Scoring](Clip-Scoring)) | Scoring · `ml/` | Done (#21, M4 plumbing); trained on synthetic data until real ratings exist |
 | Present hook for our own test apps only, injector allowlist, hook capture source | `native/hook` · Capture | In progress (M6) |
-| Encoder on its own D3D11 device, stall watchdog, fallback chain, fail-fast | Encode · Capture | In progress |
+| No-deadlock encode path: one device lock, stall watchdog, encoder fallback chain, blocklist, fail-fast | Core · Encode · Capture | Done (#22) |
 | Recorder wiring: CaptureService, `/events` rate · save · analyze with ack | Recorder | Next |
 | Training the scorer on real ratings | `ml/` · Scoring | Planned (M4), needs ratings |
 | Quality reports: transcode, VMAF, audio checks | Quality | Planned (M5) |
@@ -86,15 +86,17 @@ the shell's memory.
    to end only inside `lookback-capture`. The recorder-wiring step creates them
    in the recorder, behind the same retention check.
 2. **Live play produces no clip candidates.** Candidates come from
-   `ProfileRunner`, which today runs in the testbench and in official-player
-   calibration. Live sessions get them with the recorder wiring; the generic
-   excitement curve arrives with Clipper v1.
+   `ClipperRunner` (profile events fused with the generic excitement curve,
+   each with a QA report), which today runs in the testbench; official-player
+   calibration still uses the profile runner's event-only candidates. Live
+   sessions get them when the recorder wiring hosts the clipper.
 3. **Ratings are not stored.** The shell keeps them in memory until the
    recorder accepts `rate` and the RatingStore lands.
-4. **One device lock for capture and encoder.** AMF HEVC can deadlock with WGC
-   capture; the encoder is moving to its own device behind a watchdog that
-   falls back to other encoders, then software, and ends the recorder process
-   rather than hanging.
+4. **Live capture deadlock: fixed.** WGC delivers frames while holding the
+   D3D11 device lock, and a second, managed lock taken in the other order
+   deadlocked capture against the encoder. `GpuDevice` now has one lock (D3D11's
+   own), and a watchdog swaps stalled encoders or ends the recorder rather
+   than hanging. See [Live Capture](Live-Capture).
 5. **AV1 is capped.** The muxer has no `av1C` writer, so the governor tops out
    at HEVC; software and H.264 fallbacks cover machines without HEVC.
 6. **The pipe server has no consumers yet.** It is there for out-of-process

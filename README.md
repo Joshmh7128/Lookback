@@ -44,8 +44,12 @@ The full walkthrough, with expected output and troubleshooting, is
   the clip library, a live timeline and ratings, and the official-player
   viewer that streams YouTube or Twitch playback to calibration, in memory
   only. See [docs/wiki/Desktop-Shell.md](docs/wiki/Desktop-Shell.md).
+- **Clipper v1 (M2):** per-game robust normalisation of the signals, an
+  excitement curve with weights as data, peaks with hysteresis, fusion with
+  the profile's events into one candidate set, and QA gates on every
+  candidate (`src/Lookback.Clipper`). See [docs/wiki/Clipper.md](docs/wiki/Clipper.md).
 
-The clipper and the remaining live-capture milestones come next.
+The remaining live-capture milestones come next.
 
 ## Build and test
 
@@ -76,6 +80,7 @@ src/Lookback.Stream/      pipes, WebSocket bridge, session log
 src/Lookback.Media/       analysis format, ffmpeg FileSource
 src/Lookback.Signals/     video and audio signals
 src/Lookback.Profiles/    game profiles: regions, rules, event detector
+src/Lookback.Clipper/     excitement curve, peaks, candidates, QA gates
 profiles/                 game profiles as JSON
 datasets/                 per-game dataset manifests (no media)
 src/Lookback.Recorder/    service host

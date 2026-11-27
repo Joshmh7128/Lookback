@@ -38,6 +38,12 @@ if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
     return 0;
 }
 
+// Live audio on its own (AudioBench.cs).
+if (args[0] == "audio")
+{
+    return await AudioBench.RunAsync(args[1..]);
+}
+
 if (args.Contains("--list"))
 {
     int n = 0;

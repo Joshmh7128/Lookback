@@ -21,13 +21,16 @@ src/
   Lookback.Media/             analysis format, frames, ffmpeg FileSource
   Lookback.Signals/           video + audio signals, DSP, publisher
   Lookback.Profiles/          game profiles: regions, rules, event detector
+  Lookback.Clipper/           excitement curve, peaks, candidate fusion, QA gates
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
+  Lookback.Scoring/           clip ratings, feature schema, ONNX scorer + per-game calibration
   Lookback.Governor/          resource governor: probe mapping, budget policy, runtime controller
   Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
+  Lookback.Audio/             WASAPI loopback + mic capture (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
   Lookback.Detection/         game detection: matcher, debounced lifecycle, bus runner
   Lookback.Detection.Windows/ process + window probe, capture target for a game (Windows)
@@ -39,6 +42,7 @@ tests/
   Lookback.Stream.Tests/
   Lookback.Signals.Tests/
   Lookback.Profiles.Tests/
+  Lookback.Clipper.Tests/
   Lookback.Calibration.Tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
@@ -47,12 +51,15 @@ tests/
   Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
   Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
   Lookback.Detection.TestWindow/     stand-in game for those tests (lookback-testwindow)
+  Lookback.Audio.Tests/       Windows: AAC round trip, WASAPI loopback and mic (skip elsewhere)
   Lookback.Testbench.Tests/
+  Lookback.Scoring.Tests/     ratings, retention, C#/Python scorer parity (Fixtures/ from ml/)
+ml/                           Python: train, calibrate, evaluate, export the learned scorer
 docs/
   architecture.md             repository summary
   wiki/                       source of this wiki
 .github/workflows/
-  ci.yml                      build + test on Windows and Linux
+  ci.yml                      build + test on Windows and Linux; ml job (pytest) on Linux
   wiki.yml                    publishes docs/wiki to the GitHub wiki
 ```
 
@@ -64,7 +71,11 @@ transport; Core knows nothing about files or sockets; only Stream touches I/O.
 ```mermaid
 flowchart TB
     R[Lookback.Recorder<br/>exe] --> PF[Lookback.Profiler] --> S[Lookback.Stream]
-    TB[Lookback.Testbench<br/>exe] --> PF & S & PR[Lookback.Profiles]
+    TB[Lookback.Testbench<br/>exe] --> PF & S & CL[Lookback.Clipper]
+    CL --> PR[Lookback.Profiles]
+    CL -. embeds .-> CJ[(clipper.defaults.json)]
+    TB --> SC[Lookback.Scoring] --> C
+    SC --> ORT[Microsoft.ML.OnnxRuntime<br/>CPU]
     PR --> SG[Lookback.Signals]
     PR -. embeds .-> PJ[(profiles/*.json)]
     SG --> MD[Lookback.Media] --> C
@@ -79,6 +90,7 @@ flowchart TB
     TS[Lookback.Stream.Tests] --> S
     TSG[Lookback.Signals.Tests] --> SG
     TPR[Lookback.Profiles.Tests] --> PR
+    TCL[Lookback.Clipper.Tests] --> CL
     TTB[Lookback.Testbench.Tests] --> TB
     MD -. runs .-> FF[[ffmpeg / ffprobe]]
 ```
@@ -93,17 +105,20 @@ flowchart TB
 | `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
 | `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
 | `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*`, `Candidates/*` | Game profiles as data: the profile tree, HUD regions, event rules, sub-game and mode detection, the detector and its bus runner, clip candidates |
+| `Lookback.Clipper` | `ClipperEngine.cs`, `ClipperRunner.cs`, `ClipperOptions.cs`, `Curve/*`, `Candidates/*`, `Qa/*`, `clipper.defaults.json` | The [clipper](Clipper): normalisation, excitement curve, peaks, fusion with profile events, QA gates, and its bus runner |
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `app/` (Electron) | `src/main/*`, `src/preload/*`, `src/renderer/*`, `src/viewer/*`, `src/test/*` | The [desktop shell](Desktop-Shell): recorder process, `/events` library, timeline, ratings, official-player viewer and its `/ingest` sender |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
+| `Lookback.Scoring` | `Ratings/*`, `Features/ClipFeatureSchema.cs`, `Model/*`, `LearnedClipScorer.cs` | [Clip scoring](Clip-Scoring): ratings on disk behind `RetentionRules`, the bus sink, the feature schema, ONNX inference and per-game calibration |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
 | `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
 | `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
-| `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
-| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |
+| `Lookback.Encode` | `MfVideoEncoder.cs`, `MfAacEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
+| `Lookback.Audio` | `WasapiSource.cs`, `AudioCapturePolicy.cs`, `StereoResampler.cs`, `PcmFormat.cs`, `RenderStream.cs`, `Interop/*` | [Live audio](Live-Capture#live-audio) on Windows: what a session may capture, WASAPI capture stamped in QPC, 48 kHz stereo for the AAC encoder (`Lookback.Encode`) and hops for the live analyzer |
+| `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs`, `AudioBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds; `audio` captures live audio on its own |
 | `Lookback.Detection` | `Probe/*`, `Matching/*`, `Lifecycle/*`, `DetectionRunner.cs` | [Game detection](Game-Detection): executable and title to profile, the user's allow/deny lists, debounced start/focus/window/stop, `game.lifecycle` on the bus |
 | `Lookback.Detection.Windows` | `WindowsSystemProbe.cs`, `WindowsDetection.cs` | Toolhelp, query-limited handles and `EnumWindows` (no memory access); the `CaptureTarget` for a detected game |
 | `Lookback.Detection.Cli` | `Program.cs` | `lookback-detect`: prints detected games live, lists windows, edits the allow/deny lists |
@@ -111,9 +126,8 @@ flowchart TB
 ## Planned projects
 
 These arrive with later milestones and slot into the same layering:
-`Lookback.Audio`, `Lookback.Clipper`, `Lookback.Quality`,
-`Lookback.Memory`, `native/hook`, `app/`, `ml/`. (`Lookback.Gpu` folded into
-`Lookback.Capture/Gpu`.)
+`Lookback.Quality`, `Lookback.Memory`, `native/hook`. (`Lookback.Gpu` folded into
+`Lookback.Capture/Gpu`; `app/` and `ml/` exist now.)
 
 ```mermaid
 flowchart TB

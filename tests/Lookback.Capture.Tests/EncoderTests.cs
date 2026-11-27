@@ -19,6 +19,7 @@ namespace Lookback.Capture.Tests;
 /// CI case uploads NV12 built on the CPU and runs the software H.264 MFT.
 /// Hardware cases run where a GPU encoder exists (NVENC on AETHER).
 /// </summary>
+[Collection(GpuEncoderCollection.Name)]
 public class EncoderTests(ITestOutputHelper output)
 {
     private const long Freq = 10_000_000;
@@ -235,7 +236,7 @@ public class EncoderTests(ITestOutputHelper output)
                 }
             }
 
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.UpdateSubresource(_px, _bgra, 0, SrcW * 4, 0);
                 _nv12.Convert(_bgra);
@@ -275,7 +276,7 @@ public class EncoderTests(ITestOutputHelper output)
             }
 
             _px.AsSpan(W * H).Fill(128);
-            lock (_gpu.Lock)
+            using (_gpu.Enter())
             {
                 _gpu.Context.UpdateSubresource(_px, _tex, 0, W, 0);
             }

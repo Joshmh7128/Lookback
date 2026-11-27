@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Lookback.Contracts.V1;
+using Lookback.Scoring.Ratings;
 using Lookback.Stream.SessionLog;
 using Lookback.Testbench;
 using Lookback.Testbench.Datasets;
@@ -16,6 +17,8 @@ const string Usage = """
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>]
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
+      lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
+                                        [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
       lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
       lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
@@ -24,8 +27,12 @@ const string Usage = """
                                      [--port <n>] [--no-wait] [--pipe <name>]
                                      [--retention ...] [--permission-ref <ref>] [--title <text>]
 
-    Live plays the footage in real time, runs the profile's rules on it, and
-    shows every event in the live profiler as it fires: it prints a link to
+    Analyze and live always run the clipper: the excitement curve over the
+    signals, fused with the profile's events when there is a profile, into clip
+    candidates, each with a QA report.
+
+    Live plays the footage in real time, runs the profile's rules and the
+    clipper on it, and shows every event in the live profiler as it fires: it prints a link to
     open in a browser and starts the clip when the page connects. With --pipe it sends to a running recorder instead
     (start the recorder with --Recorder:Profiler=true and open its link).
     Nothing is written to disk.
@@ -39,6 +46,14 @@ const string Usage = """
       `profiles` prints the tree.
       With a profile, the report gains an events lane, rule-margin lanes and a
       calibration overlay of the profile's HUD regions and the detected HUD mask.
+
+    Rate:
+      Analyses each entry, then asks for 1 to 5 stars per clip candidate on its
+      content (5 = a highlight; video quality is not rated). Ratings go to
+      <datasets>/<game>/ratings.jsonl (default: the folder above the manifest's)
+      and train the learned scorer (see ml/). Candidates already rated are
+      skipped unless --again. --play plays each candidate with ffplay first;
+      typing p plays it on demand. --model shows a trained model's probability.
 
     Browse:
       Writes one page for sifting the profile tree and the datasets: what each
@@ -65,6 +80,7 @@ try
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
         ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
+        ["rate", string manifest, .. var rest] => await RateAsync(manifest, ParseFlags(rest), cts.Token),
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
         ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
         ["browse", .. var rest] => await BrowseAsync(ParseFlags(rest), cts.Token),
@@ -137,12 +153,17 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
             Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"         {group.Key,-24} {group.Count(),5}"));
         }
 
-        Console.WriteLine($"clips    {r.Candidates.Count} candidates");
-        foreach (ClipCandidate c in r.Candidates.OrderByDescending(c => c.HeuristicScore).Take(10))
-        {
-            Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-                $"         {c.StartQpc / (double)TestbenchRunner.Frequency,7:0.0}-{c.EndQpc / (double)TestbenchRunner.Frequency,-7:0.0} s  score {c.HeuristicScore,5:0.00}  {string.Join(", ", c.Reasons)}"));
-        }
+    }
+
+    int passed = r.Candidates.Count(c => r.Qa.TryGetValue(c.CandidateId, out QaReport? q) && q.Passed);
+    Console.WriteLine($"clips    {r.Candidates.Count} candidates, {passed} pass QA");
+    foreach (ClipCandidate c in r.Candidates.OrderByDescending(c => c.HeuristicScore).Take(10))
+    {
+        string qa = r.Qa.TryGetValue(c.CandidateId, out QaReport? q)
+            ? q.Passed ? "QA ok  " : "QA fail (" + string.Join(", ", q.Checks.Where(k => !k.Passed).Select(k => k.Name)) + ")"
+            : "";
+        Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+            $"         {c.StartQpc / (double)TestbenchRunner.Frequency,7:0.0}-{c.EndQpc / (double)TestbenchRunner.Frequency,-7:0.0} s  score {c.HeuristicScore,4:0.00}  {qa}  {string.Join("; ", c.Reasons)}"));
     }
 
     return 0;
@@ -209,6 +230,27 @@ static async Task<int> FingerprintAsync(string manifest, Dictionary<string, stri
 
     Console.WriteLine($"\nprofiles  {Path.Combine(output, "learned")}  (use with --profiles, then check with the dataset command)");
     return 0;
+}
+
+static async Task<int> RateAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
+{
+    var options = new RateOptions
+    {
+        Manifest = manifest,
+        OutputDirectory = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "rate-out")),
+        DatasetRoot = flags.GetValueOrDefault("datasets"),
+        ProfileOverride = flags.GetValueOrDefault("profile"),
+        ExtraProfiles = Extra(flags),
+        Again = flags.ContainsKey("again"),
+        AutoPlay = flags.ContainsKey("play"),
+        ModelDirectory = flags.GetValueOrDefault("model"),
+    };
+
+    RateSummary s = await RateRunner.RunAsync(options, Console.In, Console.Out, new FfplayPlayer(), ct);
+    Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+        $"\nrated    {s.Rated} of {s.Candidates} candidates ({s.Cleared} cleared, {s.Skipped} skipped, {s.AlreadyRated} already rated, {s.Refused} refused){(s.Quit ? ", stopped early" : "")}"));
+    Console.WriteLine($"ratings  {Path.Combine(s.DatasetRoot, "<game>", RatingStore.FileName)}");
+    return s.Refused > 0 ? 2 : 0;
 }
 
 static int PrintProfiles(Dictionary<string, string> flags)
@@ -334,7 +376,7 @@ static Dictionary<string, string> ParseFlags(string[] args)
     var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i] is "--loop" or "--no-wait")
+        if (args[i] is "--loop" or "--no-wait" or "--again" or "--play")
         {
             flags[args[i][2..]] = "true";
             continue;

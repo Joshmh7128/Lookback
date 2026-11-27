@@ -47,6 +47,26 @@ From M3 the same check gates the encoder, the RAM replay ring and the disk
 segment store: for an ephemeral session they never start, so there is no
 video to leak.
 
+### Ratings and the learned scorer (M4)
+
+A clip rating is training data, so it follows the rated session's retention
+like everything else. `RatingStore.Append` (`src/Lookback.Scoring/Ratings/`)
+asks `RetentionRules.CanPersist` about the rated session before it opens a
+file: a rating of an official-player or other ephemeral session, of a session
+with no retention, or of permissioned footage without a `permission_ref` is
+refused and nothing is written. A rating of a session whose header the
+recorder cannot find is refused too: retention is never guessed. Each stored
+line carries the session's retention and `permission_ref`, holds numbers and
+ids only (stars, candidate times, scores, the feature vector) and never
+frames, audio, signal series or the video's identity.
+
+Training checks again. `ml/lookback_ml/data.py` refuses to train at all if
+any ratings line has a retention other than `owned`, `permissioned` or
+`open-license`, or third-party retention without a `permission_ref`: such a
+line means something upstream went wrong, so it is reported rather than
+skipped. The trained model (`model.onnx`, `model.json`) holds regression
+weights, feature means and calibration numbers, not footage.
+
 ## The official-player viewer (M2)
 
 The viewer plays YouTube or Twitch videos through their official embedded
