@@ -26,6 +26,12 @@ internal sealed class TimelineData
     /// <summary>Game events recognised by the profile.</summary>
     public List<EventMark> Events { get; } = [];
 
+    /// <summary>Clip candidates built from the events.</summary>
+    public List<CandidateMark> Candidates { get; } = [];
+
+    /// <summary>Which profile (game, sub-game, mode) was active when.</summary>
+    public List<ProfileSpan> ProfileSpans { get; } = [];
+
     /// <summary>Profile id, if the session ran with one.</summary>
     public string? Profile { get; set; }
 
@@ -36,6 +42,10 @@ internal sealed class TimelineData
     public string? HudMaskPng { get; set; }
 
     internal sealed record EventMark(string Name, double At, double Start, double End, float Confidence, float Weight, IReadOnlyList<string> Evidence);
+
+    internal sealed record CandidateMark(string Id, double Start, double End, double Peak, float Score, float Probability, string Profile, IReadOnlyList<string> Reasons);
+
+    internal sealed record ProfileSpan(string Id, double Start, double End, string Method, float Confidence, IReadOnlyList<string> Evidence);
 
     internal sealed record RegionBox(string Name, double X, double Y, double W, double H, string Purpose);
 

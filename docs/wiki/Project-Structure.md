@@ -9,7 +9,8 @@ Directory.Build.props         settings every project inherits
 Directory.Packages.props      every NuGet version, in one place
 .editorconfig                 style and analyzer severities
 CLAUDE.md                     rules for contributors and agents
-profiles/                     game profiles as JSON (generic, overwatch)
+profiles/<game>/              game profiles as JSON, one folder per game tree
+                              (generic, overwatch + modes, roblox + experiences)
 datasets/<game>/              per-game dataset manifests (media never committed)
 proto/
   lookback/v1/events.proto    the event schema
@@ -73,7 +74,7 @@ flowchart TB
 | `Lookback.Stream` | `Framing/EnvelopeFraming.cs`, `Pipes/*`, `WebSockets/WebSocketBridge.cs`, `SessionLog/*` | Every way an envelope leaves the process: pipe, socket or file |
 | `Lookback.Media` | `Frames/*`, `Ffmpeg/*` | The analysis format and the footage decoder |
 | `Lookback.Signals` | `Video/*`, `Audio/*`, `Dsp/*`, `SignalPublisher.cs`, `FootageAnalyzer.cs`, `ReplayPacer.cs` | Game-agnostic features and their publication |
-| `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*` | Game profiles as data: HUD regions, event rules, the detector and its bus runner |
+| `Lookback.Profiles` | `Model/*`, `Regions/RegionSignal.cs`, `Detection/*`, `Candidates/*` | Game profiles as data: the profile tree, HUD regions, event rules, sub-game and mode detection, the detector and its bus runner, clip candidates |
 | `Lookback.Profiler` | `ProfilerPage.cs`, `profiler.html` | The [live profiler](Live-Profiler) page, embedded and handed to the bridge |
 | `Lookback.Recorder` | `Program.cs`, `StreamHostService.cs`, `RecorderOptions.cs` | Composition root: wires the bus to its transports and announces itself |
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*` | Footage CLI, the timeline viewer, and per-game dataset scoring |

@@ -1,0 +1,12 @@
+{
+  // Control mode. Detected from a visual fingerprint of the objective HUD,
+  // learned from labelled footage: lookback-testbench fingerprint <manifest>.
+  // Until then, choose it by hand with --profile overwatch.control.
+  "id": "overwatch.control",
+  "displayName": "Overwatch: Control",
+  "version": 1,
+  "parent": "overwatch",
+  "level": "mode",
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "No fingerprint yet." },
+  "events": []
+}

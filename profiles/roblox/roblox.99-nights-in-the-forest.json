@@ -1,0 +1,88 @@
+{
+  // Co-op survival through day and night cycles; danger comes at night.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
+  "id": "roblox.99-nights-in-the-forest",
+  "displayName": "99 Nights in the Forest",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["survival", "horror", "co-op"],
+  "ids": { "roblox.universe": ["7326934954"], "roblox.place": ["79546208627805"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "regions": [
+    {
+      "name": "nights_counter",
+      "x": 0.4,
+      "y": 0.02,
+      "w": 0.2,
+      "h": 0.07,
+      "purpose": "Night counter at the top."
+    }
+  ],
+  "events": [
+    {
+      "name": "jumpscare",
+      "weight": 1.4,
+      "baseConfidence": 0.45,
+      "cooldownMs": 4000,
+      "when": [
+        {
+          "signal": "audio.rms_db",
+          "rise": 15,
+          "baselineAlpha": 0.02
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.08,
+          "withinMs": 300,
+          "add": 0.3
+        },
+        {
+          "signal": "scene.cut",
+          "above": 0.4,
+          "withinMs": 300,
+          "add": 0.2
+        }
+      ],
+      "clip": {
+        "preMs": 8000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "night_survived",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 60000,
+      "when": [
+        {
+          "signal": "region.nights_counter.activity",
+          "rise": 0.08
+        }
+      ],
+      "clip": {
+        "preMs": 10000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "death",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 10000,
+      "when": [
+        {
+          "signal": "luma.black",
+          "above": 0.9
+        }
+      ],
+      "clip": {
+        "preMs": 10000,
+        "postMs": 2000
+      }
+    }
+  ]
+}

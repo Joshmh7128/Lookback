@@ -1,0 +1,13 @@
+// Round: everything from the experience applies.
+{
+  "id": "roblox.murder-mystery-2.round",
+  "displayName": "Murder Mystery 2: round",
+  "version": 1,
+  "parent": "roblox.murder-mystery-2",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage with lookback-testbench fingerprint."
+  },
+  "events": []
+}

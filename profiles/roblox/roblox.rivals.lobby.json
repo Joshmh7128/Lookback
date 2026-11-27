@@ -1,0 +1,18 @@
+// Lobby or waiting area: the experience's combat rules are switched off, the Roblox-wide ones stay.
+{
+  "id": "roblox.rivals.lobby",
+  "displayName": "RIVALS: lobby",
+  "version": 1,
+  "parent": "roblox.rivals",
+  "level": "mode",
+  "reference": {
+    "calibrated": false,
+    "notes": "Fingerprint learned from labelled footage with lookback-testbench fingerprint."
+  },
+  "disable": [
+    "elimination",
+    "round_won",
+    "multikill",
+    "clutch"
+  ]
+}

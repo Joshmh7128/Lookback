@@ -1,0 +1,69 @@
+{
+  // Slap players off the arena with gloves that each have an ability.
+  // Regions and thresholds are estimates until calibrated on real footage.
+  // Ids verified with Roblox's public API (lookback-testbench roblox-ids), 2026-11-27.
+  "id": "roblox.slap-battles",
+  "displayName": "Slap Battles",
+  "version": 1,
+  "parent": "roblox",
+  "level": "subgame",
+  "tags": ["pvp", "physics"],
+  "ids": { "roblox.universe": ["2380077519"], "roblox.place": ["6403373529"] },
+  "reference": { "aspect": "16:9", "calibrated": false, "notes": "Estimates; calibrate with the overlay." },
+  "disable": [
+    "impact",
+    "action_burst",
+    "respawn_or_teleport"
+  ],
+  "events": [
+    {
+      "name": "big_slap",
+      "weight": 0.8,
+      "baseConfidence": 0.45,
+      "cooldownMs": 600,
+      "when": [
+        {
+          "signal": "flash.brighten",
+          "above": 0.06
+        }
+      ],
+      "boosts": [
+        {
+          "signal": "spectral.onset",
+          "above": 0.5,
+          "withinMs": 200,
+          "add": 0.3
+        }
+      ],
+      "clip": {
+        "preMs": 5000,
+        "postMs": 3000
+      }
+    },
+    {
+      "name": "knocked_off",
+      "weight": 0.9,
+      "baseConfidence": 0.45,
+      "cooldownMs": 3000,
+      "when": [
+        {
+          "signal": "scene.cut",
+          "above": 0.4
+        }
+      ],
+      "clip": {
+        "preMs": 8000,
+        "postMs": 2000
+      }
+    }
+  ],
+  "composites": [
+    {
+      "name": "slap_streak",
+      "of": "big_slap",
+      "atLeast": 3,
+      "withinMs": 6000,
+      "weight": 2.5
+    }
+  ]
+}
