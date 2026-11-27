@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Clock, lock-free buffers and the in-process event bus.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Lookback.Contracts\Lookback.Contracts.csproj" />
+  </ItemGroup>
+</Project>

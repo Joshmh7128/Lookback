@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Description>Event schema for the Lookback local event stream, generated from proto/.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="..\..\proto\lookback\v1\*.proto" ProtoRoot="..\..\proto" GrpcServices="None" />
+  </ItemGroup>
+</Project>
