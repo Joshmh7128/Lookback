@@ -27,6 +27,7 @@ internal sealed partial class StreamHostService(
     private CalibrationHost? _calibration;
     private SessionDirectory? _sessions;
     private FootageSessions? _footage;
+    private ClipScoring? _scoring;
     private CaptureService? _capture;
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -45,13 +46,14 @@ internal sealed partial class StreamHostService(
         if (o.Control)
         {
             _sessions = new SessionDirectory(bus);
+            _scoring = ClipScoring.Load(o.ResolvedModelDirectory, logger);
             var profiles = new ProfileSource(o.ProfilesDirectory, logger); // the checkout's profiles/, so the profile editor's saves apply without a rebuild
-            _footage = new FootageSessions(bus, logger, profiles);
+            _footage = new FootageSessions(bus, logger, _scoring, profiles);
 
             // Live capture: game detection starts a recording for every allowed game (Windows only).
             if (o.Capture && OperatingSystem.IsWindows())
             {
-                _capture = CaptureService.Start(bus, o, _sessions, logger, profiles);
+                _capture = CaptureService.Start(bus, o, _sessions, logger, _scoring, profiles);
             }
 
             control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);
@@ -107,6 +109,10 @@ internal sealed partial class StreamHostService(
             await _footage.DisposeAsync().ConfigureAwait(false);
             _footage = null;
         }
+
+        // After every clipper that used it has stopped.
+        _scoring?.Dispose();
+        _scoring = null;
 
         if (_sessions is not null)
         {

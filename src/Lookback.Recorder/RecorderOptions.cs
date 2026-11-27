@@ -38,6 +38,15 @@ public sealed class RecorderOptions
     /// </summary>
     public string? DatasetsDirectory { get; set; }
 
+    /// <summary>
+    /// The learned clip scorer: <c>model.json</c> and <c>model.onnx</c> as
+    /// <c>ml/</c> writes them (the shell passes the checkout's <c>ml/out/model</c>).
+    /// Loaded at start; with none, candidates keep heuristic scores. Either way
+    /// every candidate carries its <c>clip-features/1</c> vector.
+    /// Unset: <c>%LOCALAPPDATA%\Lookback\model</c>.
+    /// </summary>
+    public string? ModelDirectory { get; set; }
+
     /// <summary>The shell's process id: the recorder stops when that process exits, however it exits.</summary>
     public int? ParentProcessId { get; set; }
 
@@ -72,6 +81,11 @@ public sealed class RecorderOptions
     public string ResolvedStoreDirectory => StoreDirectory is { Length: > 0 } s
         ? Path.GetFullPath(s)
         : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lookback", "store");
+
+    /// <summary>The learned scorer's folder in effect.</summary>
+    public string ResolvedModelDirectory => ModelDirectory is { Length: > 0 } m
+        ? Path.GetFullPath(m)
+        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Lookback", "model");
 
     /// <summary>The ratings folder in effect.</summary>
     public string ResolvedDatasetsDirectory => DatasetsDirectory is { Length: > 0 } d
