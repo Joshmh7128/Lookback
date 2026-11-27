@@ -24,7 +24,8 @@ src/
   Lookback.Profiler/          live event profiler page (served by the bridge)
   Lookback.Calibration/       official-player calibration: ingest, probe, tuner, writer
   Lookback.Replay/            RAM replay ring, fMP4 muxer, clip writer, disk segment store
-  Lookback.Governor/          budget policy and runtime controller
+  Lookback.Governor/          resource governor: probe mapping, budget policy, runtime controller
+  Lookback.Governor.Windows/  Windows machine probe (RAM, store volume, DXGI adapters, encoder MFTs)
   Lookback.Capture/           WGC + DXGI capture, GPU downscale, NV12 convert (Windows)
   Lookback.Encode/            Media Foundation encoders + the CFR encode clock (Windows)
   Lookback.Capture.Cli/       lookback-capture bench (Windows)
@@ -41,6 +42,7 @@ tests/
   Lookback.Calibration.Tests/
   Lookback.Replay.Tests/
   Lookback.Governor.Tests/
+  Lookback.Governor.Windows.Tests/  runs the probe on the machine (Windows only)
   Lookback.Capture.Tests/     Windows: downscale, encoders, CFR clock (skip elsewhere)
   Lookback.Detection.Tests/   matcher, settings, debounce with a fake machine
   Lookback.Detection.Windows.Tests/  Windows: probe and runner on a real child window
@@ -97,7 +99,8 @@ flowchart TB
 | `Lookback.Testbench` | `Program.cs`, `TestbenchRunner.cs`, `Live/*`, `Report/*`, `Datasets/*`, `Browse/*` | Footage CLI, the timeline viewer, the live replay, per-game dataset scoring, and the [dataset browser](Dataset-Browser) |
 | `Lookback.Calibration` | `OfficialPlayerSession.cs`, `CalibrationHost.cs`, `Profiles/*` | [Official-player calibration](Official-Player-Calibration): ephemeral ingest, proposals, confirmed profile writes |
 | `Lookback.Replay` | `Packets/*`, `Mp4/*`, `Store/*` | Encoded packets in RAM, fragmented MP4 muxing, clips, and the 2 s segment store on disk |
-| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs` | Machine profile → ring/disk budget and quality tier; steps down under pressure |
+| `Lookback.Governor` | `GovernorPolicy.cs`, `GovernorController.cs`, `MachineProfile.cs`, `QualityTier.cs`, `MachineProbe.cs`, `MachineProfileMapper.cs` | The [resource governor](Resource-Governor): probe result → machine profile → ring/disk budget and quality tier; steps down under pressure. Platform-neutral |
+| `Lookback.Governor.Windows` | `WindowsMachineProbe.cs`, `Native.cs` | The Windows machine probe: reads only what a normal user can |
 | `Lookback.Capture` | `Wgc/*`, `Dxgi/*`, `Gpu/*`, `Targets/*`, `LiveCaptureSession.cs` | [Live capture](Live-Capture): capture backends on the output's adapter, the analysis downscale, NV12 conversion |
 | `Lookback.Encode` | `MfVideoEncoder.cs`, `EncodeTicker.cs`, `CodecApi.cs`, `MfGuids.cs` | Hardware/software encoder MFTs chosen by adapter LUID, and the constant-rate encode clock |
 | `Lookback.Capture.Cli` | `Program.cs`, `EncodeBench.cs` | `lookback-capture`: capture, analyse, optionally encode a clip of the last seconds |

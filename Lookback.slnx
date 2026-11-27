@@ -10,6 +10,7 @@
     <Project Path="src/Lookback.Detection.Cli/Lookback.Detection.Cli.csproj" />
     <Project Path="src/Lookback.Detection.Windows/Lookback.Detection.Windows.csproj" />
     <Project Path="src/Lookback.Governor/Lookback.Governor.csproj" />
+    <Project Path="src/Lookback.Governor.Windows/Lookback.Governor.Windows.csproj" />
     <Project Path="src/Lookback.Media/Lookback.Media.csproj" />
     <Project Path="src/Lookback.Profiler/Lookback.Profiler.csproj" />
     <Project Path="src/Lookback.Profiles/Lookback.Profiles.csproj" />
@@ -27,6 +28,7 @@
     <Project Path="tests/Lookback.Detection.Tests/Lookback.Detection.Tests.csproj" />
     <Project Path="tests/Lookback.Detection.Windows.Tests/Lookback.Detection.Windows.Tests.csproj" />
     <Project Path="tests/Lookback.Governor.Tests/Lookback.Governor.Tests.csproj" />
+    <Project Path="tests/Lookback.Governor.Windows.Tests/Lookback.Governor.Windows.Tests.csproj" />
     <Project Path="tests/Lookback.Profiles.Tests/Lookback.Profiles.Tests.csproj" />
     <Project Path="tests/Lookback.Replay.Tests/Lookback.Replay.Tests.csproj" />
     <Project Path="tests/Lookback.Signals.Tests/Lookback.Signals.Tests.csproj" />

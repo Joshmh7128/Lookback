@@ -490,7 +490,7 @@ public sealed class MfVideoEncoder : IDisposable
 
     private static List<(IMFActivate Activate, string Name)> Enumerate(CodecKind codec, long? luid, bool hardware)
     {
-        var output = new RegisterTypeInfo { GuidMajorType = MfGuids.Video, GuidSubtype = codec == CodecKind.Hevc ? MfGuids.Hevc : MfGuids.H264 };
+        var output = new RegisterTypeInfo { GuidMajorType = MfGuids.Video, GuidSubtype = codec switch { CodecKind.Hevc => MfGuids.Hevc, CodecKind.Av1 => MfGuids.Av1, _ => MfGuids.H264 } };
         var input = new RegisterTypeInfo { GuidMajorType = MfGuids.Video, GuidSubtype = MfGuids.Nv12 };
         uint flags = (hardware ? MfGuids.EnumHardware | MfGuids.EnumAsync : MfGuids.EnumSync) | MfGuids.EnumSortAndFilter;
 

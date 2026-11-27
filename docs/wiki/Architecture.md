@@ -144,6 +144,13 @@ the recorder must honour. See [Game Detection](Game-Detection).
 
 Clips are cut by remuxing packets from a keyframe, with no re-encode.
 
+The [resource governor](Resource-Governor) sizes the ring, the disk budget
+and the quality tier from a probe of the PC (RAM, the store volume's free
+space and SSD/HDD, the GPU that scans out the captured monitor and its
+hardware encoders), then steps quality down under pressure. The probe is in
+`Lookback.Governor.Windows`; the mapping and policy in `Lookback.Governor`
+are platform-neutral and tested without the hardware.
+
 ## Auto-clipping pipeline (M2 to M4)
 
 ```mermaid
