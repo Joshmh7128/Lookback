@@ -32,6 +32,14 @@ internal sealed class CandidateGroup
         Items.Add(first);
     }
 
+    /// <summary>A highlight window: [<paramref name="start"/>, <paramref name="end"/>] with the moments in it.</summary>
+    public CandidateGroup(long start, long end, IEnumerable<Contribution> items)
+    {
+        Start = start;
+        End = end;
+        Items.AddRange(items);
+    }
+
     public long Start { get; private set; }
 
     public long End { get; private set; }

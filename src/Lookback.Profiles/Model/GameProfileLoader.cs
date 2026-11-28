@@ -218,6 +218,16 @@ public static class GameProfileLoader
             problems.Add("preMs + postMs must be positive.");
         }
 
+        if (c.HighlightMinMs is <= 0 || c.HighlightMaxMs is <= 0)
+        {
+            problems.Add("highlightMinMs and highlightMaxMs must be positive.");
+        }
+
+        if (c is { HighlightMinMs: { } hmin, HighlightMaxMs: { } hmax } && hmax < hmin)
+        {
+            problems.Add("highlightMaxMs must be at least highlightMinMs.");
+        }
+
         return problems;
     }
 

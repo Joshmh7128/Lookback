@@ -159,7 +159,10 @@ for going through candidates quickly:
 3. Rate with the stars or <kbd>1</kbd>–<kbd>5</kbd>; <kbd>0</kbd> or ×
    clears; clicking the current star clears it too. Filter by stars
    (unrated, rated, 4–5, 3, 1–2), QA or saved clips; sort by time, score or
-   stars.
+   stars. The default view, **Highlights**, shows a long candidate's
+   [highlights](Clipper#highlights) (tagged *highlight*) in place of the long
+   candidate itself, so a session is rated moment by moment; **All** shows
+   both.
 
 YouTube and Twitch sessions are listed too, but nothing of them is recorded:
 the preview says to replay the moment in the viewer (▶ in its panel), and
@@ -178,7 +181,9 @@ When the recorder records a game it detects, its LIVE_GAME session (titled
 with the game) lists candidates from the clipper like footage does. A live
 recording has no file of its own, so the recorder keeps a **clip cache**: as
 soon as the clipper proposes a candidate, the recorder cuts its window from
-the recording, with no re-encode, into `store/previews/`. Selecting the
+the recording, with no re-encode, into `store/previews/`: every highlight and
+every candidate up to 25 s, while a longer candidate with highlights is cut
+only when it is opened. Selecting the
 candidate sends `preview`, which answers with the cached clip at once (or
 cuts it then, for an older candidate), and the preview plays it. A cached clip
 is not a saved clip: it pins no footage and uses no clips budget. **Rating** a

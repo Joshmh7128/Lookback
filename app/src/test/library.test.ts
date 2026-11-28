@@ -223,3 +223,14 @@ test("the revision moves on every change, so the shell sends snapshots only when
   lib.apply(null);
   assert.equal(lib.revision, r1);
 });
+
+test("a highlight knows the long candidate it was picked from", () => {
+  const lib = new Library();
+  lib.apply(started("s1", 1));
+  lib.apply(candidate("s1", "s1-c0001", 400_000_000));
+  const h = candidate("s1", "s1-c0001-h1", 300_000_000) as { clipCandidate: Record<string, unknown> };
+  h.clipCandidate["parentCandidateId"] = "s1-c0001";
+  lib.apply(h);
+  assert.equal(lib.candidateOf("s1", "s1-c0001")?.parentId, null);
+  assert.equal(lib.candidateOf("s1", "s1-c0001-h1")?.parentId, "s1-c0001");
+});

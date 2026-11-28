@@ -163,8 +163,12 @@ function currentSession(): LibrarySessionSnapshot | undefined {
 function visibleCandidates(s: LibrarySessionSnapshot | undefined): CandidateView[] {
   const filter = $<HTMLSelectElement>("lib-filter").value;
   const sort = $<HTMLSelectElement>("lib-sort").value;
+  // A long candidate with highlights is rated through them; the highlights view hides it.
+  const parents = new Set((s?.candidates ?? []).map((c) => c.parentId).filter((p): p is string => p !== null));
   const keep = (c: CandidateView): boolean => {
     switch (filter) {
+      case "highlights":
+        return c.parentId !== null || !parents.has(c.id);
       case "unrated":
         return c.rating === 0;
       case "rated":
@@ -274,7 +278,7 @@ function candidateRow(s: LibrarySessionSnapshot, c: CandidateView): HTMLTableRow
     el("td", { class: "num" }, clock(seconds(s, c.peakQpc))),
     el("td", { class: "num" }, `${(s.qpcFrequency ? (c.endQpc - c.startQpc) / s.qpcFrequency : 0).toFixed(1)} s`),
     el("td", { class: "num", title: c.modelScore !== null ? `model ${c.modelScore.toFixed(2)}` : "heuristic" }, c.score.toFixed(2)),
-    el("td", {}, ...c.reasons.map((r) => el("span", { class: "tag" }, r))),
+    el("td", {}, ...(c.parentId ? [el("span", { class: "tag highlight", title: "The most exciting part of a longer candidate (All candidates shows it)" }, "highlight")] : []), ...c.reasons.map((r) => el("span", { class: "tag" }, r))),
     el("td", {}, qa),
     el("td", {}, clip),
     el("td", {}, stars(c, s)),

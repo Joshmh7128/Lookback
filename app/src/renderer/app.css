@@ -44,6 +44,7 @@ button.primary { background: #1f4d49; border-color: #2c6d67; }
 button.on { border-color: var(--accent); background: #1f3b39; }
 
 .muted { color: var(--muted); }
+.tag.highlight { border-color: var(--accent); color: var(--accent); }
 table.storage td { padding: 4px 8px; white-space: nowrap; }
 button.danger { color: var(--bad); }
 table.storage td.name { white-space: normal; word-break: break-all; }

@@ -77,7 +77,10 @@ change of mind is history, not an edit.
 ```
 
 (One line in the file; wrapped here.) The line carries the candidate's
-features so a rating stays usable after its session log is deleted. A
+features so a rating stays usable after its session log is deleted. A rated
+[highlight](Clipper#highlights) also carries `"parentCandidateId"`, the long
+candidate it was picked from; training counts highlight ratings in its report
+(`highlights`) and learns from them like any rating. A
 missing feature is `null`. Numbers and ids only: no frames, audio, signal
 series or video identity.
 
@@ -322,6 +325,17 @@ when one covers its game. The model is loaded once, at start, from
 With no model there, the log says so and the heuristic scores stand; the
 features are attached either way. After training, restart the app (or the
 recorder) to load the new model.
+
+### Highlights
+
+With a model loaded, the recorder also hands the clipper its ranking of
+highlight windows (`ClipperOptions.RankHighlight`, `ClipScoring.Rank`): each
+window inside a long candidate is scored on a copy with its features
+attached, and the calibrated probability decides which windows become the
+candidate's highlights. Without a model, or for a game it does not cover, the
+heuristic score ranks them. So rating highlights teaches the model what a
+good highlight looks like, and the next session's highlights are picked by
+it.
 
 `LearnedClipScorer` loads `model.json` and `model.onnx` and runs the model with
 ONNX Runtime on the CPU execution provider, single-threaded: the model is a

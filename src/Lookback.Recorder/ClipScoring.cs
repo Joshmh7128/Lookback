@@ -53,7 +53,22 @@ internal sealed partial class ClipScoring : IDisposable
     public ClipperOptions Options(long qpcFrequency) => new()
     {
         Annotate = (candidate, qa, features) => Annotate(candidate, qa, features, qpcFrequency),
+        // With a model, what ratings taught picks a long candidate's highlights.
+        RankHighlight = _scorer.HasModel ? (candidate, features) => Rank(candidate, features, qpcFrequency) : null,
     };
+
+    /// <summary>
+    /// The model's calibrated probability for a highlight window (scored on a
+    /// copy, so the window keeps its own fields), or its heuristic score when
+    /// the model does not cover its game.
+    /// </summary>
+    public double Rank(ClipCandidate candidate, IReadOnlyDictionary<string, float> clipperFeatures, long qpcFrequency)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+        ClipCandidate probe = candidate.Clone();
+        ClipFeatureSchema.Attach(probe, ClipperFeatureMap.FromClipper(clipperFeatures));
+        return _scorer.Score(probe, qpcFrequency).Source == ScoreSource.Model ? probe.HighlightProbability : candidate.HeuristicScore;
+    }
 
     /// <summary>Attaches the features and scores the candidate. Takes the clipper's features by name, so tests can call it.</summary>
     public void Annotate(ClipCandidate candidate, QaReport qa, IReadOnlyDictionary<string, float> clipperFeatures, long qpcFrequency)

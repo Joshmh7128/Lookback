@@ -58,6 +58,7 @@ class Dataset:
     profiles: np.ndarray  # str
     candidates: np.ndarray  # str
     origins: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))  # "own" or "check"
+    highlights: np.ndarray = field(default_factory=lambda: np.array([], dtype=bool))  # rated a highlight (a 10-20 s part of a longer candidate)
     excluded: dict[str, int] = field(default_factory=dict)
     skipped_lines: int = 0
 
@@ -198,6 +199,7 @@ def load_dataset(
         profiles=np.array([r.get("profile") or r["game"] for r, _ in keep], dtype=object),
         candidates=np.array([r["candidateId"] for r, _ in keep], dtype=object),
         origins=np.array([r.get("_origin", "own") for r, _ in keep], dtype=object),
+        highlights=np.array([bool(r.get("parentCandidateId")) for r, _ in keep], dtype=bool),
         excluded=excluded,
         skipped_lines=skipped,
     )

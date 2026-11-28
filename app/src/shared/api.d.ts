@@ -200,6 +200,8 @@ export interface CandidateView {
   qa: { passed: boolean; checks: QaCheckView[] } | null;
   /** Where the recorder saved the clip, once it has. */
   savedPath: string | null;
+  /** A highlight (the most exciting 10–20 s of a longer candidate): that candidate's id. Null otherwise. */
+  parentId: string | null;
   rating: Rating;
   /** True once the recorder acknowledged the rating (stored behind its retention rules); false while it lives only in the shell's memory. */
   ratingStored: boolean;

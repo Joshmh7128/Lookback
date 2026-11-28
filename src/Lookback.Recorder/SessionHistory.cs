@@ -41,8 +41,8 @@ internal sealed class SessionHistory : IAsyncDisposable
         _pump = Task.Run(PumpAsync);
     }
 
-    /// <summary>A live session's new candidate was recorded: (session id, candidate id). Raised on the history's pump.</summary>
-    public event Action<string, string>? CandidateRecorded;
+    /// <summary>A live session's new candidate was recorded: (session id, candidate). Raised on the history's pump.</summary>
+    public event Action<string, ClipCandidate>? CandidateRecorded;
 
     /// <summary>Parses a stored line back into its envelope; null for a torn or foreign line.</summary>
     public static Envelope? ParseLine(string line)
@@ -169,7 +169,7 @@ internal sealed class SessionHistory : IAsyncDisposable
         Note(e);
         if (e.PayloadCase == Envelope.PayloadOneofCase.ClipCandidate)
         {
-            CandidateRecorded?.Invoke(id, e.ClipCandidate.CandidateId);
+            CandidateRecorded?.Invoke(id, e.ClipCandidate);
         }
     }
 

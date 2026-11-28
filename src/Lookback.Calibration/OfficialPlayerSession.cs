@@ -192,7 +192,16 @@ public sealed class OfficialPlayerSession : IAsyncDisposable
         ClipperRunner clipper = profileId is null
             ? new ClipperRunner(_bus, sessionId, _clock.Frequency)
             : new ClipperRunner(_bus, catalog, profileId, sessionId, _clock.Frequency);
-        clipper.CandidateFinished += (_, e) => Check.Add(e.Output.Candidate, e.Output.Qa, e.Output.Features);
+        clipper.CandidateFinished += (_, e) =>
+        {
+            // A long candidate is judged through its highlights, which follow it.
+            if (e.Output.Candidate.ParentCandidateId.Length > 0)
+            {
+                Check.Remove(e.Output.Candidate.ParentCandidateId);
+            }
+
+            Check.Add(e.Output.Candidate, e.Output.Qa, e.Output.Features);
+        };
         ThresholdTuner? tuner = resolved is null ? null : new ThresholdTuner(Owners(catalog, profileId!, resolved), bank.Names, _clock.Frequency);
 
         long now = _clock.Now;

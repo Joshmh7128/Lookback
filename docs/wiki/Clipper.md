@@ -96,7 +96,9 @@ inherit the override (`ClipperSpec.Over`, applied by `ProfileCatalog.Resolve`):
   "high": 1.8, "low": 0.9,           // thresholds (curve units: weighted mean z)
   "preMs": 8000, "postMs": 3000,     // window around a peak
   "refractoryMs": 3000,              // peaks closer than this are one moment
-  "peakScore": 0.5                   // what a peak at exactly `high` adds to a candidate's score
+  "peakScore": 0.5,                  // what a peak at exactly `high` adds to a candidate's score
+  "highlightMinMs": 10000,           // shortest highlight
+  "highlightMaxMs": 20000            // longest highlight; longer candidates get highlights
 }
 ```
 
@@ -174,6 +176,40 @@ clipper runs (`ProfileRunner(..., publishCandidates: false)`); the
 official-player calibration.
 
 Source: `Candidates/CandidateFuser.cs`, `ClipperEngine.cs`.
+
+### Highlights
+
+A good clip is 10 to 20 s of gameplay, but busy play chains peaks and events
+into one candidate of up to `MaxLengthMs` (60 s): each peak brings 6 s of
+build-up and 3 s of aftermath, and windows within 1.5 s merge. So a candidate
+longer than its profile's `highlightMaxMs` (20 s by default) also yields
+**highlights**: its most exciting stretches, each between `highlightMinMs`
+and `highlightMaxMs` long, and each a candidate of its own with
+`parent_candidate_id` set to the long one.
+
+1. **Windows** (`Candidates/HighlightPicker.cs`). Each of the candidate's
+   eight strongest moments (events and curve peaks, by score) anchors a
+   window of `highlightMinMs` with the moment 60% of the way in, more
+   build-up than aftermath. The window then grows to take in the strongest
+   moment outside it (with 3 s before and 2 s after it) while it stays
+   within `highlightMaxMs`, and repeats. It is kept inside the parent.
+2. **Ranking.** Each window is built exactly like a candidate (score,
+   reasons, features, QA over its own span) and ranked by the host's
+   `ClipperOptions.RankHighlight`, or its heuristic score without one. The
+   recorder passes the learned scorer's probability when a model covers the
+   game, so what ratings teach picks the highlights
+   ([Clip Scoring](Clip-Scoring#highlights)).
+3. **Keeping.** The best are kept, at most one per `highlightMaxMs` of the
+   parent, only those ranked at least `HighlightKeepFraction` (0.5) of the
+   best, and none overlapping a better one by more than a quarter of its
+   length. They follow the parent on the bus in time order, named
+   `<parent>-h1`, `-h2`….
+
+A highlight is rated, saved and trained on like any candidate; its rating
+line carries `parentCandidateId`. The parent stays, so the whole stretch can
+still be watched and saved; the shell's default **Highlights** view shows the
+highlights in place of their parent. Highlights come only from candidates the
+clipper finishes; a candidate shorter than `highlightMaxMs` has none.
 
 ## 5 · QA gates v1
 
