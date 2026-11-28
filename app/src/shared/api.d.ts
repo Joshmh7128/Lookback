@@ -109,6 +109,70 @@ export interface BrowseState {
   builtAt: number | null;
 }
 
+/** A profile in the editor's list (`lookback-testbench profile-view`). */
+export interface ProfileSummary {
+  id: string;
+  displayName: string;
+  parent: string | null;
+  level: "game" | "subgame" | "mode";
+  /** 0 for a game. */
+  depth: number;
+}
+
+/**
+ * A profile with everything it inherits applied. `source` on every number is
+ * the id of the profile whose file sets it, or "defaults" (the clipper's
+ * defaults, `clipper.defaults.json`).
+ */
+export interface ProfileView {
+  id: string;
+  displayName: string;
+  parent: string | null;
+  level: string;
+  /** The profile's file, relative to the profiles folder. */
+  file: string;
+  /** Root first. */
+  path: string[];
+  events: {
+    name: string;
+    source: string;
+    weight: number;
+    baseConfidence: number;
+    /** `index` is what `thresholds` in an edit takes. */
+    conditions: { index: number; list: "when" | "whenAny"; signal: string; kind: "rise" | "above" | "below"; value: number }[];
+  }[];
+  composites: { name: string; source: string; of: string; atLeast: number; withinMs: number; weight: number }[];
+  clipper: {
+    numbers: { field: string; value: number; source: string }[];
+    components: { signal: string; weight: number; minSpread: number | null; source: string }[];
+  };
+  /** Signals the game's tree produces: what a clipper component may name. */
+  signals: string[];
+}
+
+/**
+ * Edits to one profile. Rule weights and thresholds go to the file that
+ * defines the rule; clipper values are the edited profile's own overrides,
+ * where null removes the override (the value is inherited again).
+ */
+export interface ProfileEdits {
+  events: { name: string; weight?: number; thresholds?: Record<string, number> }[];
+  composites: { name: string; weight: number }[];
+  clipper: Record<string, number | null>;
+  components: Record<string, number | null>;
+}
+
+/** What `profile-view` and `profile-save` print. `ok: false` carries the loader's message; nothing was written. */
+export interface ProfileToolResult {
+  ok: boolean;
+  message?: string;
+  directory?: string;
+  profiles?: ProfileSummary[];
+  view?: ProfileView | null;
+  /** Files a save changed, relative to the profiles folder. */
+  files?: string[];
+}
+
 /**
  * Stars for a candidate's content ("is this moment a highlight worth
  * keeping?"), not its video quality. 0 is unrated; 1 to 5 are stars.
@@ -258,6 +322,10 @@ export interface LookbackApi {
   showView(view: EmbeddedView | null, bounds: ViewBounds | null): Promise<boolean>;
   getBrowseState(): Promise<BrowseState>;
   buildBrowse(): Promise<BrowseResult>;
+  /** The profile list and, with an id, that profile resolved (Profiles tab). */
+  viewProfile(id: string | null): Promise<ProfileToolResult>;
+  /** Saves edits to the checkout's profiles/; the recorder picks them up from its next recording. */
+  saveProfile(id: string, edits: ProfileEdits): Promise<ProfileToolResult>;
   getSettings(): Promise<Settings>;
   saveSettings(settings: Settings): Promise<Settings>;
   /** Opens the official-player viewer, optionally with a pasted link. */

@@ -188,6 +188,12 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | | `Ephemeral_sessions_are_refused_and_nothing_is_written` | A rating of an official-player session is refused through `RatingStore` and the folder stays empty |
 | | `Rates_candidates_from_a_manifest` | Generated footage with a flash: one candidate, rated 5, lands in `datasets/boxgame/ratings.jsonl` as `owned` with label 1 and `clip-features/1` features; the next pass has nothing left to ask |
 
+`ProfileEditCommandTests.cs` covers the profile editor's commands:
+`profile-view` lists the tree and resolves a profile with sources;
+`profile-save` writes a valid edit and reports the files; unknown fields
+(the capture policy, a rule's conditions), an invalid clipper, non-numbers
+and non-JSON are refused with a message and nothing written.
+
 ## `Lookback.Scoring.Tests`
 
 The learned scorer and ratings. Platform-neutral, so they run on Windows and Linux.
@@ -346,6 +352,19 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | `StoreTests.cs` | `A_preview_is_a_temporary_cut_that_keeps_nothing_and_stays_within_its_budget` | A preview goes to `previews/` with a safe file name, pins nothing, writes no clip, leaves no `.part`, and is reused (and marked recent) when watched again; unknown sessions get none |
 | | `Previews_past_their_budget_or_age_are_deleted_least_recently_watched_first` | Past the preview budget the least recently watched goes first; a day unwatched is deleted whatever the budget |
 
+## `Lookback.Calibration.Tests`: the profile editor
+
+| File | Test | What it proves |
+|---|---|---|
+| `PatcherTests.cs` | `SetAddsAMissingPropertyOnItsOwnLineOrInline` | A missing property is added inline in a one-line object and on its own line, with the file's indentation, in a multi-line one; an empty `{}` becomes a block; nothing is added to an object that does not exist, and a number stays a number |
+| | `RemoveTakesTheLineOrTheSeparatorWithIt` | Removing an item on its own line takes the line and the previous item's comma (appending then removing restores the text); inline, the separator on one side goes with it |
+| `ProfileEditorTests.cs` | `RuleEditsChangeOnlyTheirLinesInTheFileThatDefinesTheRule` | An inherited rule's weight and threshold and a composite's weight change three lines of the parent's file and nothing in the child's; the view shows the parent as their source |
+| | `ClipperOverridesAreAddedToTheEditedProfileAndRemovedWithoutTrace` | Clipper settings and components become a `clipper` block in the edited profile, shown with this profile as source (an unset `minSpread` still inherited); an override changes in place; resetting every override restores the file byte for byte |
+| | `AChildInheritsAParentsOverride` | A parent's override shows in the child with the parent as source |
+| | `RefusesWhatTheRecorderCouldNotRunAndTouchesNothing` (7 cases) | `low` above the default `high`, a signal the game does not produce, a negative weight, an unknown event or condition, fractional milliseconds, a field that is not a clipper setting: refused, no file changed, no temp file left |
+| | `RefusesToSaveIntoAFolderThatDoesNotLoad` | A folder that already has a broken file refuses any save with the loader's message |
+| | `EveryShippedProfileRoundTripsAnOverride` | Every shipped profile, whatever its layout, takes a clipper override and gives it back byte for byte |
+
 ## `Lookback.Calibration.Tests`: the clipper check
 
 | File | Test | What it proves |
@@ -364,6 +383,9 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | File | Test | What it proves |
 |---|---|---|
 | `PlayerAudioSourceTests.cs` | `Without_a_shell_process_there_is_no_audio_hook` | No `ParentProcessId` (or 0): the official player stays video only |
+| `ProfileSourceTests.cs` | `LoadsTheFolderAndPicksUpAnEdit` | With a profiles folder the recorder runs on it, does not reload an unchanged folder, and picks up an edited weight |
+| | `FallsBackToTheBuiltInProfilesWhenTheFolderDoesNotLoad` | A typo, or a clipper `low` above the default `high`, makes it use the built-in profiles instead of failing |
+| | `WithoutAFolderUsesTheBuiltInProfiles` | No folder, or a missing one: built-in profiles |
 | | `With_a_shell_process_on_windows_there_is_one` | With a shell pid the hook exists on Windows, and only there |
 | `ControlServiceTests.cs` | `A_rating_of_an_owned_session_is_stored_and_published` | `rate` on a known candidate writes one line to `datasets/<game>/ratings.jsonl`, acks `stored`, and publishes `ClipRating` on the bus |
 | | `Official_player_ratings_are_refused_and_nothing_is_written` | An ephemeral session's rating gets `ephemeral` and no file is created |

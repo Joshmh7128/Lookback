@@ -20,6 +20,8 @@ const string Usage = """
       lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
+      lookback-testbench profile-view --profiles <folder> [--id <profile>]
+      lookback-testbench profile-save --profiles <folder> --id <profile> --edits <file.json|->
       lookback-testbench roblox-ids [--dir profiles/roblox] [--write true]
       lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
       lookback-testbench report <session-path-without-extension> [--video <file>]
@@ -55,6 +57,14 @@ const string Usage = """
       skipped unless --again. --play plays each candidate with ffplay first;
       typing p plays it on demand. --model shows a trained model's probability.
 
+    Profile editing:
+      profile-view prints the profile list and (with --id) the profile with
+      everything it inherits, and where each weight and threshold comes from,
+      as JSON. profile-save changes weights, thresholds and clipper settings in
+      the folder's files in place (--edits - reads the edits from stdin) after
+      checking that the whole folder still loads; it prints the files changed.
+      The desktop app's Profiles tab runs both.
+
     Browse:
       Writes one page for sifting the profile tree and the datasets: what each
       profile identifies and from which signals and regions, how it is detected,
@@ -82,6 +92,8 @@ try
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
         ["rate", string manifest, .. var rest] => await RateAsync(manifest, ParseFlags(rest), cts.Token),
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
+        ["profile-view", .. var rest] => ProfileView(ParseFlags(rest)),
+        ["profile-save", .. var rest] => await ProfileSaveAsync(ParseFlags(rest), cts.Token),
         ["roblox-ids", .. var rest] => await RobloxIdsAsync(ParseFlags(rest), cts.Token),
         ["browse", .. var rest] => await BrowseAsync(ParseFlags(rest), cts.Token),
         ["report", string session, .. var rest] => await ReportAsync(session, ParseFlags(rest), cts.Token),
@@ -288,6 +300,25 @@ static int PrintProfiles(Dictionary<string, string> flags)
     }
 
     return 0;
+}
+
+static int ProfileView(Dictionary<string, string> flags)
+{
+    string folder = flags.GetValueOrDefault("profiles") ?? throw new ArgumentException("profile-view needs --profiles <folder>.");
+    (int exit, string json) = Lookback.Testbench.Catalog.ProfileEditCommand.View(folder, flags.GetValueOrDefault("id"));
+    Console.WriteLine(json);
+    return exit;
+}
+
+static async Task<int> ProfileSaveAsync(Dictionary<string, string> flags, CancellationToken ct)
+{
+    string folder = flags.GetValueOrDefault("profiles") ?? throw new ArgumentException("profile-save needs --profiles <folder>.");
+    string id = flags.GetValueOrDefault("id") ?? throw new ArgumentException("profile-save needs --id <profile>.");
+    string source = flags.GetValueOrDefault("edits") ?? throw new ArgumentException("profile-save needs --edits <file.json> (or - for stdin).");
+    string edits = source == "-" ? await Console.In.ReadToEndAsync(ct) : await File.ReadAllTextAsync(source, ct);
+    (int exit, string json) = Lookback.Testbench.Catalog.ProfileEditCommand.Save(folder, id, edits);
+    Console.WriteLine(json);
+    return exit;
 }
 
 static async Task<int> RobloxIdsAsync(Dictionary<string, string> flags, CancellationToken ct)

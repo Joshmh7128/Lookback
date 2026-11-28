@@ -109,6 +109,15 @@ signals included; a missing one is reported like any other unknown signal.
 No built-in profile overrides the curve yet: the defaults are the baseline,
 and ratings will say where a game needs different weights.
 
+To change them, use the desktop app's **Profiles** tab (see
+[Game Profiles](Game-Profiles#editing-weights-and-thresholds)): it shows each
+setting and component resolved with its source (a profile, or `defaults`),
+writes overrides into the profile's own `clipper` block in place, and refuses
+an edit the clipper could not run, also after the defaults fill in (for
+example a `low` of 2 under the default `high` of 1.6). The recorder reloads
+the checkout's `profiles/` when a recording starts, so a saved edit applies
+from the next game without a rebuild.
+
 The clipper runs the **whole profile tree** at once: its component list is
 the union over every profile in the tree, so the normalisers are shared and
 switching sub-game or mode (on `game.profile`) only switches weights and

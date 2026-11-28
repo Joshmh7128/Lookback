@@ -307,12 +307,47 @@ sequenceDiagram
 - **Panel.** The recorder's calibration panel is docked at the right
   (`calibrate#token=…`); "Panel" in the viewer bar hides it.
 
+## Profiles
+
+The **Profiles** tab edits a game profile's weights and thresholds without
+hand-editing JSON. The list on the left is the profile tree in the
+checkout's `profiles/` (or the folder set in Settings). A profile shows
+resolved, with where each number comes from:
+
+- **Events** and **Composite events**: each rule's weight and each
+  condition's threshold, with the profile that defines it. A change is saved
+  in that profile's file, so it applies to every profile that inherits the
+  rule.
+- **Clipper**: the excitement curve's `high`, `low`, windows, refractory
+  time and peak score, and its components' weights, each from this profile,
+  an ancestor or the clipper's defaults. A change becomes this profile's own
+  override; **Reset** on an override removes it; **Add** puts any signal
+  the game already produces into the curve, and weight 0 switches one off.
+
+Changed inputs are marked until **Save** (or **Discard changes**). Save runs
+`lookback-testbench profile-save`, which edits the files in place and checks
+that the whole folder still loads the way the recorder loads it; a refusal
+shows the loader's message and nothing is written. Saved edits show in
+`git diff profiles/`. The recorder runs on the same folder
+(`--Recorder:ProfilesDirectory`) and reloads it when a recording starts, so
+an edit applies from the next game it records.
+
+The writer is a testbench command rather than a control command on
+`/events`: it works whether or not the recorder is running, it is a
+one-shot process with nothing to keep in sync, and writing source files
+stays off the recorder's network socket. The main process checks the
+renderer's edit (profile id, rule and signal names, finite numbers, only the
+clipper's six settings) before it runs the tool, and only ever points it at
+the profiles folder. See [Game Profiles](Game-Profiles#editing-weights-and-thresholds)
+for what is validated and where each change is saved.
+
 ## Settings
 
 Stored in `userData/settings.json` (paths and recorder options only; each
 value is sanitized on load, so a hand-edited file cannot stop the app). Recorder
 path, testbench path, datasets folder (also where the recorder stores
-ratings), profiles folder, pipe name, WebSocket port, serve the profiler page,
+ratings), profiles folder (what the recorder runs on, calibration saves into
+and the Profiles tab edits), pipe name, WebSocket port, serve the profiler page,
 start the recorder on launch. The page shows where ratings are stored. Changes
 to recorder options apply on its next start.
 
@@ -342,6 +377,7 @@ npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=over
 | `supervisor` | Restart after 1/2/5 s, give up after 5 in a minute, older restarts expire, user stops and unfixable failures left alone, a user action cancels a pending restart |
 | `recorder-control` | Against a recorder with control commands (skipped otherwise): an ephemeral rating refused with a message, `bad-request` and `unsupported`, `analyze` refusing a missing file, parent-exit; with `LOOKBACK_TEST_FOOTAGE`, analyze → candidate → a stored, broadcast rating in the datasets folder the shell passed |
 | `files` | Settings sanitizing and atomic save, static path escapes, recorder lookup and args, profile ids, the viewer server's Host check and CSP |
+| `profile-editor` | Profile ids and the testbench arguments; the renderer's edits cleaned (unknown fields dropped, resets kept) or refused when malformed; the tool's JSON result and stdin; a crash, garbage output, a hang or a missing tool become a refusal with a reason; against the real built testbench (skipped otherwise): a resolved view with sources, a refused edit that writes nothing, a save and a reset that restores the file |
 | `recorder-integration` | Against the real built recorder: frames over `/ingest` become an ephemeral official-player session on `/events`, the video id never comes back, stop ends it, a wrong token is refused |
 
 A smoke run prints one `LOOKBACK_SMOKE ok|fail {json}` line (the recorder,

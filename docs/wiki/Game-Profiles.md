@@ -7,8 +7,11 @@ into named moments with rules. Adding a game means writing a JSON file, not
 code.
 
 Profiles live in `profiles/<game>/*.json` (one folder per game tree) and
-are embedded into `Lookback.Profiles` at build time. Run
-`lookback-testbench profiles` to print the tree:
+are embedded into `Lookback.Profiles` at build time. A recorder started with
+`--Recorder:ProfilesDirectory` (the desktop app passes the checkout's
+`profiles/`) runs on that folder instead, so an edit applies without a
+rebuild (see [Editing weights and thresholds](#editing-weights-and-thresholds)).
+Run `lookback-testbench profiles` to print the tree:
 
 | Profile | Level | Purpose |
 |---|---|---|
@@ -324,6 +327,62 @@ the default HUD at 16:9 and 100% HUD scale. Ultrawide, a changed HUD scale or
 a game update moves them. They have to be checked against real footage, which
 is what the calibration view is for.
 
+## Editing weights and thresholds
+
+The desktop app's **Profiles** tab shows a profile resolved, the way the
+recorder runs it, with the source of every number: the profile whose file
+sets it, or `defaults` for the clipper's defaults
+(`src/Lookback.Clipper/clipper.defaults.json`). It edits:
+
+| What | Where the change is saved |
+|---|---|
+| An event's `weight`, and each condition's threshold (`rise`, `above` or `below`) | The file that defines the rule (the nearest profile on the path that defines it; a child that redefines a rule owns it). An inherited rule therefore changes for every profile that inherits it |
+| A composite's `weight` (`multikill`, `ace`, ...) | The file that defines the composite |
+| The clipper's `high`, `low`, `preMs`, `postMs`, `refractoryMs`, `peakScore` | An override in the edited profile's own `clipper` block; **Reset** removes it, so the value is inherited again |
+| A curve component's `weight` | An override component in the edited profile; **Add** picks any signal the game's tree already produces (whole-frame, audio and its region signals), weight 0 switches an inherited one off, **Reset** removes the override |
+
+Nothing else can change: not a region, a signal, a rule's conditions, a
+`minSpread` or the capture policy. The app runs
+`lookback-testbench profile-view` and `profile-save` against the checkout's
+`profiles/` folder (`ProfileEditor` in `Lookback.Calibration`), which:
+
+1. edits the text in place, like `CalibrationWriter`: numbers are replaced
+   where they stand, and an override is added or removed on a line of its
+   own (with the file's indentation), so `git diff profiles/` shows exactly
+   what changed, and removing every override restores the file byte for byte;
+2. loads the whole folder with the edit the way the recorder will
+   (`ProfileFolder.Load`): the loader's checks (unknown fields, negative
+   weights, `low >= high` after inheritance), plus each profile's clipper
+   settings over the clipper's defaults (`low` below `high`, a window to
+   keep) and only signals the game produces in its components;
+3. checks that the parsed profiles differ only in weights, thresholds and
+   the `clipper` block, and then writes each changed file atomically. Any
+   failure refuses the whole edit with the loader's message and writes
+   nothing.
+
+These are the user's own edits in their checkout, not numbers derived from
+a watched session, so they are not a `RetentionRules` derived write (unlike
+calibration's `CalibrationWriter`).
+
+**When it takes effect.** The recorder loads its profiles from
+`Recorder:ProfilesDirectory` (`ProfileSource`): when a recording starts or
+footage is analysed, it reloads the folder if any file in it changed. An
+edit therefore applies from the next game it records (a recording in
+progress keeps the settings it started with). If the folder does not load
+(a hand edit with a typo), the recorder logs why and falls back to the
+built-in profiles rather than stop recording. Game detection matches
+executables against the profiles as they were when the recorder started, so
+a new game's `executables` need a recorder restart. Without the option (a
+recorder run by hand), the built-in profiles are used and edits need a
+rebuild (`launch.bat` rebuilds).
+
+The same works from a terminal:
+
+```
+lookback-testbench profile-view --profiles profiles --id valorant.standard
+echo {"clipper":{"high":1.8},"components":{"scene.cut":0}} | lookback-testbench profile-save --profiles profiles --id valorant.standard --edits -
+```
+
 ## Calibration view
 
 ```
@@ -415,6 +474,10 @@ labels later train the learned scorer (M4).
 | `Candidates/CandidateBuilder.cs` | Events to clip candidates |
 | `Model/GameProfileLoader.cs` | Loads by id (embedded) or path, rejects unknown fields, validates structure and signal names |
 | `Regions/RegionSignal.cs` | The per-region measurements, as an `IVideoSignal` |
+| `Lookback.Calibration/Profiles/ProfileEditor.cs` | The profile editor: the resolved view with sources, and validated in-place saves of weights, thresholds and clipper overrides |
+| `Lookback.Calibration/Profiles/ProfileFolder.cs` | Loads a profiles folder as the recorder runs it, with the clipper-over-defaults and signal checks |
+| `Lookback.Calibration/Profiles/ProfileTextPatcher.cs` | Edits profile JSON text in place (replace, add, remove) so diffs stay minimal |
+| `Lookback.Recorder/ProfileSource.cs` | The recorder's catalog: the profiles folder, reloaded when it changes, else the built-in profiles |
 | `Detection/TimeOrderedMerger.cs` | Watermark merge of video and audio |
 | `Detection/ProfileEventDetector.cs` | Conditions, baselines, cooldowns, boosts, composites, margins |
 | `Detection/ProfileRunner.cs` | Subscribes to one session's signals on the bus, publishes `game.event` and `signals.rules` |

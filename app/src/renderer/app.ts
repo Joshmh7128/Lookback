@@ -1,8 +1,8 @@
 // The main window: overview, clip library with ratings, live timeline, the
-// recorder's profiler page, the dataset browser and settings. Everything
+// recorder's profiler page, the dataset browser, the profile editor and settings. Everything
 // comes from the main process through `window.lookback`; this page opens no
 // sockets and stores nothing.
-import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, Rating, RecorderState, Settings, StorageState, StreamState, SupervisionState, TimelineMark } from "../shared/api";
+import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, ProfileEdits, ProfileSummary, ProfileView, Rating, RecorderState, Settings, StorageState, StreamState, SupervisionState, TimelineMark } from "../shared/api";
 
 declare global {
   interface Window {
@@ -49,6 +49,7 @@ function showTab(name: string): void {
 
   placeEmbed();
   if (name === "timeline") drawTimeline();
+  if (name === "profiles" && !peLoaded) peLoadList(null);
 }
 
 function placeEmbed(): void {
@@ -618,6 +619,239 @@ $("browse-build").addEventListener("click", () => {
     b.disabled = false;
     $("browse-status").textContent = r.ok ? "built" : r.message;
     placeEmbed();
+  });
+});
+
+// --------------------------------------------------------------- profiles
+
+// The profile editor: resolved values with their source, edited in place and
+// saved through the testbench into the checkout's profiles/ (main process).
+// Pending changes live only in the inputs until Save.
+let peProfiles: ProfileSummary[] = [];
+let peView: ProfileView | null = null;
+let peLoaded = false;
+/** Clipper overrides and components marked for reset (`clip:<field>`, `comp:<signal>`). */
+const peResets = new Set<string>();
+const MS_FIELDS = new Set(["preMs", "postMs", "refractoryMs"]);
+const CLIP_LABELS: Record<string, string> = {
+  high: "Peak starts at (high)",
+  low: "Peak ends below (low)",
+  preMs: "Kept before a peak (ms)",
+  postMs: "Kept after a peak (ms)",
+  refractoryMs: "Peaks merged within (ms)",
+  peakScore: "Score of a peak at high",
+};
+
+const fmt = (v: number): string => String(Number(v.toFixed(4)));
+
+function peStatus(text: string | null, kind: "good" | "bad" | "" = ""): void {
+  const s = $("pe-status");
+  s.hidden = !text;
+  s.textContent = text ?? "";
+  s.className = `pe-status ${kind}`;
+}
+
+function source(src: string): HTMLElement {
+  const own = peView !== null && src === peView.id;
+  return el("span", { class: own ? "src own" : "src", title: own ? "set in this profile's file" : src === "defaults" ? "the clipper's defaults (clipper.defaults.json)" : `inherited from ${src}` }, own ? "this profile" : src);
+}
+
+function numInput(kind: string, original: number | null, attrs: Record<string, string> = {}): HTMLInputElement {
+  const input = el("input", { class: "num", type: "number", step: "any", min: "0", "data-kind": kind, "data-original": original === null ? "" : fmt(original), ...attrs });
+  input.value = original === null ? "" : fmt(original);
+  input.addEventListener("input", peRefresh);
+  return input;
+}
+
+function peLoadList(select: string | null): void {
+  void api.viewProfile(select).then((r) => {
+    if (!r.ok) {
+      $("pe-list").replaceChildren(el("p", { class: "muted" }, "Profiles are unavailable."));
+      peStatus(r.message ?? "The profiles could not be read.", "bad");
+      return;
+    }
+
+    peLoaded = true;
+    peProfiles = r.profiles ?? [];
+    renderProfileList();
+    if (r.view) showProfile(r.view);
+  });
+}
+
+function renderProfileList(): void {
+  $("pe-list").replaceChildren(...peProfiles.map((p) => {
+    const b = el("button", { title: p.id, class: peView?.id === p.id ? "active" : undefined, "data-id": p.id }, `${" ".repeat(p.depth)}${p.displayName}`, el("span", { class: "lvl" }, p.level));
+    b.addEventListener("click", () => {
+      if (peView?.id === p.id) return;
+      if (peDirty() && !window.confirm("Discard the unsaved changes to this profile?")) return;
+      peStatus(null);
+      void api.viewProfile(p.id).then((r) => (r.ok && r.view ? showProfile(r.view) : peStatus(r.message ?? "The profile could not be read.", "bad")));
+    });
+    return b;
+  }));
+}
+
+function showProfile(v: ProfileView): void {
+  peView = v;
+  peResets.clear();
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#pe-list button")) b.classList.toggle("active", b.dataset["id"] === v.id);
+  $("pe-title").replaceChildren(el("strong", {}, v.displayName), ` · ${v.id} · ${v.level} · `, el("code", {}, `profiles/${v.file}`), v.path.length > 1 ? ` · inherits from ${v.path.slice(0, -1).join(" → ")}` : "");
+
+  const events = el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Event"), el("th", {}, "From"), el("th", {}, "Weight"), el("th", {}, "Thresholds"))),
+    el("tbody", {}, ...v.events.map((e) => el("tr", {},
+      el("td", {}, el("code", {}, e.name)),
+      el("td", {}, source(e.source)),
+      el("td", {}, numInput("event-weight", e.weight, { "data-name": e.name })),
+      el("td", {}, ...e.conditions.map((c) => el("span", { class: "cond", title: c.list === "whenAny" ? "any one of these" : "all of these" },
+        el("code", {}, c.signal), c.kind, numInput("event-threshold", c.value, { "data-name": e.name, "data-index": String(c.index), ...(c.kind === "rise" ? {} : { min: "" }) }))))))));
+
+  const composites = v.composites.length === 0 ? el("p", { class: "muted" }, "No composite events.") : el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Composite"), el("th", {}, "Pattern"), el("th", {}, "From"), el("th", {}, "Weight"))),
+    el("tbody", {}, ...v.composites.map((c) => el("tr", {},
+      el("td", {}, el("code", {}, c.name)),
+      el("td", { class: "muted" }, `${c.atLeast}× ${c.of} within ${c.withinMs / 1000} s`),
+      el("td", {}, source(c.source)),
+      el("td", {}, numInput("composite-weight", c.weight, { "data-name": c.name }))))));
+
+  const numbers = el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Setting"), el("th", {}, "Value"), el("th", {}, "From"), el("th", {}))),
+    el("tbody", {}, ...v.clipper.numbers.map((n) => clipperRow(n.field, n.value, n.source))));
+
+  const components = el("tbody", { id: "pe-components" }, ...v.clipper.components.map((c) => componentRow(c.signal, c.weight, c.minSpread, c.source)));
+  const used = new Set(v.clipper.components.map((c) => c.signal));
+  const addSelect = el("select", { id: "pe-add-signal" }, el("option", { value: "" }, "add a signal…"), ...v.signals.filter((s) => !used.has(s)).map((s) => el("option", { value: s }, s)));
+  const addButton = el("button", { type: "button" }, "Add");
+  addButton.addEventListener("click", () => {
+    const signal = addSelect.value;
+    if (!signal) return;
+    addSelect.querySelector(`option[value="${CSS.escape(signal)}"]`)?.remove();
+    addSelect.value = "";
+    $("pe-components").append(componentRow(signal, null, null, null));
+    peRefresh();
+  });
+
+  $("pe-body").replaceChildren(
+    el("div", { class: "card" }, el("h2", {}, "Events"), events),
+    el("div", { class: "card" }, el("h2", {}, "Composite events"), composites),
+    el("div", { class: "card" }, el("h2", {}, "Clipper: excitement curve"), numbers),
+    el("div", { class: "card" }, el("h2", {}, "Clipper: curve components"),
+      el("table", {}, el("thead", {}, el("tr", {}, el("th", {}, "Signal"), el("th", {}, "Weight"), el("th", {}, "minSpread"), el("th", {}, "From"), el("th", {}))), components),
+      el("div", { class: "row add" }, addSelect, addButton, el("span", { class: "muted" }, "Only signals Lookback already produces for this game; weight 0 switches one off."))),
+  );
+  peRefresh();
+}
+
+function resetButton(key: string, own: boolean, row: HTMLElement): HTMLElement {
+  if (!own) return el("span");
+  const b = el("button", { type: "button", title: "Remove this profile's override: inherit the value again" }, "Reset");
+  b.addEventListener("click", () => {
+    if (peResets.has(key)) peResets.delete(key);
+    else peResets.add(key);
+    row.classList.toggle("reset", peResets.has(key));
+    b.textContent = peResets.has(key) ? "Undo" : "Reset";
+    peRefresh();
+  });
+  return b;
+}
+
+function clipperRow(field: string, value: number, src: string): HTMLElement {
+  const row = el("tr", {});
+  const input = numInput("clip", value, { "data-field": field, ...(MS_FIELDS.has(field) ? { step: "100" } : {}) });
+  row.append(el("td", {}, CLIP_LABELS[field] ?? field, " ", el("code", { class: "muted" }, field)), el("td", {}, input), el("td", {}, source(src)), el("td", {}, resetButton(`clip:${field}`, src === peView?.id, row)));
+  return row;
+}
+
+function componentRow(signal: string, weight: number | null, minSpread: number | null, src: string | null): HTMLElement {
+  const row = el("tr", { class: weight === 0 ? "off" : undefined });
+  const input = numInput("component", weight, { "data-signal": signal });
+  input.addEventListener("input", () => row.classList.toggle("off", Number(input.value) === 0));
+  row.append(
+    el("td", {}, el("code", {}, signal)),
+    el("td", {}, input),
+    el("td", { class: "muted" }, minSpread === null ? "default" : fmt(minSpread)),
+    el("td", {}, src === null ? el("span", { class: "src own" }, "new") : source(src)),
+    el("td", {}, src === null ? el("span") : resetButton(`comp:${signal}`, src === peView?.id, row)));
+  return row;
+}
+
+/** The pending edits from the inputs, or null when an input is not a valid number. */
+function peEdits(): ProfileEdits | null {
+  const edits: ProfileEdits = { events: [], composites: [], clipper: {}, components: {} };
+  const events = new Map<string, ProfileEdits["events"][number]>();
+  const ev = (name: string): ProfileEdits["events"][number] => {
+    let e = events.get(name);
+    if (!e) events.set(name, (e = { name }));
+    return e;
+  };
+
+  let valid = true;
+  for (const input of document.querySelectorAll<HTMLInputElement>("#pe-body input.num")) {
+    const kind = input.dataset["kind"] ?? "";
+    const original = input.dataset["original"] ?? "";
+    const value = input.value.trim() === "" ? NaN : Number(input.value);
+    const ms = kind === "clip" && MS_FIELDS.has(input.dataset["field"] ?? "");
+    const negativeOk = kind === "event-threshold" && input.min === "";
+    const bad = !Number.isFinite(value) || (value < 0 && !negativeOk) || (ms && !Number.isInteger(value));
+    const changed = !bad && (original === "" || Math.abs(value - Number(original)) > 1e-9);
+    input.classList.toggle("invalid", bad);
+    input.classList.toggle("changed", changed);
+    if (bad) {
+      valid = false;
+      continue;
+    }
+
+    if (!changed) continue;
+    const name = input.dataset["name"] ?? "";
+    if (kind === "event-weight") ev(name).weight = value;
+    else if (kind === "event-threshold") (ev(name).thresholds ??= {})[input.dataset["index"] ?? ""] = value;
+    else if (kind === "composite-weight") edits.composites.push({ name, weight: value });
+    else if (kind === "clip") edits.clipper[input.dataset["field"] ?? ""] = value;
+    else if (kind === "component") edits.components[input.dataset["signal"] ?? ""] = value;
+  }
+
+  // A reset wins over an edit of the same value: the override goes.
+  for (const key of peResets) {
+    const [what, name] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+    if (what === "clip") edits.clipper[name] = null;
+    else edits.components[name] = null;
+  }
+
+  edits.events = [...events.values()];
+  return valid ? edits : null;
+}
+
+function peDirty(): boolean {
+  const e = peEdits();
+  return e === null || e.events.length > 0 || e.composites.length > 0 || Object.keys(e.clipper).length > 0 || Object.keys(e.components).length > 0;
+}
+
+function peRefresh(): void {
+  const dirty = peView !== null && peDirty();
+  $<HTMLButtonElement>("pe-save").disabled = !dirty || peEdits() === null;
+  $<HTMLButtonElement>("pe-discard").disabled = !dirty;
+}
+
+$("pe-discard").addEventListener("click", () => {
+  if (peView) showProfile(peView);
+  peStatus(null);
+});
+
+$("pe-save").addEventListener("click", () => {
+  const edits = peEdits();
+  if (!peView || !edits) return;
+  const save = $<HTMLButtonElement>("pe-save");
+  save.disabled = true;
+  peStatus("Saving…");
+  void api.saveProfile(peView.id, edits).then((r) => {
+    if (r.ok && r.view) {
+      showProfile(r.view);
+      const files = r.files ?? [];
+      peStatus(files.length === 0 ? "Nothing changed." : `Saved ${files.map((f) => `profiles/${f}`).join(", ")}. Live recording uses this from the next game it records; a recording in progress keeps its settings.`, "good");
+    } else {
+      peStatus(`Not saved: ${r.message ?? "the edit was refused."}`, "bad");
+      peRefresh();
+    }
   });
 });
 

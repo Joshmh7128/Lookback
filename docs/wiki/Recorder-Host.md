@@ -33,7 +33,7 @@ server GC's per-core heaps.
 | `WebSocketPort` | `0` | 0 picks a free port, reported in the handshake |
 | `Profiler` | `false` | Serve the [live profiler](Live-Profiler) at `/profiler` and print `LOOKBACK_PROFILER <url>` on stdout |
 | `OfficialPlayer` | `true` | Accept official-player frames at `/ingest` and serve the [calibration](Official-Player-Calibration) panel |
-| `ProfilesDirectory` | unset | The checkout's `profiles` folder, so calibration can save confirmed numbers |
+| `ProfilesDirectory` | unset | The checkout's `profiles` folder: live recording and footage analysis load their profiles from it (reloaded when a file changes; the built-in profiles if it does not load), and calibration saves confirmed numbers into it |
 | `Control` | `true` | Handle the shell's `rate`, `analyze` and `save` commands on `/events` |
 | `DatasetsDirectory` | `%LOCALAPPDATA%\Lookback\datasets` | Where ratings are stored (`<dir>/<game>/ratings.jsonl`); point it at the checkout's `datasets` so `ml/` trains on them |
 | `ModelDirectory` | `%LOCALAPPDATA%\Lookback\model` | The learned clip scorer (`model.json`, `model.onnx` from `ml/`), loaded at start. Without one, candidates keep heuristic scores; their `clip-features/1` are attached either way. See [Clip Scoring](Clip-Scoring#scoring-on-the-recorder) |

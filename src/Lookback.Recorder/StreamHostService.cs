@@ -47,12 +47,13 @@ internal sealed partial class StreamHostService(
         {
             _sessions = new SessionDirectory(bus);
             _scoring = ClipScoring.Load(o.ResolvedModelDirectory, logger);
-            _footage = new FootageSessions(bus, logger, _scoring);
+            var profiles = new ProfileSource(o.ProfilesDirectory, logger); // the checkout's profiles/, so the profile editor's saves apply without a rebuild
+            _footage = new FootageSessions(bus, logger, _scoring, profiles);
 
             // Live capture: game detection starts a recording for every allowed game (Windows only).
             if (o.Capture && OperatingSystem.IsWindows())
             {
-                _capture = CaptureService.Start(bus, o, _sessions, logger, _scoring);
+                _capture = CaptureService.Start(bus, o, _sessions, logger, _scoring, profiles);
             }
 
             control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);

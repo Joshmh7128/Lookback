@@ -22,9 +22,12 @@ public sealed class RecorderOptions
     public bool OfficialPlayer { get; set; } = true;
 
     /// <summary>
-    /// The checkout's <c>profiles</c> folder: calibration runs on the profiles
-    /// in it and saves confirmed numbers back into them. Unset, it runs on the
-    /// built-in profiles and saving is off.
+    /// The checkout's <c>profiles</c> folder. Live recording and footage
+    /// analysis load their profiles from it (reloaded when a file changes, so
+    /// the profile editor's saves apply from the next recording; the built-in
+    /// profiles if it does not load), and calibration runs on the profiles in
+    /// it and saves confirmed numbers back into them. Unset, everything runs on
+    /// the built-in profiles and calibration saving is off.
     /// </summary>
     public string? ProfilesDirectory { get; set; }
 

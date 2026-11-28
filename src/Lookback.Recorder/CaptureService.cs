@@ -57,6 +57,7 @@ internal sealed partial class CaptureService : IAsyncDisposable
     private readonly ILogger _logger;
     private ClipScoring _scoring = null!; // set by Start; shared with footage analysis, owned by the host
     private readonly SegmentStore _store;
+    private readonly ProfileSource _profiles;
     private readonly EncoderBlocklist _blocklist = new(EncoderBlocklist.DefaultPath);
     private readonly StallWatchdog _watchdog = new(SystemClock.Instance, TimeSpan.FromMilliseconds(250));
     private readonly Channel<LifecycleChange> _changes = Channel.CreateUnbounded<LifecycleChange>(new UnboundedChannelOptions { SingleReader = true });
@@ -69,8 +70,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
     private Task? _status;
     private Live? _live;
 
-    private CaptureService(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger, SegmentStore store)
+    private CaptureService(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger, SegmentStore store, ProfileSource profiles)
     {
+        _profiles = profiles;
         _bus = bus;
         _options = options;
         _sessions = sessions;
@@ -81,18 +83,24 @@ internal sealed partial class CaptureService : IAsyncDisposable
     }
 
     /// <summary>Opens the store (sweeping expired segments) and starts game detection.</summary>
-    public static CaptureService Start(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger, ClipScoring? scoring = null)
+    /// <remarks>
+    /// Detection matches executables against <paramref name="profiles"/> as
+    /// they are at start; each recording takes the profiles as they are when
+    /// it starts, so an edited weight or threshold applies from the next game.
+    /// </remarks>
+    public static CaptureService Start(IEventBus bus, RecorderOptions options, SessionDirectory sessions, ILogger logger, ClipScoring? scoring = null, ProfileSource? profiles = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         string root = options.ResolvedStoreDirectory;
         var store = SegmentStore.Open(new StoreOptions { Root = root, BudgetBytes = (long)(options.FootageBudgetGB * (1L << 30)) });
         SweepResult swept = CacheSweeper.Sweep(store);
-        var service = new CaptureService(bus, options, sessions, logger, store);
+        profiles ??= ProfileSource.BuiltIn(logger);
+        var service = new CaptureService(bus, options, sessions, logger, store, profiles);
         service._scoring = scoring ?? ClipScoring.HeuristicOnly();
         LogStarted(logger, root, options.FootageBudgetGB, options.ClipsBudgetGB, swept.BytesFreed >> 20);
         service._worker = Task.Run(service.WorkAsync);
         service._status = Task.Run(service.StatusLoopAsync);
-        service._detection = WindowsDetection.CreateRunner(bus, settingsPath: options.DetectionSettings);
+        service._detection = WindowsDetection.CreateRunner(bus, profiles.Current(), settingsPath: options.DetectionSettings);
         service._detection.Changed += c => service._changes.Writer.TryWrite(c); // the poll thread only queues
         service._detection.HintsChanged += g => service._live?.ApplyHints(g);
         return service;
@@ -420,7 +428,7 @@ internal sealed partial class CaptureService : IAsyncDisposable
             owner._store.Reconfigure(plan.DiskBudgetBytes, plan.FreeSpaceFloorBytes);
 
             // 2. Capture and analysis, with the game's HUD regions as extra signals.
-            ProfileCatalog catalog = ProfileCatalog.BuiltIn;
+            ProfileCatalog catalog = owner._profiles.Current(); // the profiles folder as it is now, so edits apply from this game on
             string profileId = catalog.Contains(game.Match.ProfileId) ? game.Match.ProfileId : "generic";
             AnalysisFormat format = AnalysisFormat.Default;
             IReadOnlyList<HudRegion> regions = catalog.SubtreeRegions(catalog.PathTo(profileId)[0].Id);
