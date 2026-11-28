@@ -92,6 +92,47 @@ public sealed class ClipScoringTests
     }
 
     [Fact]
+    public void Reload_picks_up_a_model_put_in_the_folder_and_drops_one_taken_out_without_a_restart()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "lookback-model-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            using ClipScoring scoring = ClipScoring.Load(dir, NullLogger.Instance);
+            Assert.NotNull(scoring.Options(Freq).RankHighlight); // a clipper's ranking always asks the model in use now
+            Assert.False(scoring.HasModel);
+            Assert.Equal(0.7, scoring.Rank(Candidate("synth-a.mode1"), ClipperFeatures(), Freq), 5);
+
+            // Training promotes a model into the folder; the recorder reloads it.
+            foreach (string f in Directory.GetFiles(FixtureModel))
+            {
+                File.Copy(f, Path.Combine(dir, Path.GetFileName(f)));
+            }
+
+            System.Text.Json.Nodes.JsonObject now = scoring.Reload();
+            Assert.True((bool)now["model"]!);
+            Assert.Contains("synth-a", now["games"]!.AsArray().Select(g => (string)g!));
+            ClipCandidate known = Candidate("synth-a.mode1");
+            scoring.Annotate(known, new QaReport(), ClipperFeatures(), Freq);
+            Assert.InRange(known.ModelScore, 0.0001f, 0.9999f);
+            Assert.Equal(known.HighlightProbability, scoring.Rank(Candidate("synth-a.mode1"), ClipperFeatures(), Freq), 5);
+
+            // Rolled back to nothing: heuristic scores again.
+            foreach (string f in Directory.GetFiles(dir))
+            {
+                File.Delete(f);
+            }
+
+            Assert.False((bool)scoring.Reload()["model"]!);
+            Assert.False(scoring.HasModel);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Clipper_options_carry_the_annotation()
     {
         using ClipScoring scoring = ClipScoring.HeuristicOnly();

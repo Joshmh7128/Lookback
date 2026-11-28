@@ -1,11 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
-import type { BackfillPlan, BrowseState, CandidateView, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import type { BackfillPlan, TrainingStatus, BrowseState, CandidateView, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { backfillMessage, backfillPlanMessage, HISTORY_TIMEOUT_MS, historyEnvelopes, historyMessage, newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "./control";
+import { backfillMessage, backfillPlanMessage, describeModel, reloadModelMessage, HISTORY_TIMEOUT_MS, historyEnvelopes, historyMessage, newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
@@ -22,6 +22,8 @@ import { allowNavigation, hardenApp, lockPermissions } from "./security";
 import { loadSettings, saveSettings, sanitizeSettings } from "./settings";
 import { BROWSE_CSP, contentType, resolveStatic, SHELL_CSP } from "./static-files";
 import { StreamClient } from "./stream";
+import { TrainingManager, trainingPaths } from "./training";
+import type { Command } from "./locate";
 import { ViewerController } from "./viewer";
 import { ViewerServer } from "./viewer-server";
 
@@ -99,6 +101,32 @@ const footage = new FootageManager({
   log: (line) => recorder.note(line),
 });
 footage.on("changed", (jobs: FootageJob[]) => send("lookback:footage", jobs));
+
+// The training environment (ml/ in the checkout): set up, train, roll back.
+let basePython: Command | null | undefined;
+function findBasePython(): Command | null {
+  if (basePython !== undefined || !repoRoot) return basePython ?? null;
+  const tries: Command[] = process.platform === "win32"
+    ? [{ file: "py", args: ["-3.12"], cwd: repoRoot, display: "py -3.12" }, { file: "python", args: [], cwd: repoRoot, display: "python" }]
+    : [{ file: "python3.12", args: [], cwd: repoRoot, display: "python3.12" }, { file: "python3", args: [], cwd: repoRoot, display: "python3" }];
+  basePython = tries.find((c) => {
+    const r = spawnSync(c.file, [...c.args, "--version"], { encoding: "utf8", windowsHide: true, timeout: 10_000 });
+    return r.status === 0 && /Python 3\.12\./.test(`${r.stdout}${r.stderr}`);
+  }) ?? null;
+  return basePython;
+}
+
+const training = new TrainingManager({
+  paths: repoRoot ? trainingPaths(repoRoot) : null,
+  basePython: findBasePython,
+  reload: async () => {
+    const id = newRequestId();
+    const ack = await stream.request(id, reloadModelMessage(id), HISTORY_TIMEOUT_MS);
+    return ack?.ok ? describeModel(ack.data) : null;
+  },
+  log: (line) => recorder.note(line),
+});
+training.on("changed", (status: TrainingStatus) => send("lookback:training", status));
 let settings: Settings;
 let mainWindow: BrowserWindow | null = null;
 let embedded: { view: EmbeddedView; contents: WebContentsView; url: string } | null = null;
@@ -639,6 +667,10 @@ function registerIpc(): void {
     if (!ack) return "The recorder did not answer.";
     return ack.ok ? null : refusal(ack);
   });
+  handle("lookback:get-training", fromMain, () => training.status());
+  handle("lookback:training-setup", fromMain, () => training.setup());
+  handle("lookback:train", fromMain, () => training.train());
+  handle("lookback:model-rollback", fromMain, () => training.rollback());
   handle("lookback:storage-keep", fromMain, async (sessionId, keep): Promise<boolean> => {
     if (typeof sessionId !== "string" || typeof keep !== "boolean") return false;
     const id = newRequestId();

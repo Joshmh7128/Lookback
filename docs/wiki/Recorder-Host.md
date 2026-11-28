@@ -140,6 +140,7 @@ contract in [Desktop Shell](Desktop-Shell#control-commands-on-events):
 | `storage-delete` | `kind`: `session` (with `sessionId`; its footage and cached clips; refused while recording), `clip` (with `path`; its pin goes too) or `cache` (one `path`, or all) |
 | `storage-keep` | `sessionId`, `keep`: exempt a session's footage from the sweep, or let it go |
 | `backfill-plan` | `data`: `sessions` (each rated session whose ratings lack the clipper's features: game, source, how many, how far into the footage they reach, the footage fingerprint, a live recording's stored footage, and the last job's state) and `busy` |
+| `reload-model` | Loads the learned scorer now in `ModelDirectory` and uses it from the next candidate (no restart); `data`: `model`, `games`, `trainedAt`, `directory` |
 | `backfill` | `sessionId`, and `path` for a footage file: recompute those ratings' features from the footage ([Clip Scoring](Clip-Scoring#backfill)). Starts in the background; one at a time; progress shows in `backfill-plan` |
 
 Verified end to end against the built recorder: handshake, `analyze` of a

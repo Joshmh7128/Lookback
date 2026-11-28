@@ -29,9 +29,12 @@ namespace Lookback.Recorder;
 /// <item><c>backfill-plan</c> and <c>backfill</c>: ratings stored without the
 /// clipper's features, by session, and a job that recomputes them from the
 /// session's footage (<see cref="RatingBackfill"/>).</item>
+/// <item><c>reload-model</c>: loads the learned scorer now in the model folder
+/// (after training promotes one, or a rollback) and uses it from the next
+/// candidate; <c>data</c> says what is in use.</item>
 /// </list>
 /// </summary>
-internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger, CaptureService? capture = null, RatingBackfill? backfill = null)
+internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger, CaptureService? capture = null, RatingBackfill? backfill = null, ClipScoring? scoring = null)
 {
     private const int MaxIdLength = 128;
 
@@ -75,6 +78,7 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
                 "storage-keep" => StorageKeep(id, root),
                 "backfill-plan" => BackfillPlan(id),
                 "backfill" => Backfill(id, root),
+                "reload-model" => ReloadModel(id),
                 string other => Ack(id, false, "bad-request", $"Unknown command \"{other}\"."),
                 null => Ack(id, false, "bad-request", "Missing \"type\"."),
             };
@@ -200,6 +204,11 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
 
         return Ack(id, true, null, null, data: lines);
     }
+
+    private string ReloadModel(string id) =>
+        scoring is null
+            ? Ack(id, false, "unsupported", "This recorder scores no candidates.")
+            : Ack(id, true, null, null, data: scoring.Reload());
 
     private string BackfillPlan(string id) =>
         backfill is null

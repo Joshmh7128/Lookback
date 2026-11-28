@@ -360,6 +360,47 @@ export interface BackfillPlan {
   busy: boolean;
 }
 
+/** A trained scorer as the training environment shows it. */
+export interface ModelSummary {
+  /** Its folder in ml/out/history, for an earlier model. */
+  name: string | null;
+  trainedAt: string | null;
+  rows: number | null;
+  sessions: number | null;
+  /** Games it scores (others keep the heuristic). */
+  games: string[];
+  /** Held-out AUC and log loss: the heuristic's against the calibrated model's. */
+  auc: { heuristic: number | null; model: number | null };
+  logLoss: { heuristic: number | null; model: number | null };
+}
+
+/** The last training run's verdict. */
+export interface TrainingRun {
+  at: string | null;
+  /** True when it beat the heuristic and was installed. */
+  promoted: boolean;
+  /** True when there was not enough (or not allowed) data to train at all. */
+  refused: boolean;
+  reason: string;
+  model: ModelSummary | null;
+}
+
+export interface TrainingStatus {
+  /** False without a source checkout (packaged app). */
+  available: boolean;
+  /** ready: ml/.venv exists; no-environment: Python found, set up needed; missing: no Python 3.12. */
+  python: "ready" | "no-environment" | "missing";
+  busy: "setup" | "train" | "rollback" | null;
+  log: string[];
+  /** Why the last action did not run, when it did not. */
+  note: string | null;
+  /** What the recorder said it uses after the last reload. */
+  recorderModel: string | null;
+  current: ModelSummary | null;
+  history: ModelSummary[];
+  lastRun: TrainingRun | null;
+}
+
 export interface LookbackApi {
   getState(): Promise<RecorderState>;
   onState(listener: (state: RecorderState) => void): () => void;
@@ -391,6 +432,13 @@ export interface LookbackApi {
   backfillPlan(): Promise<BackfillPlan | null>;
   /** Starts recomputing one session's features (asking for the footage file when it is a file session). Null when started; otherwise why not ("" when the file dialog was cancelled). */
   backfill(sessionId: string): Promise<string | null>;
+  getTraining(): Promise<TrainingStatus>;
+  onTraining(listener: (status: TrainingStatus) => void): () => void;
+  /** Creates ml/.venv and installs the pinned packages (a download). Null when it ran; otherwise why not. */
+  setupTraining(): Promise<string | null>;
+  /** Trains; installs the model only if it beats the heuristic. Null when it ran; otherwise why not. */
+  train(): Promise<string | null>;
+  rollbackModel(): Promise<string | null>;
   /** Deletes a session's footage, a saved clip, a cached clip, or the whole cache; the reason when refused, else null. */
   deleteStored(kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }): Promise<string | null>;
   /** Keeps a session out of the sweep, or lets it go. */

@@ -22,6 +22,7 @@ import argparse
 import datetime as dt
 import json
 import math
+import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,6 +37,7 @@ from . import SCORER_FORMAT
 from .calibration import Platt, apply_table, fit_table
 from .data import Dataset, RefusedError, check_trainable, load_dataset
 from .metrics import evaluate, heuristic_probability
+from .models import VERDICT, promote, runs_dir, verdict
 from .schema import FeatureSchema, load_schema
 
 REPO = Path(__file__).resolve().parents[2]
@@ -299,6 +301,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--strength", type=float, default=d.strength, help="pseudo-ratings pulling a game's calibration toward its parent")
     ap.add_argument("--k", type=int, default=d.k, help="top-k for precision per session")
     ap.add_argument(
+        "--promote",
+        action="store_true",
+        help="train into <out>/../runs/latest and make it the model in --out only if it beats the heuristic on held-out "
+        "sessions (the model it replaces is kept in <out>/../history); prints a LOOKBACK_TRAIN line with the verdict",
+    )
+    ap.add_argument(
         "--no-check-ratings",
         action="store_true",
         help="train on your own footage's ratings only, leaving out <game>/check-ratings.jsonl",
@@ -321,12 +329,52 @@ def main(argv: list[str] | None = None) -> int:
         result = train(ds, options)
     except RefusedError as e:
         print(str(e), file=sys.stderr)
+        if args.promote:
+            _announce(args.out, {"promoted": False, "refused": True, "reason": str(e)})
         return 2
+    if args.promote:
+        return _train_and_promote(result, args.out)
     write(result, args.out)
     print(report_markdown(result.report))
     print(f"model    {args.out / 'model.onnx'}")
     print(f"manifest {args.out / 'model.json'}")
     return 0
+
+
+def _announce(out: Path, outcome: dict) -> None:
+    """Writes the run's verdict.json and prints it on one line for the desktop app."""
+    run = runs_dir(out)
+    if outcome.get("refused") and run.exists():
+        shutil.rmtree(run)
+    run.mkdir(parents=True, exist_ok=True)
+    stamped = {"at": dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(), **outcome}
+    (run / VERDICT).write_text(json.dumps(stamped, indent=2) + "\n", encoding="utf-8", newline="\n")
+    print("LOOKBACK_TRAIN " + json.dumps(stamped), flush=True)
+
+
+def _train_and_promote(result: TrainResult, out: Path) -> int:
+    run = runs_dir(out)
+    if run.exists():
+        shutil.rmtree(run)
+    write(result, run)
+    print(report_markdown(result.report))
+    ok, reason = verdict(result.report)
+    replaced = promote(run, out) if ok else None
+    _announce(
+        out,
+        {
+            "promoted": ok,
+            "refused": False,
+            "reason": reason,
+            "trainedAt": result.report["trainedAt"],
+            "rows": result.report["rows"],
+            "sessions": result.report["sessions"],
+            "games": result.manifest["games"],
+            "overall": result.report["overall"],
+            "replaced": replaced.name if replaced else None,
+        },
+    )
+    return 0 if ok else 3
 
 
 if __name__ == "__main__":

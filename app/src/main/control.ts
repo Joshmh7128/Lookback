@@ -15,6 +15,7 @@ import type { FootageRequest, Rating, StorageState } from "../shared/api";
 //   {"type":"storage-keep","id","sessionId","keep":true|false}
 //   {"type":"backfill-plan","id"}      ratings stored without features, by session, with job progress, in "data"
 //   {"type":"backfill","id","sessionId","path"?}  recompute them from the session's footage (a file needs "path")
+//   {"type":"reload-model","id"}       load the learned scorer now in the model folder; "data" says what is in use
 //
 // The recorder answers the sending client only:
 //
@@ -103,6 +104,20 @@ export function storageDeleteMessage(id: string, kind: "session" | "clip" | "cac
 
 export function storageKeepMessage(id: string, sessionId: string, keep: boolean): string {
   return JSON.stringify({ type: "storage-keep", id, sessionId, keep });
+}
+
+export function reloadModelMessage(id: string): string {
+  return JSON.stringify({ type: "reload-model", id });
+}
+
+/** The reload-model ack's data, in words. */
+export function describeModel(data: unknown): string | null {
+  if (typeof data !== "object" || data === null) return null;
+  const d = data as Record<string, unknown>;
+  if (d["model"] !== true) return "heuristic scores (no model)";
+  const games = Array.isArray(d["games"]) ? d["games"].filter((g) => typeof g === "string").join(", ") : "";
+  const at = typeof d["trainedAt"] === "string" ? ` trained ${d["trainedAt"]}` : "";
+  return `the model${at}${games ? ` (games: ${games})` : ""}`;
 }
 
 export function backfillPlanMessage(id: string): string {

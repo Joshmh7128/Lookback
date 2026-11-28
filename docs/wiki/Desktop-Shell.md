@@ -210,7 +210,14 @@ the Storage tab).
 
 ### Storage
 
-The **Training** tab lists ratings stored without the clipper's full feature
+The **Training** tab runs the [training environment](Clip-Scoring#from-the-desktop-app):
+**Set up training…** once (creates `ml/.venv` and downloads the pinned
+packages, after asking), **Train** (installs the new model only if it beats
+the heuristic on held-out sessions, then has the recorder reload it) and
+**Roll back**. It shows the model in use, earlier models and the last run,
+each with held-out AUC and log loss against the heuristic, and a log.
+
+Below that it lists ratings stored without the clipper's full feature
 set, by session (`backfill-plan`), and fills them in from the footage
 (`backfill`, see [Clip Scoring](Clip-Scoring#backfill)): **Backfill** for a
 live recording whose footage is still stored, **Choose file…** for footage

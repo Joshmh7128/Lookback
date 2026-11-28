@@ -13,7 +13,12 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m pytest
 .venv\Scripts\python -m lookback_ml.train            # --datasets ..\datasets --out out\model
+.venv\Scripts\python -m lookback_ml.train --promote  # install it only if it beats the heuristic; keeps the old one
+.venv\Scripts\python -m lookback_ml.models rollback  # the previous model again
 ```
+
+The desktop app's Training tab runs the same commands (set up, train with
+`--promote`, roll back) and has the recorder reload the model afterwards.
 
 Full guide: the wiki page `docs/wiki/Clip-Scoring.md`. Training refuses
 ratings from sessions that may not be stored (official players, other

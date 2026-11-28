@@ -59,7 +59,7 @@ internal sealed partial class StreamHostService(
 
             var ratings = new RatingStore(o.ResolvedDatasetsDirectory);
             _backfill = new RatingBackfill(ratings, logger, _capture, profiles);
-            control = new ControlService(bus, _sessions, ratings, _footage, logger, _capture, _backfill);
+            control = new ControlService(bus, _sessions, ratings, _footage, logger, _capture, _backfill, _scoring);
             LogRatings(logger, o.ResolvedDatasetsDirectory);
         }
 

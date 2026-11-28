@@ -264,7 +264,8 @@ Run with `python -m pytest` in `ml/` (see [Clip Scoring](Clip-Scoring#running-it
 |---|---|
 | `test_data.py` | Rows with retention other than owned, permissioned or open-license, or third-party rows without a `permissionRef`, or rows filed under another game's folder, stop training; last line wins and 0 clears; torn lines are skipped; missing features load as NaN; too few ratings, sessions or examples of each class are refused; the C#-written sample line loads; the C#-written check line loads beside your own and `include_check=False` leaves it out; check lines with a time, an unknown key, a non-random session id, another retention, no `derivedWrite` or an unknown platform stop training; a check line in `ratings.jsonl` stops training; ratings with `parentCandidateId` are marked as highlights |
 | `test_metrics_and_calibration.py` | AUC (with ties), log loss, Brier, ECE and precision@k on hand-checked inputs; Platt recovers known parameters; few ratings stay near the parent; lookup is deepest profile first |
-| `test_train.py` | On synthetic ratings the model beats the heuristic on held-out sessions and calibration lowers log loss and Brier; ONNX matches scikit-learn; games with too few ratings keep the heuristic; the CLI trains, and writes nothing when it refuses; the committed fixture still reproduces `expected.json`; the fixture regenerates |
+| `test_models.py` | The promotion verdict (a model must rank at least as well as the heuristic and be no worse calibrated; one-class held-out data cannot be compared); training-time stamps; promoting keeps the replaced model in history, which keeps the newest five, and rollback restores it and sets the current one aside |
+| `test_train.py` | On synthetic ratings the model beats the heuristic on held-out sessions and calibration lowers log loss and Brier; ONNX matches scikit-learn; games with too few ratings keep the heuristic; the CLI trains, and writes nothing when it refuses; `--promote` installs a better model, keeps the one it replaced, prints one `LOOKBACK_TRAIN` line, and on a refusal leaves the model in use and records why; the committed fixture still reproduces `expected.json`; the fixture regenerates |
 
 ## `Lookback.Capture.Tests`
 
@@ -424,6 +425,7 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | | `Unset_is_todays_format` | Without the setting the recorder analyses exactly as before |
 | `ClipScoringTests.cs` | `Without_a_model_every_candidate_still_gets_its_features_and_keeps_its_heuristic` | No model: the clipper's features become all 30 of `clip-features/1`; no model score; the heuristic probability stands |
 | | `With_a_model_a_candidate_of_a_game_it_knows_gets_a_model_score_and_others_keep_the_heuristic` | The committed fixture model scores a `synth-a` mode's candidate (raw score, calibrated probability, copied to the QA report) and leaves other games on the heuristic, features attached either way |
+| | `Reload_picks_up_a_model_put_in_the_folder_and_drops_one_taken_out_without_a_restart` | A scorer loaded from an empty folder ranks by the heuristic; after the fixture model is copied in, `Reload` reports it (games, model) and candidates get model scores and model ranks; after it is removed, `Reload` goes back to the heuristic |
 | | `Clipper_options_carry_the_annotation` | The options handed to every clipper carry the hook |
 
 ## Testing approach
