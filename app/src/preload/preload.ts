@@ -2,7 +2,7 @@
 // CommonJS file that imports only types. It exposes `window.lookback` and
 // nothing else: no ipcRenderer, no Node.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, ProfileEdits, ProfileToolResult, Rating, RecorderState, Settings, ShellPaths, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
+import type { EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, ProfileEdits, ProfileToolResult, Rating, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const wrapped = (_e: IpcRendererEvent, value: T): void => listener(value);
@@ -31,6 +31,10 @@ const api: LookbackApi = {
   rate: (sessionId: string, candidateId: string, rating: Rating) => ipcRenderer.invoke("lookback:rate", sessionId, candidateId, rating) as Promise<boolean>,
   saveClip: (sessionId: string, candidateId: string) => ipcRenderer.invoke("lookback:save", sessionId, candidateId) as Promise<boolean>,
   getStorage: () => ipcRenderer.invoke("lookback:get-storage") as Promise<StorageState | null>,
+  listStorage: () => ipcRenderer.invoke("lookback:storage-list") as Promise<StorageListing | null>,
+  deleteStored: (kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }) => ipcRenderer.invoke("lookback:storage-delete", kind, target) as Promise<string | null>,
+  keepSession: (sessionId: string, keep: boolean) => ipcRenderer.invoke("lookback:storage-keep", sessionId, keep) as Promise<boolean>,
+  revealStored: (path: string) => ipcRenderer.invoke("lookback:storage-reveal", path) as Promise<boolean>,
   onStorage: (listener) => subscribe<StorageState>("lookback:storage", listener),
   openClipsFolder: () => ipcRenderer.invoke("lookback:open-clips") as Promise<boolean>,
   openFootage: (request: FootageRequest) => ipcRenderer.invoke("lookback:open-footage", request) as Promise<FootageJob | null>,

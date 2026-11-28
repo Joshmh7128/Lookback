@@ -44,6 +44,12 @@ button.primary { background: #1f4d49; border-color: #2c6d67; }
 button.on { border-color: var(--accent); background: #1f3b39; }
 
 .muted { color: var(--muted); }
+table.storage td { padding: 4px 8px; white-space: nowrap; }
+button.danger { color: var(--bad); }
+table.storage td.name { white-space: normal; word-break: break-all; }
+table.storage td.actions { text-align: right; }
+table.storage td.actions button { margin-left: 4px; }
+#tab-storage h3 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .spacer { flex: 1; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .row input[type="text"] { flex: 1; min-width: 160px; }

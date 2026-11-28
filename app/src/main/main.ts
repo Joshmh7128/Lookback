@@ -1,11 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell, WebContentsView, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
-import { existsSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
-import type { BrowseState, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import type { BrowseState, CandidateView, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, validFootageRequest } from "./control";
+import { HISTORY_TIMEOUT_MS, historyEnvelopes, historyMessage, newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
@@ -34,7 +34,14 @@ import { ViewerServer } from "./viewer-server";
 // browser page (profile and manifest data only), both in userData. No session
 // data: no frames, audio, video ids, events or ratings.
 
-const SMOKE = process.argv.includes("--smoke") || process.argv.includes("--smoke-viewer");
+const SMOKE = process.argv.includes("--smoke") || process.argv.includes("--smoke-viewer") || process.argv.includes("--smoke-demo");
+/**
+ * The front-to-back demo, end to end on the real recorder: the stand-in game
+ * (flashes and tones) is detected and recorded, a real candidate appears, its
+ * cached clip plays from the Library at once, rating it keeps the clip, and
+ * after a recorder restart the session and the clip are still there.
+ */
+const SMOKE_DEMO = process.argv.includes("--smoke-demo");
 const SMOKE_VIEWER = process.argv.includes("--smoke-viewer");
 /** Open the viewer on this link at startup; with --smoke-viewer, play it instead of the synthetic test pattern. */
 const VIEWER_LINK = process.argv.find((a) => a.startsWith("--viewer-link="))?.slice("--viewer-link=".length) ?? null;
@@ -52,6 +59,7 @@ const SMOKE_LIVE = process.argv.includes("--smoke-live");
 /** With --smoke, also wait for this many clip candidates before rating one through the window. */
 const SMOKE_CANDIDATES = Number(argValue("smoke-candidates") ?? (SMOKE_FOOTAGE ? 1 : 0)) || 0;
 const SMOKE_TIMEOUT_MS = 120_000;
+let demoStoreCleared = false;
 
 // Tests and the smoke run point userData at a scratch folder.
 if (process.env["LOOKBACK_USER_DATA"]) {
@@ -123,7 +131,13 @@ function startRecorder(): RecorderState {
   if (smokeDir) {
     mkdirSync(smokeDir, { recursive: true });
     args.push(`--Recorder:StoreDirectory=${join(smokeDir, "store")}`);
-    if (SMOKE_LIVE) {
+    if (SMOKE_DEMO && !demoStoreCleared) {
+      // Each demo run starts from an empty store, so what it finds is what it recorded.
+      demoStoreCleared = true;
+      rmSync(join(smokeDir, "store"), { recursive: true, force: true });
+    }
+
+    if (SMOKE_LIVE || SMOKE_DEMO) {
       const detection = join(smokeDir, "detection.json");
       writeFileSync(detection, JSON.stringify({ allow: [{ exe: "lookback-testwindow.exe", profile: "generic" }] }));
       args.push(`--Recorder:DetectionSettings=${detection}`);
@@ -186,7 +200,32 @@ stream.on("envelope", (envelope) => {
     if (topic === "session") footage.link();
   }
 });
-stream.on("state", (state) => send("lookback:stream", state));
+stream.on("state", (state) => {
+  send("lookback:stream", state);
+  if (state.status === "open") void loadHistory();
+});
+
+/**
+ * Recorded sessions from before this connection (an earlier run of the app
+ * or the recorder): the recorder keeps each live session's own envelopes,
+ * and replaying them rebuilds those sessions in the library exactly as they
+ * looked live, so their clips can be watched, rated and saved. Sessions the
+ * library already has are left alone.
+ */
+async function loadHistory(): Promise<void> {
+  const known = new Set(library.snapshot().sessions.map((s) => s.id));
+  const id = newRequestId();
+  const envelopes = historyEnvelopes(await stream.request(id, historyMessage(id), HISTORY_TIMEOUT_MS));
+  let changed = false;
+  for (const e of envelopes) {
+    if (!known.has(e["sessionId"] as string)) changed = library.apply(e) || changed;
+  }
+
+  if (changed) scheduleLibrary();
+}
+
+/** Files the storage page listed: the only paths it may reveal or delete. */
+const storedPaths = new Set<string>();
 // The message count moves without a state change; refresh it once a second.
 let sentReceived = -1;
 setInterval(() => {
@@ -541,6 +580,46 @@ function registerIpc(): void {
     await viewer.open(source);
     return true;
   });
+  handle("lookback:storage-list", fromMain, async (): Promise<StorageListing | null> => {
+    const id = newRequestId();
+    const ack = await stream.request(id, storageMessage(id), HISTORY_TIMEOUT_MS);
+    if (!ack?.ok || typeof ack.data !== "object" || ack.data === null) return null;
+    const listing = ack.data as StorageListing;
+    storedPaths.clear();
+    for (const f of [...(listing.clips ?? []), ...(listing.cache ?? [])]) {
+      if (typeof f.path === "string") storedPaths.add(f.path);
+    }
+
+    return listing;
+  });
+  handle("lookback:storage-delete", fromMain, async (kind, target): Promise<string | null> => {
+    if (kind !== "session" && kind !== "clip" && kind !== "cache") return "Unknown kind.";
+    const t = typeof target === "object" && target !== null ? (target as Record<string, unknown>) : {};
+    const sessionId = typeof t["sessionId"] === "string" ? t["sessionId"] : undefined;
+    const path = typeof t["path"] === "string" ? t["path"] : undefined;
+    if (path && !storedPaths.has(path)) return "That file is not in the store listing; refresh and try again.";
+    const id = newRequestId();
+    const ack = await stream.request(id, storageDeleteMessage(id, kind, { sessionId, path }), HISTORY_TIMEOUT_MS);
+    if (!ack) return "The recorder did not answer.";
+    if (!ack.ok) return refusal(ack);
+    if (kind === "session" && sessionId && library.forget(sessionId)) scheduleLibrary();
+    if (path) storedPaths.delete(path);
+    for (const [key, p] of previews) {
+      if (!existsSync(p)) previews.delete(key);
+    }
+
+    return null;
+  });
+  handle("lookback:storage-keep", fromMain, async (sessionId, keep): Promise<boolean> => {
+    if (typeof sessionId !== "string" || typeof keep !== "boolean") return false;
+    const id = newRequestId();
+    return (await stream.request(id, storageKeepMessage(id, sessionId, keep), HISTORY_TIMEOUT_MS))?.ok === true;
+  });
+  handle("lookback:storage-reveal", fromMain, (path) => {
+    if (typeof path !== "string" || !storedPaths.has(path) || !existsSync(path)) return false;
+    shell.showItemInFolder(path);
+    return true;
+  });
   handle("lookback:reveal", fromMain, (path) => {
     // Only paths the recorder itself reported as saved clips.
     if (typeof path !== "string" || !library.isSavedClip(path) || !existsSync(path)) {
@@ -668,6 +747,91 @@ function runSmoke(): void {
     };
   };
 
+  // The demo: everything the user would do, through the window, with timings.
+  const smokeDemo = async (base: Record<string, unknown>): Promise<{ ok: boolean; detail: Record<string, unknown> }> => {
+    const exe = repoRoot ? join(repoRoot, "tests", "Lookback.Detection.TestWindow", "bin", "Release", "net10.0-windows10.0.22621.0", "lookback-testwindow.exe") : "";
+    if (!exe || !existsSync(exe)) return { ok: false, detail: { ...base, reason: "lookback-testwindow.exe is not built" } };
+    testWindow = spawn(exe, ["Lookback demo", "240", "--action"], { stdio: ["pipe", "ignore", "ignore"], windowsHide: false });
+    const steps: Record<string, unknown> = {};
+    const t0 = Date.now();
+    const wait = async (check: () => boolean, ms: number): Promise<boolean> => {
+      const end = Date.now() + ms;
+      while (!check()) {
+        if (Date.now() > end) return false;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+
+      return true;
+    };
+    const js = (code: string): Promise<unknown> => mainWindow!.webContents.executeJavaScript(code, true).catch(() => null);
+    const fail = (reason: string): { ok: boolean; detail: Record<string, unknown> } => ({ ok: false, detail: { ...base, reason, steps, log: recorder.logTail.slice(-20) } });
+
+    // 1. The game is detected and recorded.
+    const live = (): ReturnType<Library["snapshot"]>["sessions"][number] | undefined => library.snapshot().sessions.find((s) => s.sourceKind === "live_game" && !s.ended);
+    if (!(await wait(() => live() !== undefined, 45_000))) return fail("the stand-in game was never recorded");
+    const session = live()!;
+    steps["recordingAfterMs"] = Date.now() - t0;
+
+    // 2. The clipper proposes a real candidate (a flash with a tone every 20 s).
+    const firstCandidate = (): CandidateView | undefined => library.snapshot().sessions.find((s) => s.id === session.id)?.candidates[0];
+    if (!(await wait(() => firstCandidate() !== undefined, 90_000))) return fail("no candidate within 90 s of recording");
+    const candidate = firstCandidate()!;
+    steps["firstCandidateAfterMs"] = Date.now() - t0;
+    steps["candidate"] = { id: candidate.id, seconds: (candidate.endQpc - candidate.startQpc) / (session.qpcFrequency || 1e7), reasons: candidate.reasons };
+
+    // 3. Select it in the Library: the cached clip plays at once.
+    await new Promise((r) => setTimeout(r, 1500)); // the cache cuts it a moment after it is proposed
+    await js(`document.querySelector('#tabs button[data-tab="library"]').click();
+      [...document.querySelectorAll("#lib-sessions button")].find((b) => b.textContent.includes(${JSON.stringify(session.title || "")}))?.click(); true`);
+    await new Promise((r) => setTimeout(r, 300));
+    const clicked = Date.now();
+    await js(`document.querySelector('#lib-rows tr[data-id="${candidate.id}"]')?.click(); true`);
+    const playable = await (async () => {
+      const end = Date.now() + 10_000;
+      while (Date.now() < end) {
+        const ready = await js(`(() => { const v = document.getElementById("preview-video"); return !!v && !!v.currentSrc && v.readyState >= 2; })()`);
+        if (ready === true) return true;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+
+      return false;
+    })();
+    steps["previewPlayableAfterMs"] = Date.now() - clicked;
+    if (!playable) return fail("the selected candidate's clip did not play within 10 s");
+    const cached = [...previews.values()].some((p) => p.includes("previews"));
+    steps["playedFromCache"] = cached;
+
+    // 4. Rate it 4 stars with the keyboard: its clip is kept (moves to saved clips).
+    await js(`document.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true })); true`);
+    if (!(await wait(() => library.candidateOf(session.id, candidate.id)?.rating === 4 && library.candidateOf(session.id, candidate.id)?.ratingStored === true, 10_000))) return fail("the rating was not stored");
+    if (!(await wait(() => !!library.candidateOf(session.id, candidate.id)?.savedPath, 20_000))) return fail("rating did not keep the clip");
+    const kept = library.candidateOf(session.id, candidate.id)!.savedPath!;
+    steps["keptClip"] = kept;
+
+    // 5. Stop the game, restart the recorder: the session and its clip come back from the store.
+    testWindow?.stdin?.end();
+    await wait(() => library.sessionOf(session.id)?.ended === true, 30_000);
+    library.forget(session.id);
+    scheduleLibrary();
+    supervisor.reset();
+    await recorder.stop();
+    startRecorder();
+    const restarted = Date.now();
+    if (!(await wait(() => library.sessionOf(session.id) !== null, 45_000))) return fail("the session did not come back after a recorder restart");
+    steps["restoredAfterMs"] = Date.now() - restarted;
+    const restored = library.candidateOf(session.id, candidate.id);
+    steps["restored"] = { rating: restored?.rating ?? null, savedPath: restored?.savedPath ?? null, candidates: library.snapshot().sessions.find((s) => s.id === session.id)?.candidates.length ?? 0 };
+    const id = newRequestId();
+    const listing = (await stream.request(id, storageMessage(id), HISTORY_TIMEOUT_MS))?.data as StorageListing | undefined;
+    steps["storage"] = listing ? { sessions: listing.sessions.length, clips: listing.clips.length, cache: listing.cache.length, cacheBytes: listing.cacheBytes } : null;
+    // The window shows the session again (it gets the library at most four times a second).
+    await new Promise((r) => setTimeout(r, 1000));
+    const shown = await js(`document.getElementById("session-summary")?.textContent ?? ""`);
+    steps["windowSummary"] = shown;
+    const ok = cached && restored?.rating === 4 && restored?.savedPath === kept && (listing?.clips.some((c) => c.path === kept) ?? false) && typeof shown === "string" && !shown.startsWith("No sessions");
+    return { ok, detail: { ...base, steps } };
+  };
+
   let rendererReady = false;
   ipcMain.once("lookback:rendered", (event) => {
     if (fromMain(event)) rendererReady = true;
@@ -691,11 +855,11 @@ function runSmoke(): void {
     const base = { recorder: state.status, stream: stream.state.status, received: stream.state.received, renderer: rendererReady };
     const up = state.status === "ready" && stream.state.status === "open" && rendererReady;
     const candidates = library.snapshot().sessions.reduce((n, x) => n + x.candidates.length, 0);
-    if (SMOKE_LIVE) {
+    if (SMOKE_LIVE || SMOKE_DEMO) {
       if (!up || liveStep > 0) return;
       liveStep = 1;
       clearInterval(timer);
-      void smokeLive(base).then(
+      void (SMOKE_DEMO ? smokeDemo(base) : smokeLive(base)).then(
         (r) => {
           testWindow?.stdin?.end();
           finish(r.ok, r.detail);

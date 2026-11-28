@@ -15,6 +15,7 @@
     <button data-tab="profiler">Profiler</button>
     <button data-tab="datasets">Datasets</button>
     <button data-tab="profiles">Profiles</button>
+    <button data-tab="storage">Storage</button>
     <button data-tab="settings">Settings</button>
     <span class="spacer"></span>
     <span id="pill-recorder" class="pill">recorder</span>
@@ -174,6 +175,23 @@
         <p class="muted note">Values are shown resolved: what this profile runs with, and where each comes from. Rule weights and thresholds are saved in the file that defines the rule ("from"), so every profile that inherits the rule changes too; open that profile to see which do. Clipper settings are this profile's own overrides: Reset removes one, so the value is inherited again (from the parent, then the clipper's defaults), and weight 0 switches a signal off. Saving edits the checkout's profiles/ files in place (check them with git diff) after checking that every profile still loads; live recording uses them from the next game it records.</p>
       </div>
     </div>
+  </section>
+
+  <section id="tab-storage" class="tab">
+    <div class="row toolbar">
+      <div id="st-summary" class="muted">Loading the recorder's store…</div>
+      <span class="spacer"></span>
+      <button id="st-refresh">Refresh</button>
+      <button id="st-clear-cache">Clear cache</button>
+    </div>
+    <p id="st-status" class="muted" hidden></p>
+    <h3>Recorded sessions</h3>
+    <table class="clips storage"><thead><tr><th>Session</th><th>Profile</th><th>Started</th><th>Candidates</th><th>Size</th><th>Footage kept until</th><th></th></tr></thead><tbody id="st-sessions"></tbody></table>
+    <h3>Saved clips</h3>
+    <table class="clips storage"><thead><tr><th>Clip</th><th>Session</th><th>Saved</th><th>Size</th><th></th></tr></thead><tbody id="st-clips"></tbody></table>
+    <h3>Clip cache</h3>
+    <table class="clips storage"><thead><tr><th>Clip</th><th>Size</th><th>Deleted after</th><th></th></tr></thead><tbody id="st-cache"></tbody></table>
+    <p class="muted note">Every candidate from a recording is cut into the cache as it is proposed, so it plays at once in the Library. Rating it keeps its clip: it moves to saved clips. Unrated clips leave the cache after a day unwatched, or the least recently watched first when the cache passes its budget. A session's footage is swept a day after it ends unless you keep it; deleting a session leaves its saved clips.</p>
   </section>
 
   <section id="tab-settings" class="tab">

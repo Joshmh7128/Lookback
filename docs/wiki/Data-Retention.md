@@ -49,9 +49,13 @@ video to leak. In the recorder, `CaptureService` records live games (always
 `owned`), into `%LOCALAPPDATA%\Lookback\store` by default: session footage
 under a 20 GB budget (oldest unpinned segments evicted first, unused ones
 swept 24 h after the session) and saved clips under a separate 10 GB budget
-that is never swept. Temporary previews (a candidate cut so it can be watched
-without saving it) go in `previews/`, bounded at 1 GB and a day unwatched, and
-only from sessions that may persist. At the clips budget saving is refused rather than
+that is never swept. The clip cache (each candidate cut so it can be watched
+without saving it) goes in `previews/`, bounded at 5 GB and a day unwatched,
+and only from sessions that may persist; rating a candidate moves its clip to
+`clips/`. Each live session's own envelopes (start, end, candidates, QA
+reports, ratings, saved clips; never signal frames) are kept beside its
+footage in `events.jsonl`, through the same retention check, so the session
+can be listed after a restart; they go when the session does. At the clips budget saving is refused rather than
 deleting anything; the UI is warned at 90 %.
 
 ### Ratings and the learned scorer (M4)

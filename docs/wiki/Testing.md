@@ -382,6 +382,10 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 
 | File | Test | What it proves |
 |---|---|---|
+| `SessionHistoryTests.cs` | `A_live_sessions_own_envelopes_are_kept_once_its_folder_exists_and_read_back` | A live session's start is held until its store folder exists; candidates, ratings and saved clips are appended, signal frames never; a restarted history reads them back, knows which clips were kept, and maps a clip file to its session and candidate |
+| | `Official_player_and_footage_sessions_are_never_kept` | Nothing is written for an official player or a footage file |
+| | `The_store_keeps_a_cached_clip_deletes_only_its_own_files_and_never_a_recording_session` | A cached clip is kept by moving it to `clips/` with a pin; a recording session cannot be deleted; files outside `clips/` and `previews/` are refused; deleting a kept clip releases its pin; keep is saved; an ended session goes with its cached clips |
+| `ControlServiceTests.cs` | `Storage_commands_need_live_capture_and_history_is_empty_without_it` | `history` answers an empty list without live capture; `storage`, `storage-delete` and `storage-keep` are unsupported then |
 | `PlayerAudioSourceTests.cs` | `Without_a_shell_process_there_is_no_audio_hook` | No `ParentProcessId` (or 0): the official player stays video only |
 | `ProfileSourceTests.cs` | `LoadsTheFolderAndPicksUpAnEdit` | With a profiles folder the recorder runs on it, does not reload an unchanged folder, and picks up an edited weight |
 | | `FallsBackToTheBuiltInProfilesWhenTheFolderDoesNotLoad` | A typo, or a clipper `low` above the default `high`, makes it use the built-in profiles instead of failing |

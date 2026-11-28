@@ -71,6 +71,14 @@ public sealed class RecorderOptions
     /// <summary>Session footage (2 s segments) may use at most this much; the governor may pick less. 20 GB by default.</summary>
     public double FootageBudgetGB { get; set; } = 20;
 
+    /// <summary>
+    /// The clip cache: every live candidate is cut into a playable clip as it is
+    /// proposed, so it can be watched at once. Rating a candidate keeps its clip
+    /// (it moves to saved clips); unrated cached clips go after a day unwatched,
+    /// or the least recently watched first past this size. 5 GB by default.
+    /// </summary>
+    public double CacheBudgetGB { get; set; } = 5;
+
     /// <summary>Record the microphone as its own track. Off by default.</summary>
     public bool Microphone { get; set; }
 

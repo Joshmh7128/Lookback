@@ -9,6 +9,10 @@ import type { FootageRequest, Rating, StorageState } from "../shared/api";
 //   {"type":"analyze","id","path","profile"?,"retention","permissionRef"?}
 //   {"type":"save","id","sessionId","candidateId"}
 //   {"type":"preview","id","sessionId","candidateId"}   (a temporary cut to watch, not a saved clip)
+//   {"type":"history","id"}            recorded sessions' own envelopes, oldest first, in "data"
+//   {"type":"storage","id"}            sessions, saved clips and the clip cache with sizes, in "data"
+//   {"type":"storage-delete","id","kind":"session"|"clip"|"cache","sessionId"?,"path"?}
+//   {"type":"storage-keep","id","sessionId","keep":true|false}
 //
 // The recorder answers the sending client only:
 //
@@ -38,6 +42,8 @@ export interface Ack {
   sessionId: string | null;
   /** Where a save wrote the clip. */
   path: string | null;
+  /** A command's result (history, storage), as the recorder sent it. */
+  data: unknown;
 }
 
 /** Saving remuxes from the recording, so it may take longer than a rating. */
@@ -67,7 +73,7 @@ export function parseAck(value: unknown): Ack | null {
   }
 
   const text = (k: string): string | null => (typeof o[k] === "string" ? (o[k] as string).slice(0, 1000) : null);
-  return { id: o["id"], ok: o["ok"], error: text("error"), message: text("message"), stored: o["stored"] === true, sessionId: text("sessionId"), path: text("path") };
+  return { id: o["id"], ok: o["ok"], error: text("error"), message: text("message"), stored: o["stored"] === true, sessionId: text("sessionId"), path: text("path"), data: o["data"] ?? null };
 }
 
 export function rateMessage(id: string, sessionId: string, candidateId: string, stars: Rating): string {
@@ -76,6 +82,31 @@ export function rateMessage(id: string, sessionId: string, candidateId: string, 
 
 export function saveMessage(id: string, sessionId: string, candidateId: string): string {
   return JSON.stringify({ type: "save", id, sessionId, candidateId });
+}
+
+/** Recorded sessions to rebuild the library with after a restart: a list of envelopes. */
+export const HISTORY_TIMEOUT_MS = 10_000;
+
+export function historyMessage(id: string): string {
+  return JSON.stringify({ type: "history", id });
+}
+
+export function storageMessage(id: string): string {
+  return JSON.stringify({ type: "storage", id });
+}
+
+export function storageDeleteMessage(id: string, kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }): string {
+  return JSON.stringify({ type: "storage-delete", id, kind, ...target });
+}
+
+export function storageKeepMessage(id: string, sessionId: string, keep: boolean): string {
+  return JSON.stringify({ type: "storage-keep", id, sessionId, keep });
+}
+
+/** The envelopes of a history ack: objects with a session id; anything else is dropped. */
+export function historyEnvelopes(ack: { ok: boolean; data: unknown } | null): Record<string, unknown>[] {
+  if (!ack?.ok || !Array.isArray(ack.data)) return [];
+  return ack.data.filter((e): e is Record<string, unknown> => typeof e === "object" && e !== null && typeof (e as Record<string, unknown>)["sessionId"] === "string");
 }
 
 export function previewMessage(id: string, sessionId: string, candidateId: string): string {

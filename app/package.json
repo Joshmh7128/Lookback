@@ -11,7 +11,8 @@
     "test": "npm run build && node --test --test-concurrency=1 \"dist/test/**/*.test.js\"",
     "start": "npm run build && electron .",
     "smoke": "npm run build && electron . --smoke",
-    "smoke:viewer": "npm run build && electron . --smoke-viewer"
+    "smoke:viewer": "npm run build && electron . --smoke-viewer",
+    "smoke:demo": "npm run build && electron . --smoke-demo"
   },
   "devDependencies": {
     "@types/node": "22.20.7",
