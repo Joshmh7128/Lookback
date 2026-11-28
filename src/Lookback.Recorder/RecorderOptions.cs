@@ -1,3 +1,5 @@
+using Lookback.Media.Frames;
+
 namespace Lookback.Recorder;
 
 /// <summary>Settings bound from the <c>Recorder</c> configuration section.</summary>
@@ -84,6 +86,18 @@ public sealed class RecorderOptions
 
     /// <summary>Game detection's allow/deny list. Unset: <c>%LOCALAPPDATA%\Lookback\detection.json</c>.</summary>
     public string? DetectionSettings { get; set; }
+
+    /// <summary>
+    /// The analysis frame size for live capture and footage analysis, <c>WxH</c>
+    /// (for example <c>768x432</c>). Unset: 384x216, which the profiles'
+    /// thresholds were set against. An experiment setting: see the wiki page
+    /// Analysis-Resolution. An invalid value is logged and the default is used.
+    /// </summary>
+    public string? AnalysisSize { get; set; }
+
+    /// <summary>The analysis format in effect (the default when <see cref="AnalysisSize"/> is unset or invalid).</summary>
+    public AnalysisFormat ResolvedAnalysisFormat =>
+        AnalysisFormat.TryParse(AnalysisSize, out AnalysisFormat? format, out _) ? format! : AnalysisFormat.Default;
 
     /// <summary>The store folder in effect.</summary>
     public string ResolvedStoreDirectory => StoreDirectory is { Length: > 0 } s

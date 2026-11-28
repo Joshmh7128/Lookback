@@ -17,11 +17,17 @@ public sealed class RegionSignal : IVideoSignal
 
     private readonly (int X0, int Y0, int X1, int Y1)[] _rects;
     private readonly byte[][] _previous;
+    private readonly int _width;
+    private readonly int _height;
     private bool _hasPrevious;
 
     public RegionSignal(IReadOnlyList<HudRegion> regions, int width, int height)
     {
         ArgumentNullException.ThrowIfNull(regions);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        _width = width;
+        _height = height;
         _rects = new (int, int, int, int)[regions.Count];
         _previous = new byte[regions.Count][];
         var names = new List<string>(regions.Count * ValuesPerRegion);
@@ -44,12 +50,29 @@ public sealed class RegionSignal : IVideoSignal
         Names = names;
     }
 
+    /// <summary>A region signal for frames of <paramref name="format"/>'s size.</summary>
+    public RegionSignal(IReadOnlyList<HudRegion> regions, AnalysisFormat format)
+        : this(regions, (format ?? throw new ArgumentNullException(nameof(format))).Width, format.Height)
+    {
+    }
+
     public IReadOnlyList<string> Names { get; }
+
+    /// <summary>The frame size the rectangles were laid out for.</summary>
+    public int Width => _width;
+
+    public int Height => _height;
 
     public void Process(VideoFrame frame, LumaPlane luma, Span<float> output)
     {
         ArgumentNullException.ThrowIfNull(frame);
         ArgumentNullException.ThrowIfNull(luma);
+        if (frame.Width != _width || frame.Height != _height)
+        {
+            // Rectangles are in pixels of the size given at construction; another size would read the wrong area.
+            throw new ArgumentException($"Region signal laid out for {_width}x{_height} got a {frame.Width}x{frame.Height} frame.", nameof(frame));
+        }
+
         ReadOnlySpan<byte> px = frame.Pixels;
         ReadOnlySpan<byte> y = luma.Values;
         int w = frame.Width;

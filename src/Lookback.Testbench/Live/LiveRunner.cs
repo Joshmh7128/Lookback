@@ -53,6 +53,9 @@ internal sealed record LiveOptions
 
     /// <summary>Self-hosting only: keep the profiler up after the clip ends, until cancelled.</summary>
     public bool KeepServing { get; init; }
+
+    /// <summary>Analysis frame size: <c>WxH</c>, <c>native</c> or null for the default 384x216.</summary>
+    public string? AnalysisSize { get; init; }
 }
 
 /// <summary>What one live run sent.</summary>
@@ -176,8 +179,8 @@ internal static class LiveRunner
         using IEventSubscription sub = bus.Subscribe("*", capacity: HighWater * 4);
         var relay = new WallClockRelay(sub, sink, SystemClock.Instance, TestbenchRunner.Frequency, o.Speed);
         Task relaying = relay.RunAsync(ct);
-        AnalysisFormat format = AnalysisFormat.Default;
-        IVideoSignal[] extra = profile is { Regions.Count: > 0 } ? [new RegionSignal(profile.Regions, format.Width, format.Height)] : [];
+        AnalysisFormat format = TestbenchRunner.ResolveAnalysis(o.AnalysisSize, media);
+        IVideoSignal[] extra = profile is { Regions.Count: > 0 } ? [new RegionSignal(profile.Regions, format)] : [];
 
         // The profile and the clipper run on the private bus, so game events, rule
         // margins, the excitement curve and clip candidates are released by the

@@ -63,6 +63,35 @@ public class TestbenchRunnerTests(FootageFixture fixture) : IClassFixture<Footag
         Assert.False(Directory.Exists(outDir));
     }
 
+    [Theory]
+    [InlineData("native", "320x180")]
+    [InlineData("768x432", "768x432")]
+    [InlineData(null, "384x216")]
+    public async Task AnalysisSizeReachesEverySignalIncludingRegions(string? size, string expected)
+    {
+        AnalyzeResult r = await TestbenchRunner.AnalyzeAsync(
+            new AnalyzeOptions { File = fixture.File, OutputDirectory = NewOut(), Retention = Retention.Ephemeral, Profile = "overwatch", AnalysisSize = size },
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, r.Analysis.Format.Size);
+        Assert.InRange(r.Analysis.VideoFrames, 89, 91);
+        Assert.True(r.Analysis.VideoMsPerFrame > 0);
+        Assert.True(r.Analysis.VideoSignalMax > TimeSpan.Zero);
+        Assert.Empty(r.Warnings); // the region signals exist at every size
+    }
+
+    [Fact]
+    public void NativeAnalysisIsTheFootageSizeRoundedToEven()
+    {
+        var media = new Lookback.Media.Ffmpeg.MediaInfo(TimeSpan.FromSeconds(1), 2561, 1441, 60, true, true);
+        Assert.Equal("2560x1440", TestbenchRunner.ResolveAnalysis("native", media).Size);
+        Assert.Equal("2560x1440", TestbenchRunner.ResolveAnalysis("NATIVE", media).Size);
+        Assert.Equal("1280x720", TestbenchRunner.ResolveAnalysis("1280x720", media).Size);
+        Assert.Same(Lookback.Media.Frames.AnalysisFormat.Default, TestbenchRunner.ResolveAnalysis(null, media));
+        Assert.Throws<ArgumentException>(() => TestbenchRunner.ResolveAnalysis("big", media));
+    }
+
     [Fact]
     public void RelativeHrefIsEscaped()
     {

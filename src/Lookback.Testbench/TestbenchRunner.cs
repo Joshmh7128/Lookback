@@ -40,6 +40,9 @@ internal sealed record AnalyzeOptions
 
     /// <summary>Profile files added to the built-in tree (for example learned fingerprints or new experiences).</summary>
     public IReadOnlyList<string> ExtraProfiles { get; init; } = [];
+
+    /// <summary>Analysis frame size: <c>WxH</c>, <c>native</c> (the footage's own size) or null for the default 384x216.</summary>
+    public string? AnalysisSize { get; init; }
 }
 
 /// <summary>What one analysis produced.</summary>
@@ -117,8 +120,8 @@ internal static class TestbenchRunner
             throw new RetentionViolationException(problem);
         }
 
-        AnalysisFormat format = AnalysisFormat.Default;
-        IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format.Width, format.Height)] : [];
+        AnalysisFormat format = ResolveAnalysis(o.AnalysisSize, media);
+        IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format)] : [];
         var warnings = new List<string>();
         if (profile is not null)
         {
@@ -241,6 +244,24 @@ internal static class TestbenchRunner
         }
 
         return new AnalyzeResult(sessionId, media, result, basePath, reportPath, events, warnings) { Detections = detections, Candidates = candidates, Qa = qa, Features = features };
+    }
+
+    /// <summary>
+    /// The analysis format for <paramref name="size"/>: null or <c>default</c>
+    /// is 384x216, <c>native</c> the footage's own size (rounded down to even),
+    /// anything else <c>WxH</c>.
+    /// </summary>
+    internal static AnalysisFormat ResolveAnalysis(string? size, MediaInfo media)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        if (string.Equals(size?.Trim(), "native", StringComparison.OrdinalIgnoreCase))
+        {
+            int w = Math.Clamp(media.Width & ~1, AnalysisFormat.MinWidth, AnalysisFormat.MaxWidth);
+            int h = Math.Clamp(media.Height & ~1, AnalysisFormat.MinHeight, AnalysisFormat.MaxHeight);
+            return AnalysisFormat.Default.WithSize(w, h);
+        }
+
+        return AnalysisFormat.Parse(size ?? "default");
     }
 
     /// <summary>A profile file, or every <c>*.json</c> under a folder.</summary>
