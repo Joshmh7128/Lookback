@@ -361,6 +361,12 @@ With no model there, the log says so and the heuristic scores stand; the
 features are attached either way. After training, restart the app (or the
 recorder) to load the new model.
 
+`reload-model` loads whatever is in the model folder now and uses it from the
+next candidate, for every clipper at once (live and footage); a replaced model
+stays loaded until the recorder stops, so a clipper mid-score never holds a
+disposed one. The desktop app sends it after training installs a model and
+after a rollback.
+
 ### Highlights
 
 With a model loaded, the recorder also hands the clipper its ranking of
@@ -394,6 +400,32 @@ A broken model never stops clipping.
 
 ## Running it
 
+### From the desktop app
+
+The **Training** tab runs all of this from the checkout:
+
+1. **Set up training…** (once) creates `ml/.venv` with Python 3.12 (the `py`
+   launcher on Windows) and installs the pinned packages in
+   `ml/requirements.txt`. That is a download from PyPI, so it asks first.
+2. **Train** runs `python -m lookback_ml.train --promote`: it trains on every
+   rating in `datasets/`, holding whole sessions out, and installs the model
+   in `ml/out/model` **only if it beats the heuristic on those held-out
+   sessions** (calibrated AUC at least the heuristic's and log loss no worse).
+   The model it replaces goes to `ml/out/history/<trained-at>/` (the newest
+   five are kept). A run that is not installed is still kept, with its report,
+   in `ml/out/runs/latest/`, and its verdict says why. Too few ratings (fewer
+   than 40, 3 sessions, or 5 of each class) is a refusal, not a failure.
+3. After a model is installed, the app sends `reload-model` and the recorder
+   scores new candidates (and picks highlights) with it at once, with no restart.
+4. **Roll back** (`python -m lookback_ml.models rollback`) puts the newest
+   earlier model back and sets the one in use aside in `ml/out/rolled-back/`.
+
+The tab shows the model in use, earlier ones and the last run with their
+held-out AUC and log loss against the heuristic, and the log of the last
+action. Nothing leaves the computer.
+
+### From a terminal
+
 Python 3.12 with a virtual environment inside the repository (git-ignored):
 
 ```powershell
@@ -410,6 +442,11 @@ python -m venv .venv
 
 # Train on your ratings (defaults: --datasets ..\datasets --out out\model)
 .venv\Scripts\python -m lookback_ml.train
+
+# The same, but install the model only if it beats the heuristic (what the app runs)
+.venv\Scripts\python -m lookback_ml.train --promote
+.venv\Scripts\python -m lookback_ml.models status
+.venv\Scripts\python -m lookback_ml.models rollback
 
 # After changing training, export or calibration: regenerate the C# fixture and commit it
 .venv\Scripts\python -m lookback_ml.make_fixture

@@ -199,6 +199,20 @@
   </section>
 
   <section id="tab-training" class="tab">
+    <h3>Learned scorer</h3>
+    <div class="card training">
+      <p id="tm-current">Loading…</p>
+      <p id="tm-last" class="muted"></p>
+      <div class="row toolbar">
+        <button id="tm-setup">Set up training…</button>
+        <button id="tm-train" class="primary">Train</button>
+        <button id="tm-rollback">Roll back</button>
+        <span id="tm-status" class="muted"></span>
+      </div>
+      <p class="muted note">Train learns from every rating in <code>datasets/</code>, holding whole sessions out to test on. The new model is installed only if it beats today's heuristic on those held-out sessions; the one it replaces is kept, so you can roll back. The recorder switches to it at once, for new candidates and highlights. Everything runs on this computer.</p>
+      <table class="clips storage"><thead><tr><th>Model</th><th>Trained</th><th>Ratings</th><th>Games</th><th>Held-out AUC (heuristic → model)</th><th>Log loss</th></tr></thead><tbody id="tm-models"></tbody></table>
+      <details><summary>Log</summary><pre id="tm-log" class="log"></pre></details>
+    </div>
     <h3>Ratings that need features</h3>
     <p class="muted note">Ratings stored before the clipper computed its full feature set carry only 3 of its 30 numbers, so training learns little from them. Backfill re-analyses the session's footage and fills in each rated window's features; your stars are not touched. A live recording is read back from the store while its footage is kept (keep it in Storage if it is about to be swept); for a footage file, choose the file the ratings came from. Newer ratings carry the file's fingerprint, so a wrong file is refused.</p>
     <div class="row toolbar">

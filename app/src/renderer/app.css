@@ -183,3 +183,4 @@ dialog.notice h2 { color: #f3c0c0; }
 .pe-body .add { margin-top: 8px; }
 
 table.storage td.bad { color: var(--bad); }
+.card.training pre.log { max-height: 240px; overflow: auto; white-space: pre-wrap; }

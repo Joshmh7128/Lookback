@@ -71,6 +71,29 @@ def test_cli_trains_and_refuses(tmp_path, trained):
     assert not (tmp_path / "y").exists()
 
 
+def test_promote_installs_a_better_model_keeps_the_old_one_and_reports_on_one_line(tmp_path, trained, capsys):
+    root, _, _ = trained
+    out = tmp_path / "out" / "model"
+    assert main(["--datasets", str(root), "--out", str(out), "--promote"]) == 0
+    line = next(l for l in capsys.readouterr().out.splitlines() if l.startswith("LOOKBACK_TRAIN "))
+    outcome = json.loads(line[len("LOOKBACK_TRAIN "):])
+    assert outcome["promoted"] and not outcome["refused"]
+    assert "beats the heuristic" in outcome["reason"]
+    assert (out / "model.onnx").stat().st_size > 0
+    assert not (out / "verdict.json").exists()
+    assert json.loads((tmp_path / "out" / "runs" / "latest" / "verdict.json").read_text())["promoted"]
+
+    # Training again replaces it; the first one is kept in history.
+    assert main(["--datasets", str(root), "--out", str(out), "--promote"]) == 0
+    assert len(list((tmp_path / "out" / "history").iterdir())) == 1
+
+    # Refused: the model in use stays, and the verdict says why.
+    assert main(["--datasets", str(root), "--out", str(out), "--promote", "--min-rows", "100000"]) == 2
+    assert (out / "model.onnx").exists()
+    last = json.loads((tmp_path / "out" / "runs" / "latest" / "verdict.json").read_text())
+    assert last["refused"] and not last["promoted"] and "refusing to train" in last["reason"]
+
+
 def test_committed_fixture_reproduces_expected_outputs():
     """The same files the C# tests read: ONNX Runtime and the Python calibration must give these numbers."""
     m = json.loads((FIXTURE / "model" / "model.json").read_text())

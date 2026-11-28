@@ -2,7 +2,7 @@
 // CommonJS file that imports only types. It exposes `window.lookback` and
 // nothing else: no ipcRenderer, no Node.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import type { BackfillPlan, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, ProfileEdits, ProfileToolResult, Rating, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
+import type { BackfillPlan, EmbeddedView, TrainingStatus, FootageJob, FootageRequest, IngestState, LibrarySnapshot, LookbackApi, PreviewSource, ProfileEdits, ProfileToolResult, Rating, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, SupervisionState, ViewBounds } from "../shared/api";
 
 function subscribe<T>(channel: string, listener: (value: T) => void): () => void {
   const wrapped = (_e: IpcRendererEvent, value: T): void => listener(value);
@@ -34,6 +34,11 @@ const api: LookbackApi = {
   listStorage: () => ipcRenderer.invoke("lookback:storage-list") as Promise<StorageListing | null>,
   backfillPlan: () => ipcRenderer.invoke("lookback:backfill-plan") as Promise<BackfillPlan | null>,
   backfill: (sessionId: string) => ipcRenderer.invoke("lookback:backfill", sessionId) as Promise<string | null>,
+  getTraining: () => ipcRenderer.invoke("lookback:get-training") as Promise<TrainingStatus>,
+  onTraining: (listener) => subscribe<TrainingStatus>("lookback:training", listener),
+  setupTraining: () => ipcRenderer.invoke("lookback:training-setup") as Promise<string | null>,
+  train: () => ipcRenderer.invoke("lookback:train") as Promise<string | null>,
+  rollbackModel: () => ipcRenderer.invoke("lookback:model-rollback") as Promise<string | null>,
   deleteStored: (kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }) => ipcRenderer.invoke("lookback:storage-delete", kind, target) as Promise<string | null>,
   keepSession: (sessionId: string, keep: boolean) => ipcRenderer.invoke("lookback:storage-keep", sessionId, keep) as Promise<boolean>,
   revealStored: (path: string) => ipcRenderer.invoke("lookback:storage-reveal", path) as Promise<boolean>,

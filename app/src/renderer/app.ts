@@ -2,7 +2,7 @@
 // recorder's profiler page, the dataset browser, the profile editor and settings. Everything
 // comes from the main process through `window.lookback`; this page opens no
 // sockets and stores nothing.
-import type { CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, ProfileEdits, ProfileSummary, ProfileView, Rating, RecorderState, Settings, StorageState, StreamState, SupervisionState, TimelineMark } from "../shared/api";
+import type { ModelSummary, TrainingStatus, CandidateView, EmbeddedView, FootageJob, FootageRequest, IngestState, LibrarySessionSnapshot, LibrarySnapshot, LookbackApi, ProfileEdits, ProfileSummary, ProfileView, Rating, RecorderState, Settings, StorageState, StreamState, SupervisionState, TimelineMark } from "../shared/api";
 
 declare global {
   interface Window {
@@ -1259,4 +1259,70 @@ async function trLoad(): Promise<void> {
 }
 
 $("tr-refresh").addEventListener("click", () => void trLoad());
+
+// ---------------------------------------------------------------- training: the learned scorer
+
+function fmt3(v: number | null, digits = 3): string {
+  return v === null ? "–" : v.toFixed(digits);
+}
+
+function modelRow(label: string, m: ModelSummary): HTMLTableRowElement {
+  return el("tr", {},
+    el("td", { class: "name" }, label),
+    el("td", {}, stWhen(m.trainedAt)),
+    el("td", {}, m.rows === null ? "–" : `${m.rows} from ${m.sessions ?? "?"} sessions`),
+    el("td", {}, m.games.join(", ") || "none (heuristic for all)"),
+    el("td", {}, `${fmt3(m.auc.heuristic)} → ${fmt3(m.auc.model)}`),
+    el("td", {}, `${fmt3(m.logLoss.heuristic)} → ${fmt3(m.logLoss.model)}`));
+}
+
+function renderTraining(t: TrainingStatus): void {
+  const current = t.current;
+  $("tm-current").textContent = !t.available
+    ? "Training needs the source checkout (ml/ is not there)."
+    : current
+      ? `In use: the model trained ${stWhen(current.trainedAt)} on ${current.rows ?? "?"} ratings; it scores ${current.games.join(", ") || "no game yet"}, and other games keep the heuristic.`
+      : "In use: heuristic scores. No model has been trained yet.";
+  const last = t.lastRun;
+  $("tm-last").textContent = last
+    ? `Last run ${stWhen(last.at)}: ${last.promoted ? "installed" : last.refused ? "not trained" : "not installed"}. ${last.reason}${t.recorderModel ? ` · The recorder uses ${t.recorderModel}.` : ""}`
+    : t.recorderModel ? `The recorder uses ${t.recorderModel}.` : "";
+
+  const setup = $<HTMLButtonElement>("tm-setup");
+  const train = $<HTMLButtonElement>("tm-train");
+  const rollback = $<HTMLButtonElement>("tm-rollback");
+  setup.hidden = t.python === "ready";
+  setup.disabled = t.busy !== null || t.python === "missing" || !t.available;
+  train.disabled = t.busy !== null || t.python !== "ready";
+  rollback.disabled = t.busy !== null || t.python !== "ready" || t.history.length === 0;
+  $("tm-status").textContent = t.busy === "setup"
+    ? "Setting up…"
+    : t.busy === "train"
+      ? "Training…"
+      : t.busy === "rollback"
+        ? "Rolling back…"
+        : t.note ?? (t.python === "missing" ? "Install Python 3.12 (python.org, with the py launcher) to train." : t.python === "no-environment" ? "Set up once before training." : "");
+
+  const rows = $("tm-models");
+  rows.replaceChildren();
+  if (current) rows.append(modelRow("in use", current));
+  for (const m of t.history) rows.append(modelRow(`earlier (${m.name ?? "?"})`, m));
+  if (last?.model && !last.promoted) rows.append(modelRow("last run, not installed", last.model));
+  if (!rows.childElementCount) rows.append(el("tr", {}, el("td", { colspan: "6", class: "muted" }, "No models yet.")));
+
+  const log = $("tm-log");
+  log.textContent = t.log.join("\n");
+  log.scrollTop = log.scrollHeight;
+}
+
+$("tm-setup").addEventListener("click", () => {
+  if (!window.confirm("Set up training? This creates ml/.venv in your checkout and downloads the pinned packages in ml/requirements.txt (numpy, scikit-learn, ONNX, ONNX Runtime, skl2onnx, pytest; a few hundred MB) from PyPI.")) return;
+  void api.setupTraining();
+});
+$("tm-train").addEventListener("click", () => void api.train());
+$("tm-rollback").addEventListener("click", () => {
+  if (window.confirm("Put the previous model back? The one in use now is set aside in ml/out/rolled-back.")) void api.rollbackModel();
+});
+api.onTraining(renderTraining);
+void api.getTraining().then(renderTraining);
 $("st-clear-cache").addEventListener("click", () => void stDelete("cache", {}, "every cached clip (saved clips stay)"));
