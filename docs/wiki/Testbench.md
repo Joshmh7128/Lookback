@@ -9,9 +9,10 @@ timeline.
 ```
 lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|open-license|ephemeral]
                                   [--permission-ref <ref>] [--title <text>] [--game <name>]
+                                  [--profile <id-or-path>] [--profiles <file-or-folder>] [--analysis <WxH>|native]
 lookback-testbench report <session-path-without-extension> [--video <file>]
 lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
-                               [--port <n>] [--no-wait] [--pipe <name>] [--retention ...]
+                               [--port <n>] [--no-wait] [--pipe <name>] [--retention ...] [--analysis <WxH>|native]
 lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
 lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
@@ -21,6 +22,17 @@ lookback-testbench profile-save --profiles <folder> --id <profile> --edits <file
 
 `live` plays the footage in real time into the [live profiler](Live-Profiler)
 instead of analysing it as fast as possible; see that page.
+
+`--analysis` changes the analysis frame size (default 384x216; `native` is the
+footage's own size) for experiments, and `analyze` prints the video signal
+bank's cost per frame:
+
+```
+analysis 1280x720: video signals 6.76 ms/frame (max 28.5 ms)
+```
+
+Profile thresholds were set at 384x216. [Analysis Resolution](Analysis-Resolution)
+compares the sizes on real footage.
 
 Both `analyze` and `live` run the [clipper](Clipper) alongside the profile
 (or on its own without one): the profile runner publishes events, and the

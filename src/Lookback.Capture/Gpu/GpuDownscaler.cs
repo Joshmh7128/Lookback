@@ -24,8 +24,9 @@ public enum TransferFunction
 /// <summary>
 /// The analysis tap: a compute shader shrinks each captured texture to the
 /// analysis format on the GPU, and a ring of staging textures reads the small
-/// result back a frame or two later without stalling the GPU. Only about
-/// 330 KB per frame crosses to the CPU. Not thread-safe: call from the
+/// result back a frame or two later without stalling the GPU. At the default
+/// 384x216 only about 330 KB per frame crosses to the CPU; the size follows
+/// <see cref="AnalysisFormat"/>. Not thread-safe: call from the
 /// capture thread, under the device lock (it takes it itself).
 /// </summary>
 public sealed class GpuDownscaler : IDisposable
@@ -43,6 +44,8 @@ public sealed class GpuDownscaler : IDisposable
     private readonly long[] _stagingQpc = new long[StagingDepth];
     private readonly bool[] _pending = new bool[StagingDepth];
     private int _next;
+    private long _busyTicks;
+    private long _readbackTicks;
     private ID3D11ShaderResourceView? _srcView;
     private ID3D11Texture2D? _srcViewTexture;
 
@@ -71,6 +74,18 @@ public sealed class GpuDownscaler : IDisposable
     /// <summary>Frames whose readback completed.</summary>
     public long Completed { get; private set; }
 
+    /// <summary>Capture-thread time in <see cref="Process"/> and <see cref="Flush"/>: dispatch, readback waits, the copy out and the delivery callback.</summary>
+    public TimeSpan Busy => System.Diagnostics.Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _busyTicks));
+
+    /// <summary>The part of <see cref="Busy"/> spent mapping staging textures and in the delivery callback (the CPU side of the readback).</summary>
+    public TimeSpan ReadbackBusy => System.Diagnostics.Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _readbackTicks));
+
+    /// <summary>
+    /// Times a slot was still pending when the ring came round, so it was mapped with a blocking wait.
+    /// Usually the GPU finished long before; any real wait shows up in <see cref="ReadbackBusy"/>.
+    /// </summary>
+    public long ReadbackWaits { get; private set; }
+
     /// <summary>
     /// Queues a downscale of <paramref name="source"/> (captured at
     /// <paramref name="qpc"/>) and delivers any earlier frames whose readback
@@ -81,6 +96,7 @@ public sealed class GpuDownscaler : IDisposable
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(deliver);
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         using (_gpu.Enter())
         {
             ID3D11DeviceContext ctx = _gpu.Context;
@@ -88,6 +104,7 @@ public sealed class GpuDownscaler : IDisposable
             if (_pending[slot])
             {
                 // The ring is full: this readback must finish now (it was queued StagingDepth frames ago).
+                ReadbackWaits++;
                 Deliver(slot, deliver, wait: true);
             }
 
@@ -123,6 +140,8 @@ public sealed class GpuDownscaler : IDisposable
                 }
             }
         }
+
+        Interlocked.Add(ref _busyTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
     }
 
     /// <summary>Waits for and delivers every queued frame (end of session, tests).</summary>
@@ -154,6 +173,19 @@ public sealed class GpuDownscaler : IDisposable
     }
 
     private bool Deliver(int slot, FrameReady deliver, bool wait)
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            return DeliverCore(slot, deliver, wait);
+        }
+        finally
+        {
+            Interlocked.Add(ref _readbackTicks, System.Diagnostics.Stopwatch.GetTimestamp() - t0);
+        }
+    }
+
+    private bool DeliverCore(int slot, FrameReady deliver, bool wait)
     {
         Result r = _gpu.Context.Map(_staging[slot], 0, 0, MapMode.Read, wait ? MapFlags.None : MapFlags.DoNotWait, out _, out MappedSubresource mapped);
         if (r == Vortice.DXGI.ResultCode.WasStillDrawing)
