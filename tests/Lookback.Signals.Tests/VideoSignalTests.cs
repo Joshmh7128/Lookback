@@ -156,7 +156,44 @@ public class VideoSignalTests
         Assert.Equal(bank.Names.Count, bank.Process(Synth.Solid(10, 10, 10)).Length);
         Assert.Equal("luma.mean", bank.Names[0]);
         Assert.Contains("hud.activity", bank.Names);
+        Assert.Contains("color.r0c0.r", bank.Names);
         Assert.Equal(bank.Names.Count, bank.Names.Distinct().Count());
+    }
+
+    [Fact]
+    public void ColorGridAveragesEachCell()
+    {
+        // 384x216: cells are 64x54. Paint the top-left cell red and the bottom-right cell half blue.
+        VideoFrame f = Synth.Solid(0, 0, 0, 384, 216);
+        Synth.FillRect(f, 0, 0, 64, 54, 255, 0, 0);
+        Synth.FillRect(f, 320, 162, 64, 27, 0, 0, 255);
+        float[] v = Run(new ColorGridSignal(384, 216), f);
+
+        Assert.Equal(ColorGridSignal.Length, v.Length);
+        Assert.Equal("color.r0c0.r", ColorGridSignal.AllNames[0]);
+        Assert.Equal("color.r3c5.b", ColorGridSignal.AllNames[^1]);
+        Assert.Equal(1f, v[0], 3);   // r0c0 red
+        Assert.Equal(0f, v[1], 3);   // r0c0 green
+        Assert.Equal(0f, v[3], 3);   // r0c1 red: untouched
+        int last = (ColorGridSignal.Cells - 1) * 3;
+        Assert.Equal(0.5f, v[last + 2], 2); // r3c5 blue covers half the cell
+        Assert.Equal(0f, v[last], 3);
+    }
+
+    [Fact]
+    public void ColorGridCoversOddSizes()
+    {
+        // Every pixel lands in exactly one cell, even when the size does not divide evenly.
+        VideoFrame f = Synth.Solid(200, 100, 50, 101, 37);
+        float[] v = Run(new ColorGridSignal(101, 37), f);
+        for (int c = 0; c < ColorGridSignal.Cells; c++)
+        {
+            Assert.Equal(200 / 255f, v[c * 3], 3);
+            Assert.Equal(100 / 255f, v[(c * 3) + 1], 3);
+            Assert.Equal(50 / 255f, v[(c * 3) + 2], 3);
+        }
+
+        Assert.Throws<ArgumentException>(() => Run(new ColorGridSignal(100, 37), f));
     }
 
     [Fact]

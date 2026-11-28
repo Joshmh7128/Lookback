@@ -25,6 +25,7 @@ internal static class TimelineBuilder
         var series = new Dictionary<(uint Schema, int Index), SortedDictionary<long, float>>();
         var melBuckets = new SortedDictionary<long, float[]>();
         var melIndex = new Dictionary<uint, (int Start, int Count)>();
+        var hidden = new Dictionary<uint, bool[]>(); // the colour grid: 72 numbers per frame, read by menu learning, not drawn as lanes
         double maxSeconds = 0;
 
         var events = new List<TimelineData.EventMark>();
@@ -79,6 +80,8 @@ internal static class TimelineBuilder
                     melIndex[e.SignalSchema.SchemaId] = (start, count);
                 }
 
+                hidden[e.SignalSchema.SchemaId] = [.. e.SignalSchema.Names.Select(n => n.StartsWith("color.", StringComparison.Ordinal))];
+
                 continue;
             }
 
@@ -100,8 +103,14 @@ internal static class TimelineBuilder
 
             long bucket = audio ? (long)Math.Floor(t / step) : (long)Math.Round(t / step);
 
+            bool[]? skip = hidden.GetValueOrDefault(schema.SchemaId);
             for (int i = 0; i < f.Values.Count && i < schema.Names.Count; i++)
             {
+                if (skip is not null && skip[i])
+                {
+                    continue;
+                }
+
                 if (melIndex.TryGetValue(schema.SchemaId, out (int Start, int Count) mel) && i >= mel.Start && i < mel.Start + mel.Count)
                 {
                     if (!melBuckets.TryGetValue(bucket, out float[]? row))
@@ -183,7 +192,8 @@ internal static class TimelineBuilder
         }
 
         float hold = 0;
-        for (long key = 0; key <= s.Keys.Last(); key++)
+        long last = s.Keys.Last(); // once: Last() walks the whole collection, so calling it per bucket was quadratic
+        for (long key = 0; key <= last; key++)
         {
             if (s.TryGetValue(key, out float v))
             {
@@ -204,7 +214,8 @@ internal static class TimelineBuilder
         }
 
         float[] hold = rows.First().Value;
-        for (long key = 0; key <= rows.Keys.Last(); key++)
+        long last = rows.Keys.Last();
+        for (long key = 0; key <= last; key++)
         {
             if (rows.TryGetValue(key, out float[]? r))
             {

@@ -15,6 +15,7 @@ lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed
 lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
 lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
+lookback-testbench menus <manifest.json> [--out <dir>] [--profiles <file-or-folder>] [--check]
 lookback-testbench profile-view --profiles <folder> [--id <profile>]
 lookback-testbench profile-save --profiles <folder> --id <profile> --edits <file.json|->
 ```
@@ -38,6 +39,16 @@ manifest entry, then asks for 1 to 5 stars per candidate on its content
 clears, `q` stops. Ratings go to `datasets/<game>/ratings.jsonl` through
 `RatingStore`, so the entry's retention is checked first; a second pass skips
 what is rated unless `--again`. See [Clip Scoring](Clip-Scoring).
+
+`menus` learns a game's [menu states](Game-Profiles#menu-states) from the
+`screens` labels in a dataset manifest and writes `<out>/learned/<game>.json`
+with the `menus` block filled in; `--check` instead measures the game's
+current menu states (or, with `--profiles`, learned ones) against the labels:
+
+```
+$ lookback-testbench menus datasets/overwatch/manifest.menus.json --out menus-out
+pause            1294 frames, 24/24 cells, maxDistance 0.071: matches 100% of its frames, 0.0% of 26890 play frames, 0.0% of 6000 other-state frames
+```
 
 `profile-view` and `profile-save` are the desktop app's profile editor:
 the first prints the profile list and a profile resolved with the source of

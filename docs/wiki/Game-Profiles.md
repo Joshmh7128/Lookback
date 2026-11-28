@@ -158,6 +158,94 @@ into `ClipCandidate`s itself:
 The report shows a **profile** lane (which profile was active when, with how
 and why on hover) and a **candidates** lane (darker is a higher score).
 
+## Menu states
+
+A full-screen change, such as opening the pause menu or a loading screen
+starting, looks exciting to every whole-frame signal at once, and used to
+make clip candidates of nothing but a menu. A profile can name the screens
+of its game that are not play, so the [clipper](Clipper#4b--menus-are-not-play)
+ignores what happens on them and the change into or out of them:
+
+```jsonc
+"menus": {
+  "enterMs": 400,                      // a screen must match this long before the state changes (default 400)
+  "exitMs": 400,                       // play must hold this long before a menu state ends (default 400)
+  "states": [
+    {
+      "name": "pause",                 // lower-case letters, digits, underscores; "play" is reserved
+      "colors": [                      // 24 cells, 6 columns x 4 rows, row-major from the top left
+        "#0d1438", "#0f1840", "#121c4a", "#141f50", "#121c4a", "#0e1640",
+        "#0d1438", "#3a3f63", null,      "#9ea3bd", "#121c4a", "#0e1640",   // null: not compared
+        "…"
+      ],
+      "maxDistance": 0.07,             // match when the mean |difference| over compared cells' r, g, b (0..1) is at most this
+      "notes": "ESC menu during a match"
+    }
+  ]
+}
+```
+
+- **The measurement is game-agnostic.** `ColorGridSignal` publishes the mean
+  colour of each of the 24 cells on every analysis frame
+  (`color.r<row>c<col>.<r|g|b>`, see [Signals Library](Signals-Library#video-signals));
+  a menu state is data over it, so a profile adds no new kind of measurement.
+- **The detector** (`MenuStateDetector`) compares each frame with every
+  state of the active profile: the closest state within its `maxDistance`
+  (closest relative to its own tolerance) is the frame's match, or play when
+  none matches. The held state changes only after a new match lasts
+  `enterMs` (into a menu, or from one menu to another) or `exitMs` (back to
+  play), and remembers when the screen actually started changing.
+- **Published** by the profile runner on `signals.rules`, after the rule
+  margins: `menu.<state>` (1 while held), `menu.<state>.margin` (positive when
+  the screen matches) and `menu.any`, so the timeline report and the live
+  profiler show them as lanes (see [Event Schema](Event-Schema#topics)).
+- **Inherited** like other profile data: a child adds states or replaces one
+  by name, `disable` removes an inherited state, unset `enterMs`/`exitMs`
+  come from the parent. A tree with no states has no `menu.*` values and the
+  clipper behaves exactly as without menus.
+- **Null cells** are not compared: use them for parts of a menu that show the
+  game behind it, an animated hero or a timer.
+
+### Learning menu states from footage
+
+Signatures are learned, not hand-written. Label the menu screens in a dataset
+manifest with `screens`; the rest of each labelled file is play, and
+`ignore` marks footage that is neither (a cinematic, a map title card):
+
+```jsonc
+{
+  "file": "media/session-01.mp4", "retention": "owned",
+  "screens": [
+    { "state": "title",     "start": 1,     "end": 10 },
+    { "state": "main_menu", "start": 10,    "end": 19 },
+    { "state": "ignore",    "start": 101,   "end": 104 },   // map title card
+    { "state": "pause",     "start": 251.5, "end": 286 }
+  ]
+}
+```
+
+`lookback-testbench menus <manifest> --out <dir>` analyses each labelled
+file from the game profile and, for every state:
+
+1. takes the per-channel **median** of its frames as the signature (robust to
+   a few mislabelled frames),
+2. leaves out **busy cells**, those whose mean deviation from the median is
+   above 0.05 (an animated hero, the game seen through the menu), keeping at
+   least the six steadiest,
+3. puts `maxDistance` in the **gap** between its own frames (95th percentile
+   distance) and every other frame, play or another state (1st percentile),
+   at most 0.06 above its own frames. With no gap the state is reported and
+   not written.
+
+Frames within 0.75 s of a label's edge (fades) are left out of both sides.
+It prints how many of each state's frames match and how many play and
+other-state frames match by mistake, and writes `<out>/learned/<game>.json`.
+Check it on footage it did not learn from with
+`menus <other-manifest> --profiles <out>/learned --check`, then copy the
+`menus` block into the profile. Overwatch's states were learned this way
+(below); `datasets/overwatch/manifest.menus.json` keeps the labels (the
+footage itself is never committed).
+
 ## Training profiles from footage
 
 ```mermaid
@@ -327,6 +415,38 @@ the default HUD at 16:9 and 100% HUD scale. Ultrawide, a changed HUD scale or
 a game update moves them. They have to be checked against real footage, which
 is what the calibration view is for.
 
+### Overwatch menu states
+
+Learned with `lookback-testbench menus` from two of the owner's sessions
+(10.5 and 7 minutes, 2560 × 1440, recorded by Lookback on 2026-11-27;
+labels in `datasets/overwatch/manifest.menus.json`), then checked with
+`--check` on two more sessions they were not learned from
+(`manifest.menus-holdout.json`). Numbers are frames at the 30 fps analysis rate.
+
+| State | Screen | `maxDistance` | Learned on: own frames matched, play frames matched | Held out: own frames matched, play frames matched |
+|---|---|---|---|---|
+| `title` | Start-up logo, connecting / entering game | 0.044 | 480 / 480, 0 of 19 794 | 480 / 480, 0 of 3 450 |
+| `mode_select` | The game-mode grid | 0.087 | 2 010 / 2 010, 0 of 19 794 | 165 / 165, 0 of 3 450 |
+| `settings` | The options screen | 0.087 | 105 / 105, 0 of 19 794 | (none in that footage) |
+| `loading` | A dark band over the blurred menu ("entering practice range") | 0.028 | 417 / 417, 0 of 19 794 | 114 / 114, 0 of 3 450 |
+| `loading_black` | A dark band over black ("entering game") | 0.037 | 60 / 60, 0 of 19 794 | 36 / 36, 0 of 3 450 |
+| `pause` | The Esc menu during a match | 0.044 | 996 / 996, 0 of 19 794 | 220 / 220, 0 of 3 450 |
+
+Not there, because that footage gave them no stable colour signature: the
+**main menu** (its backdrop is rotating hero art; two different heroes
+appeared on the same day), **hero select** (its backdrop is the hero and the
+map) and the **post-game** screens (three seconds of footage). The intro
+cinematic, event pop-ups and map title cards were labelled `ignore`. Label
+more footage and rerun the learner to add them; check a new season's screens
+with `--check` before trusting the old signatures. `settings` was learned
+from five seconds only.
+
+On the same four sessions, the clipper's candidates with and without these
+states (`analyze --profile overwatch`; "menu" is the share of a candidate's
+window on labelled non-play screens):
+
+CANDIDATE_TABLE
+
 ## Editing weights and thresholds
 
 The desktop app's **Profiles** tab shows a profile resolved, the way the
@@ -481,4 +601,7 @@ labels later train the learned scorer (M4).
 | `Detection/TimeOrderedMerger.cs` | Watermark merge of video and audio |
 | `Detection/ProfileEventDetector.cs` | Conditions, baselines, cooldowns, boosts, composites, margins |
 | `Detection/ProfileRunner.cs` | Subscribes to one session's signals on the bus, publishes `game.event` and `signals.rules` |
-| `Testbench/Datasets/*` | Manifest, event, detection and candidate scoring, the dataset runner, the fingerprint learner |
+| `Model/MenuSpec.cs` | Menu states, their colour signatures and the distance between a frame and a signature |
+| `Detection/MenuStateDetector.cs` | The held menu state with hysteresis; `ColorGridReader` finds the grid in signal frames |
+| `Detection/MenuTracker.cs` | Menu states across a game tree for the active profile, and their `menu.*` values |
+| `Testbench/Datasets/*` | Manifest, event, detection and candidate scoring, the dataset runner, the fingerprint learner, the menu learner |

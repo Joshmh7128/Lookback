@@ -117,7 +117,9 @@ internal static class BrowserBuilder
         var list = new List<SignalInfo>();
         foreach (string n in VideoSignalBank.CreateDefault(format).Names)
         {
-            list.Add(new SignalInfo(n, "video", Meanings.GetValueOrDefault(n, "")));
+            list.Add(new SignalInfo(n, "video", n.StartsWith("color.", StringComparison.Ordinal)
+                ? "Mean red, green or blue of one cell of the 6x4 colour grid (menu states match it)"
+                : Meanings.GetValueOrDefault(n, "")));
         }
 
         foreach (string n in AudioSignalBank.CreateDefault(format).Names)

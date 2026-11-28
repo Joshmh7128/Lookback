@@ -158,8 +158,10 @@ deduplicated candidate set**:
 
 - Every window (an event's suggested clip window, or a peak's window) joins
   every open candidate it overlaps or comes within 1.5 s of, as long as the
-  result stays within 60 s; otherwise it starts its own. A window that
-  bridges two candidates joins them.
+  result stays within 60 s. If joining all of them would be too long, it
+  joins those that still fit, newest first, and starts its own only when none
+  does (so a full 60 s candidate is followed by one more candidate, not a pile
+  of overlapping one-event ones). A window that bridges two candidates joins them.
 - **Score.** `raw = Σ events (weight × confidence) + Σ peaks peakScore × min(3, value / high)`,
   and `heuristic_score = 1 − e^(−raw)`, bounded to 0..1 and monotonic.
   `highlight_probability` equals it until ratings calibrate a model (M4).
@@ -174,6 +176,53 @@ clipper runs (`ProfileRunner(..., publishCandidates: false)`); the
 official-player calibration.
 
 Source: `Candidates/CandidateFuser.cs`, `ClipperEngine.cs`.
+
+## 4b · Menus are not play
+
+A full-screen change, such as opening the pause menu, a loading screen
+starting or the post-game screen appearing, moves every whole-frame signal at
+once (flash, motion, scene cut, often audio), so the curve peaks on it. Those
+peaks made candidates that showed nothing but a menu opening. When the
+profile names [menu states](Game-Profiles#menu-states), the engine runs a
+`MenuTracker` over the colour grid of every video frame (the same detector
+the profile runner publishes on `signals.rules`) and:
+
+- **Drops contributions at a menu change.** A peak or an event between
+  `MenuGuardBeforeMs` (1 s) before the screen started changing (the first
+  frame matching the new state) and `MenuGuardAfterMs` (1.5 s) after the
+  state changed is ignored, in both directions: into a menu and back to play.
+- **Drops contributions inside a menu.** A peak or event while a menu state is
+  held is ignored.
+- **Drops or scales candidates by their share of menu.** If at least
+  `MenuDropShare` (half) of a candidate's frames are in a held menu state, it
+  is dropped; otherwise its raw score is scaled by the share in play, and a
+  reason line says so: `menu 26% of the window (score scaled by 0.74)`.
+- **Keeps menus out of the baseline.** Menu frames are not added to the
+  rolling median and MAD, so a long, still menu does not make ordinary play
+  look exciting afterwards.
+
+```mermaid
+flowchart LR
+    G[colour grid<br/>per frame] --> T[MenuTracker<br/>closest state within maxDistance,<br/>enterMs / exitMs hysteresis]
+    T -->|held state, changes| E[ClipperEngine]
+    P[curve peaks] --> W{wait until the<br/>menu state around them<br/>is known}
+    EV[profile events] --> W
+    W -->|in a menu or<br/>at a change| X[dropped]
+    W -->|play| F[fusion]
+    F --> C{menu share<br/>of the window}
+    C -->|≥ 50%| X
+    C -->|less| OUT[candidate, score × play share]
+```
+
+Whether a contribution sits at a change is only known once the state has had
+time to follow the screen, so with menus the engine holds peaks and events
+back by the guard before, plus the tree's longest `enterMs`/`exitMs`, plus a
+frame (about 1.5 s with the defaults) before fusing them. Candidates come out
+that much later. A profile with no menu states changes nothing: no tracker,
+no waiting, the same candidates as before (`AProfileWithoutMenusIsUnchangedByTheGrid`).
+The engine counts what it dropped in `MenuDropped`.
+
+Source: `ClipperEngine.cs`, `Lookback.Profiles/Detection/MenuTracker.cs`, `MenuStateDetector.cs`.
 
 ## 5 · QA gates v1
 
@@ -275,7 +324,8 @@ its end by the merge gap plus the earliest a future window could start:
 one curve pre-roll with no profile (about 7.5 s after the window ends,
 10.5 s after the peak), or the tree's widest event pre-roll plus its longest
 composite streak plus the boost lag with one (about 18 s after the window
-ends for Overwatch). Clips are cut from a RAM
+ends for Overwatch), plus about 1.5 s when the profile has
+[menu states](#4b--menus-are-not-play). Clips are cut from a RAM
 replay ring that holds minutes, so that is fine. If the profile runner sends
 no rules frame for 5 s of wall time the clipper stops waiting for it (longer
 than the profile runner's own 2 s, so a missing audio device does not break
@@ -333,7 +383,8 @@ the candidate windows with their QA and the curve under them.
 | The weighted mean dilutes a single strong cue in a game where other components are always busy | A loud moment in a constantly flashing game can miss `high` | Per-game weights; M4 features see every component separately |
 | Normalisation is per session | The first 5 s of a session cannot produce a curve peak | Carry a game's statistics across sessions (feature log, M3) |
 | QA checks only what signals already measure | Encode faults, desync or HUD-only stretches pass | M5 quality reports (VMAF, audio checks) |
-| Curve peaks of a menu or loading screen with loud music | A candidate that QA may not catch | Mode detection (profile tree) and the learned scorer |
+| Curve peaks of a menu or loading screen with loud music | A candidate that QA may not catch | Menu states in the profile drop them (above); a game without them still needs the learned scorer |
+| Menu states are colour signatures | A menu drawn over live gameplay (a translucent scoreboard) matches only on the cells the learner keeps; a seasonal main-menu backdrop needs relearning | Learn more states from more footage (`lookback-testbench menus`) |
 
 M4 (`src/Lookback.Scoring`) owns the wire schema for candidate features,
 `QaReport.highlight_probability` and ratings, and the ONNX scorer; v1 leaves

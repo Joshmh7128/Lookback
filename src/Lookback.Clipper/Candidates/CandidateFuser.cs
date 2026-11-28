@@ -94,7 +94,30 @@ internal sealed class CandidateFuser
             }
         }
 
-        if (_touching.Count == 0 || end - start > _maxLength)
+        if (_touching.Count > 0 && end - start > _maxLength)
+        {
+            // Joining everything it touches would be too long: join what still fits, latest group first,
+            // rather than starting a group of its own beside a full one (which left a pile of overlapping
+            // one-event candidates next to every full-length candidate).
+            _touching.Sort(static (a, b) => b.Start.CompareTo(a.Start));
+            start = c.Start;
+            end = c.End;
+            int keep = 0;
+            for (int i = 0; i < _touching.Count; i++)
+            {
+                CandidateGroup g = _touching[i];
+                long s = Math.Min(start, g.Start), e = Math.Max(end, g.End);
+                if (e - s <= _maxLength)
+                {
+                    (start, end) = (s, e);
+                    _touching[keep++] = g;
+                }
+            }
+
+            _touching.RemoveRange(keep, _touching.Count - keep);
+        }
+
+        if (_touching.Count == 0)
         {
             _open.Add(new CandidateGroup(c));
             return;

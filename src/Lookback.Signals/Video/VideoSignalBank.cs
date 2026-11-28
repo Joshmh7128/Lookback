@@ -35,7 +35,7 @@ public sealed class VideoSignalBank
 
     /// <summary>
     /// The standard set (luma, motion, flash, scene cut, HUD with a 10 s
-    /// warm-up), followed by any <paramref name="extra"/> signals such as a
+    /// warm-up, colour grid), followed by any <paramref name="extra"/> signals such as a
     /// game profile's regions.
     /// </summary>
     public static VideoSignalBank CreateDefault(AnalysisFormat format, IEnumerable<IVideoSignal>? extra = null)
@@ -48,6 +48,7 @@ public sealed class VideoSignalBank
             new FlashSignal(),
             new SceneCutSignal(),
             new HudSignal(format.Width * format.Height, warmupFrames: format.FramesPerSecond * 10),
+            new ColorGridSignal(format.Width, format.Height),
         ];
         return new VideoSignalBank(format, extra is null ? standard : [.. standard, .. extra]);
     }

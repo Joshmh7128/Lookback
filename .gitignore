@@ -17,6 +17,7 @@ datasets/**/*
 !datasets/**/manifest*.json
 !datasets/**/README.md
 testbench-out/
+menus-out/
 dataset-out/
 browse-out/
 

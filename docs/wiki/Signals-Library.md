@@ -43,6 +43,12 @@ measure this with `GC.GetAllocatedBytesForCurrentThread`.
 | `FlashSignal` | `flash.brighten`, `flash.red_edge` | Brightness above a ~10-frame rolling baseline; redness of the outer eighth of the frame minus redness of the centre | Explosions and ability effects; the red damage vignette many games draw |
 | `SceneCutSignal` | `scene.cut` | Half the L1 distance between consecutive 32-bin luma histograms | Cuts, deaths, respawns, menus change the histogram wholesale; camera motion does not |
 | `HudSignal` | `hud.ready`, `hud.coverage`, `hud.activity` | Learns a HUD mask, then measures change inside it (below) | HUD changes are among the strongest game-agnostic highlight cues |
+| `ColorGridSignal` | `color.r<row>c<col>.<r\|g\|b>` (72 values) | Mean red, green and blue of each cell of a 6 × 4 grid over the whole frame (64 × 54 pixels per cell at 384 × 216), in 0..1, row-major from the top left | A coarse colour signature of the screen: a pause menu, the main menu, a loading screen or a scoreboard each hold a layout of their own, so a profile's [menu states](Game-Profiles#menu-states) can name them without a new kind of measurement |
+
+The colour grid is published with the other video signals (so session logs
+and the testbench's menu learner can read it), but the timeline report does
+not draw its 72 values as lanes; the menu states it feeds appear as
+`menu.*` lanes on `signals.rules` instead.
 
 ### HUD auto-discovery
 

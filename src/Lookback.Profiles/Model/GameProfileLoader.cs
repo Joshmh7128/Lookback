@@ -145,6 +145,53 @@ public static class GameProfileLoader
         }
 
         problems.AddRange(ValidateClipper(p.Clipper).Select(x => "clipper: " + x));
+        problems.AddRange(ValidateMenus(p.Menus).Select(x => "menus: " + x));
+        return problems;
+    }
+
+    /// <summary>Structural checks on a menus block: names, colour signatures and timings.</summary>
+    public static IReadOnlyList<string> ValidateMenus(MenuSpec m)
+    {
+        ArgumentNullException.ThrowIfNull(m);
+        var problems = new List<string>();
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        float[] values = new float[Signals.Video.ColorGridSignal.Length];
+        bool[] compared = new bool[Signals.Video.ColorGridSignal.Cells];
+        foreach (MenuState s in m.States)
+        {
+            if (string.IsNullOrEmpty(s.Name) || s.Name.Any(c => !(char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '_')))
+            {
+                problems.Add($"state '{s.Name}' name must be lower-case letters, digits and underscores.");
+            }
+            else if (s.Name == "play")
+            {
+                problems.Add("'play' is what no state matching means; it cannot be a state.");
+            }
+            else if (!names.Add(s.Name))
+            {
+                problems.Add($"state '{s.Name}' is defined twice.");
+            }
+
+            if (s.Colors is null)
+            {
+                problems.Add($"state '{s.Name}': needs colors.");
+            }
+            else if (!MenuSignature.TryParse(s.Colors, values, compared, out string? problem))
+            {
+                problems.Add($"state '{s.Name}': {problem}");
+            }
+
+            if (s.MaxDistance is <= 0 or >= 1 || !float.IsFinite(s.MaxDistance))
+            {
+                problems.Add($"state '{s.Name}': maxDistance must be between 0 and 1.");
+            }
+        }
+
+        if (m.EnterMs is < 0 or > 60_000 || m.ExitMs is < 0 or > 60_000)
+        {
+            problems.Add("enterMs and exitMs must be 0 to 60000.");
+        }
+
         return problems;
     }
 
@@ -333,6 +380,7 @@ public static class GameProfileLoader
             .SelectMany(e => e.When.Concat(e.WhenAny).Select(c => c.Signal).Concat(e.Boosts.Select(b => b.Signal)))
             .Concat(p.Detect.Visual.Select(c => c.Signal))
             .Concat(p.Clipper.Components.Select(c => c.Signal))
+            .Concat(p.Menus.States.Count > 0 ? Signals.Video.ColorGridSignal.AllNames : [])
             .Where(s => !available.Contains(s))
             .Distinct()
             .ToArray();
