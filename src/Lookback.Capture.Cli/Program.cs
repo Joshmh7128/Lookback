@@ -4,7 +4,11 @@ using Lookback.Capture;
 using Lookback.Capture.Targets;
 using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
+using Lookback.Media.Frames;
 using Lookback.Profiler;
+using Lookback.Profiles.Model;
+using Lookback.Profiles.Regions;
+using Lookback.Signals.Video;
 using Lookback.Stream.WebSockets;
 
 // lookback-capture: capture a window or monitor live and run the signal
@@ -34,9 +38,13 @@ if (args.Length == 0 || args.Contains("--help") || args.Contains("-h"))
     Console.WriteLine($"""
         lookback-capture --list
         lookback-capture (--window <title part> | --pid <pid> | --monitor <n>) [--seconds 15] [--backend auto|wgc|dxgi] [--official-player] [--profiler]
+                         [--analysis <WxH>] [--regions <profile id>]
                          {EncodeBench.Usage}
         {HookBench.Usage}
-        Captures live and runs the signal pipeline. Nothing is written to disk unless
+        Captures live and runs the signal pipeline. --analysis sets the analysis frame
+        (default 384x216); --regions adds a built-in profile's HUD region signals.
+        Each line shows the capture-thread cost of the analysis tap and readback and
+        the worker's signal time, in ms per analysed frame. Nothing is written to disk unless
         --encode asks for a clip of the last N seconds (refused with --official-player).
         lookback-capture probe [--store <path>] [--monitor <n> | --window <title part>]
         Prints the governor's machine profile and the plan it picks.
@@ -81,6 +89,11 @@ if (official && args.Contains("--encode"))
 double seconds = double.Parse(Arg(args, "--seconds") ?? "15", CultureInfo.InvariantCulture);
 CaptureBackend backend = Enum.Parse<CaptureBackend>(Arg(args, "--backend") ?? "auto", ignoreCase: true);
 
+AnalysisFormat analysis = AnalysisFormat.Parse(Arg(args, "--analysis") ?? "default");
+IVideoSignal[] regionSignals = Arg(args, "--regions") is string regionProfile
+    ? [new RegionSignal(ProfileCatalog.BuiltIn.SubtreeRegions(regionProfile), analysis)]
+    : [];
+
 var bus = new InProcessEventBus();
 await using WebSocketBridge? bridge = args.Contains("--profiler") ? new WebSocketBridge(bus, new WebSocketBridgeOptions { Pages = [ProfilerPage.Page] }) : null;
 if (bridge is not null)
@@ -100,9 +113,11 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
     SourceKind = official ? SourceKind.OfficialPlayer : SourceKind.LiveGame,
     Retention = official ? Retention.Ephemeral : Retention.Owned,
     Title = target.Description,
+    Analysis = analysis,
+    ExtraVideoSignals = regionSignals,
 }))
 {
-    Console.WriteLine($"capturing {target.Description} with {session.Backend} on {session.AdapterName}; persist: {session.CanPersist}");
+    Console.WriteLine($"capturing {target.Description} with {session.Backend} on {session.AdapterName}; analysis {analysis.Size}; persist: {session.CanPersist}");
     using EncodeBench? encode = EncodeBench.TryStart(args, session);
     var until = DateTime.UtcNow.AddSeconds(seconds);
     SessionStats last = session.Stats;
@@ -123,11 +138,17 @@ await using (LiveCaptureSession session = LiveCaptureSession.Start(bus, new Live
 
         SessionStats st = session.Stats;
         double dt = (st.Elapsed - last.Elapsed).TotalSeconds;
-        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {(st.Captured - last.Captured) / dt,6:F1} fps  analysis {(st.Analysed - last.Analysed) / dt,5:F1} fps  dropped {st.AnalysisDropped}{encode?.Tick(dt)}");
+        long analysed = Math.Max(1, st.Analysed - last.Analysed);
+        Console.WriteLine($"{st.Elapsed.TotalSeconds,5:F1}s  capture {(st.Captured - last.Captured) / dt,6:F1} fps  analysis {(st.Analysed - last.Analysed) / dt,5:F1} fps  dropped {st.AnalysisDropped}"
+            + $"  tap {(st.TapBusy - last.TapBusy).TotalMilliseconds / analysed,5:F2} ms (readback {(st.ReadbackBusy - last.ReadbackBusy).TotalMilliseconds / analysed,5:F2}, waits {st.ReadbackWaits})"
+            + $"  signals {(st.AnalysisBusy - last.AnalysisBusy).TotalMilliseconds / analysed,6:F2} ms{encode?.Tick(dt)}");
         last = st;
     }
 
     encode?.Finish();
+    SessionStats end = session.Stats;
+    long total = Math.Max(1, end.Analysed);
+    Console.WriteLine($"total  {end.Captured} captured, {end.Analysed} analysed, {end.AnalysisDropped} dropped; tap {end.TapBusy.TotalMilliseconds / total:F2} ms/frame (readback {end.ReadbackBusy.TotalMilliseconds / total:F2}, waits {end.ReadbackWaits}); signals {end.AnalysisBusy.TotalMilliseconds / total:F2} ms/frame, max {end.AnalysisBusyMax.TotalMilliseconds:F1} ms");
 }
 
 var summary = names.Select((n, i) => new

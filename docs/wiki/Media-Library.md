@@ -18,6 +18,13 @@ to one fixed **analysis format** before any signal sees it
 Because signals only ever see this format, their thresholds mean the same
 thing on every source.
 
+The frame size can be changed for experiments (`AnalysisFormat.Parse("768x432")`,
+`--analysis` in the testbench, `Recorder:AnalysisSize` in the recorder). Every
+signal is normalised, so a picture with no finer detail reads the same at any
+size; what a larger size adds is fine detail and its noise, at a cost that grows
+with the pixel count. [Analysis Resolution](Analysis-Resolution) has the
+measurements and why the default stays 384x216.
+
 ```mermaid
 flowchart LR
     subgraph Sources

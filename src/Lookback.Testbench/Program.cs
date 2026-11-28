@@ -14,6 +14,7 @@ const string Usage = """
       lookback-testbench analyze <file> [--out <dir>] [--retention owned|permissioned|open-license|ephemeral]
                                         [--permission-ref <ref>] [--title <text>] [--game <name>]
                                         [--profile <id-or-path>] [--profiles <file-or-folder>]
+                                        [--analysis <WxH>|native]
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>]
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
@@ -26,12 +27,16 @@ const string Usage = """
       lookback-testbench browse [--datasets <dir>] [--results <dir>[,<dir>...]] [--profiles <file-or-folder>] [--out <file>]
       lookback-testbench report <session-path-without-extension> [--video <file>]
       lookback-testbench live <file> [--profile <id-or-path>] [--game <name>] [--speed <x>] [--loop]
-                                     [--port <n>] [--no-wait] [--pipe <name>]
+                                     [--port <n>] [--no-wait] [--pipe <name>] [--analysis <WxH>|native]
                                      [--retention ...] [--permission-ref <ref>] [--title <text>]
 
     Analyze and live always run the clipper: the excitement curve over the
     signals, fused with the profile's events when there is a profile, into clip
     candidates, each with a QA report.
+
+    --analysis sets the analysis frame the signals read (default 384x216, the
+    size every profile's thresholds were set at); `native` is the footage's
+    own size. For experiments: see the wiki page Analysis-Resolution.
 
     Live plays the footage in real time, runs the profile's rules and the
     clipper on it, and shows every event in the live profiler as it fires: it prints a link to
@@ -134,6 +139,7 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
         Game = flags.GetValueOrDefault("game"),
         Profile = flags.GetValueOrDefault("profile"),
         ExtraProfiles = Extra(flags),
+        AnalysisSize = flags.GetValueOrDefault("analysis"),
     };
 
     var progress = new Progress<TimeSpan>(t => Console.Error.Write(string.Create(CultureInfo.InvariantCulture, $"\r  analysed {t:hh\\:mm\\:ss}")));
@@ -142,7 +148,7 @@ static async Task<int> AnalyzeAsync(string file, Dictionary<string, string> flag
 
     double speed = r.Media.Duration.TotalSeconds / Math.Max(0.001, r.Analysis.Elapsed.TotalSeconds);
     Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-        $"session  {r.SessionId}\nmedia    {r.Media.Width}x{r.Media.Height} @ {r.Media.FramesPerSecond:0.##} fps, {r.Media.Duration:hh\\:mm\\:ss}, audio: {(r.Media.HasAudio ? "yes" : "no")}\nsignals  {r.Analysis.VideoFrames} video frames, {r.Analysis.AudioHops} audio hops in {r.Analysis.Elapsed.TotalSeconds:0.0} s ({speed:0.0}x real time)"));
+        $"session  {r.SessionId}\nmedia    {r.Media.Width}x{r.Media.Height} @ {r.Media.FramesPerSecond:0.##} fps, {r.Media.Duration:hh\\:mm\\:ss}, audio: {(r.Media.HasAudio ? "yes" : "no")}\nsignals  {r.Analysis.VideoFrames} video frames, {r.Analysis.AudioHops} audio hops in {r.Analysis.Elapsed.TotalSeconds:0.0} s ({speed:0.0}x real time)\nanalysis {r.Analysis.Format.Size}: video signals {r.Analysis.VideoMsPerFrame:0.00} ms/frame (max {r.Analysis.VideoSignalMax.TotalMilliseconds:0.0} ms)"));
     Console.WriteLine(r.ReportPath is null
         ? "stored   nothing (ephemeral)"
         : $"log      {r.SessionBasePath}.lbklog\nreport   {r.ReportPath}");
@@ -386,6 +392,7 @@ static async Task<int> LiveAsync(string file, Dictionary<string, string> flags, 
         WaitForViewer = !flags.ContainsKey("no-wait"),
         Loop = flags.ContainsKey("loop"),
         KeepServing = true,
+        AnalysisSize = flags.GetValueOrDefault("analysis"),
     };
 
     LiveResult r = await LiveRunner.RunAsync(options, Console.WriteLine, ct);

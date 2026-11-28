@@ -44,6 +44,7 @@ server GC's per-core heaps.
 | `ClipsBudgetGB` | `10` | Cap on saved clips, which are never swept: saving is refused at the cap |
 | `ClipsWarnFraction` | `0.9` | `recorder.storage` sets `clips_near_limit` from here, for the UI warning |
 | `Microphone` | `false` | Record the mic as its own track |
+| `AnalysisSize` | unset (`384x216`) | Experiment setting: the analysis frame size (`WxH`, even) for live capture. Profile thresholds were set at 384x216; see [Analysis Resolution](Analysis-Resolution) for what larger sizes cost and change. An invalid value is logged and ignored |
 | `DetectionSettings` | `%LOCALAPPDATA%\Lookback\detection.json` | Game detection's allow and deny lists |
 
 ## `StreamHostService.cs`
