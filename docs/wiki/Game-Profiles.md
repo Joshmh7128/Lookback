@@ -264,7 +264,8 @@ a rule did or did not fire.
   ],
   "clipper": {                             // optional: tunes the clipper's excitement curve for this game
     "components": [ { "signal": "region.kill_feed.activity", "weight": 1.5 } ],
-    "high": 1.8, "low": 0.9, "preMs": 8000, "postMs": 3000
+    "high": 1.8, "low": 0.9, "preMs": 8000, "postMs": 3000,
+    "highlightMinMs": 10000, "highlightMaxMs": 20000   // highlight lengths for this game
   }
 }
 ```

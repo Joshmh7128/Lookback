@@ -159,6 +159,26 @@ public sealed class ClipperCheck
         }
     }
 
+    /// <summary>Takes a candidate out of the check (a long one whose highlights stand in for it).</summary>
+    public bool Remove(string candidateId)
+    {
+        lock (_lock)
+        {
+            if (!_candidates.Remove(candidateId, out Entry? gone))
+            {
+                return false;
+            }
+
+            _order.Remove(candidateId);
+            if (gone.Ordinal == _next - 1)
+            {
+                _next--; // its highlights take its number: a run's saved ids stay c0, c1… in order
+            }
+
+            return true;
+        }
+    }
+
     /// <summary>One candidate as the check shows it, or null.</summary>
     public CheckCandidate? Get(string candidateId)
     {

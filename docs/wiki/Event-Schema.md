@@ -117,6 +117,7 @@ classDiagram
         string[] reasons
         float[] features
         string feature_schema
+        string parent_candidate_id
     }
     class QaCheck {
         string name
@@ -190,6 +191,10 @@ the clipper computes them. When a learned model covers the candidate's game,
 `model_score` is the model's raw probability and `highlight_probability` the
 probability after that game's calibration; otherwise `model_score` stays
 unset and the heuristic stands. See [Clip Scoring](Clip-Scoring).
+`parent_candidate_id` (field 12) is set on a **highlight**: one of the most
+exciting 10 to 20 s of a longer candidate, published right after it with the
+id `<parent>-hN` ([Clipper](Clipper#highlights)). It is empty on every other
+candidate; older readers ignore it.
 
 **`QaReport`** lists the QA checks run on a candidate, each with a pass flag,
 a measured value and detail. The clipper publishes one right after each

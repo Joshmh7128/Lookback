@@ -251,6 +251,10 @@ message ClipCandidate {
   // missing value is NaN.
   repeated float features = 10 [packed = true];
   string feature_schema = 11;
+  // Set on a highlight: the id of the long candidate it was picked from. A
+  // highlight is the most exciting 10 to 20 s of that candidate (lengths per
+  // profile), scored, reasoned and featured like any candidate.
+  string parent_candidate_id = 12;
 }
 
 message QaCheck {

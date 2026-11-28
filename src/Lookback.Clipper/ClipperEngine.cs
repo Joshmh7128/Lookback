@@ -448,13 +448,82 @@ public sealed class ClipperEngine
     {
         foreach (CandidateGroup g in _closed)
         {
-            output.Add(Finish(g));
+            ClipperOutput parent = Finish(g);
+            output.Add(parent);
+            Highlights(g, parent, output);
         }
 
         _closed.Clear();
     }
 
-    private ClipperOutput Finish(CandidateGroup g)
+    private ClipperOutput Finish(CandidateGroup g) =>
+        Build(g, string.Create(CultureInfo.InvariantCulture, $"{_sessionId}-c{++_count:0000}"), null);
+
+    /// <summary>
+    /// The highlights of a candidate longer than its profile's longest
+    /// highlight: windows around its strongest moments, each built as a
+    /// candidate of its own, ranked (by the host's ranking, else the heuristic),
+    /// and the best that do not overlap kept, in time order, as
+    /// <c>&lt;parent&gt;-h1</c>, <c>-h2</c>….
+    /// </summary>
+    private void Highlights(CandidateGroup g, ClipperOutput parent, List<ClipperOutput> output)
+    {
+        CurveProfile p = _profiles.TryGetValue(parent.Candidate.GameProfile, out CurveProfile? own) ? own : _active;
+        long length = g.End - g.Start;
+        if (length <= p.HighlightMax)
+        {
+            return;
+        }
+
+        string parentId = parent.Candidate.CandidateId;
+        var ranked = new List<(ClipperOutput Output, double Rank)>();
+        foreach ((long a, long b) in HighlightPicker.Windows(g.Items, g.Start, g.End, p.HighlightMin, p.HighlightMax, _frequency))
+        {
+            var window = new CandidateGroup(a, b, g.Items.Where(c => c.At >= a && c.At <= b));
+            if (window.Items.Count == 0)
+            {
+                continue;
+            }
+
+            ClipperOutput o = Build(window, parentId + "-h", parentId);
+            ranked.Add((o, _o.RankHighlight?.Invoke(o.Candidate, o.Features) ?? o.Candidate.HeuristicScore));
+        }
+
+        if (ranked.Count == 0)
+        {
+            return;
+        }
+
+        int most = Math.Max(1, (int)Math.Ceiling(length / (double)p.HighlightMax));
+        double best = ranked.Max(r => r.Rank);
+        var kept = new List<ClipperOutput>();
+        foreach ((ClipperOutput o, double rank) in ranked.OrderByDescending(r => r.Rank).ThenBy(r => r.Output.Candidate.StartQpc))
+        {
+            if (kept.Count >= most || (kept.Count > 0 && rank < _o.HighlightKeepFraction * best))
+            {
+                break;
+            }
+
+            long s = (long)o.Candidate.StartQpc, e = (long)o.Candidate.EndQpc;
+            if (kept.Any(k => Math.Min(e, (long)k.Candidate.EndQpc) - Math.Max(s, (long)k.Candidate.StartQpc) > (e - s) / 4))
+            {
+                continue; // overlaps a better highlight
+            }
+
+            kept.Add(o);
+        }
+
+        int n = 0;
+        foreach (ClipperOutput o in kept.OrderBy(k => k.Candidate.StartQpc))
+        {
+            string id = string.Create(CultureInfo.InvariantCulture, $"{parentId}-h{++n}");
+            o.Candidate.CandidateId = id;
+            o.Qa.CandidateId = id;
+            output.Add(o);
+        }
+    }
+
+    private ClipperOutput Build(CandidateGroup g, string id, string? parentId)
     {
         Contribution best = g.Items[0];
         double raw = 0;
@@ -467,7 +536,6 @@ public sealed class ClipperEngine
             }
         }
 
-        string id = string.Create(CultureInfo.InvariantCulture, $"{_sessionId}-c{++_count:0000}");
         double score = 1 - Math.Exp(-raw);
         var candidate = new ClipCandidate
         {
@@ -478,6 +546,7 @@ public sealed class ClipperEngine
             HeuristicScore = (float)score,
             HighlightProbability = (float)score, // placeholder until ratings calibrate a model (M4)
             GameProfile = best.Profile,
+            ParentCandidateId = parentId ?? "",
         };
         candidate.Reasons.AddRange(Reasons(g));
         QaReport qa = QaGates.Evaluate(id, g.Start, g.End, _videoFlags, _audioFlags, _o.Qa, _frequency);

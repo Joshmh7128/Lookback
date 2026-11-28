@@ -390,6 +390,7 @@ public sealed partial class RatingStore
             Features = features is null ? [] : [.. features.Select(f => float.IsFinite(f) ? f : (float?)null)],
             RatedAt = _time.GetUtcNow(),
             Source = source,
+            ParentCandidateId = candidate?.ParentCandidateId is { Length: > 0 } parent ? parent : null,
         };
     }
 

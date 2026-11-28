@@ -83,6 +83,10 @@ public sealed record RatingRecord
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? DerivedWrite { get; init; }
 
+    /// <summary>A rated highlight: the long candidate it was picked from. Null for a candidate rated as a whole.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ParentCandidateId { get; init; }
+
     /// <summary>The official player a clipper-check rating came from (<c>youtube</c>, <c>twitch</c>); null otherwise. Never the video.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Platform { get; init; }

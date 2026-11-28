@@ -56,7 +56,7 @@ public sealed class SessionHistoryTests : IDisposable
         SegmentStore store = SegmentStore.Open(new StoreOptions { Root = _root });
         await using var history = new SessionHistory(new InProcessEventBus(), store);
         var recorded = new List<string>();
-        history.CandidateRecorded += (_, c) => recorded.Add(c);
+        history.CandidateRecorded += (_, c) => recorded.Add(c.CandidateId);
 
         // Announced before the store has its folder: held, not lost.
         history.Observe(Env("live-1", Topics.Session, e => e.SessionStarted = Live()));

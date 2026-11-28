@@ -107,7 +107,15 @@ internal sealed partial class CaptureService : IAsyncDisposable
         service._scoring = scoring ?? ClipScoring.HeuristicOnly();
         service._history = new SessionHistory(bus, store);
         service.RestoreHistory();
-        service._history.CandidateRecorded += (s, c) => service._cacheJobs.Writer.TryWrite((s, c, false)); // cut it into the cache at once
+        service._history.CandidateRecorded += (s, c) =>
+        {
+            // Highlights and short clips are cut into the cache at once; a long candidate with
+            // highlights is cut only if it is opened.
+            if (c.ParentCandidateId.Length > 0 || c.EndQpc - c.StartQpc <= (ulong)(CacheMaxSeconds * SystemClock.Instance.Frequency))
+            {
+                service._cacheJobs.Writer.TryWrite((s, c.CandidateId, false));
+            }
+        };
         service._cacheWorker = Task.Run(service.CacheLoopAsync);
         LogStarted(logger, root, options.FootageBudgetGB, options.ClipsBudgetGB, swept.BytesFreed >> 20);
         service._worker = Task.Run(service.WorkAsync);
@@ -230,6 +238,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
             : "Only live recordings can be cut into clips; footage files are already on disk.");
         return null;
     }
+
+    /// <summary>Candidates up to this long are cached as they are proposed; longer ones have highlights.</summary>
+    public const int CacheMaxSeconds = 25;
 
     /// <summary>Most sessions reloaded at start: the newest, within what the session directory keeps.</summary>
     public const int MaxRestoredSessions = 32;

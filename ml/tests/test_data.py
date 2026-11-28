@@ -164,3 +164,9 @@ def test_a_check_row_in_the_own_ratings_file_is_refused(tmp_path):
     _write(tmp_path, "cs2", [_check_row()])
     with pytest.raises(RefusedError, match="retention 'ephemeral'"):
         read_rows(tmp_path)
+
+
+def test_highlight_ratings_are_marked(tmp_path):
+    _write(tmp_path, "synth-a", [_row(), _row(candidateId="x-h1", parentCandidateId="x")])
+    ds = load_dataset(tmp_path, SCHEMA)
+    assert sorted(ds.highlights.tolist()) == [False, True]

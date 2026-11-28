@@ -34,6 +34,21 @@ public sealed record ClipperOptions
     /// <summary>A merged candidate never grows past this.</summary>
     public int MaxLengthMs { get; init; } = 60_000;
 
+    /// <summary>
+    /// A highlight is kept only when it ranks at least this share of the best
+    /// highlight of the same candidate, so a long candidate yields its few best
+    /// moments, not every window.
+    /// </summary>
+    public double HighlightKeepFraction { get; init; } = 0.5;
+
+    /// <summary>
+    /// Ranks a highlight window, higher is better; null ranks by the heuristic
+    /// score. The host passes the learned scorer's probability here, so what
+    /// ratings teach picks the highlights. Runs on the pump thread under the
+    /// runner's lock: keep it quick.
+    /// </summary>
+    public Func<Lookback.Contracts.V1.ClipCandidate, CandidateFeatures, double>? RankHighlight { get; init; }
+
     /// <summary>How much QA history (black, frozen and silence flags) is kept; must cover a candidate's length plus the clipper's latency.</summary>
     public double HistorySeconds { get; init; } = 300;
 
@@ -112,6 +127,7 @@ public static class ClipperDefaults
         using var reader = new StreamReader(stream);
         ClipperSpec spec = GameProfileLoader.ParseClipper(reader.ReadToEnd(), "clipper.defaults.json");
         if (spec.High is null || spec.Low is null || spec.PreMs is null || spec.PostMs is null || spec.RefractoryMs is null || spec.PeakScore is null
+            || spec.HighlightMinMs is null || spec.HighlightMaxMs is null
             || spec.Components.Any(c => c.MinSpread is null))
         {
             throw new InvalidDataException("clipper.defaults.json must set every number and every component's minSpread.");

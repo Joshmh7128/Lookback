@@ -342,6 +342,7 @@ export class Library {
       reasons: list(c["reasons"]).map(str).filter((r) => r.length > 0),
       qa: existing?.qa ?? null,
       savedPath: existing?.savedPath ?? null,
+      parentId: str(c["parentCandidateId"]) || null,
       rating: this.ratings.get(ratingKey(s.view.id, id)) ?? 0,
       ratingStored: existing?.ratingStored ?? false,
       ratingNote: existing?.ratingNote ?? null,

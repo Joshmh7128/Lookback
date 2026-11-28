@@ -21,6 +21,8 @@ internal sealed class CurveProfile
         Post = QpcTime.Rescale(spec.PostMs!.Value, 1000, frequency);
         Refractory = QpcTime.Rescale(spec.RefractoryMs!.Value, 1000, frequency);
         PeakScore = spec.PeakScore!.Value;
+        HighlightMin = QpcTime.Rescale(spec.HighlightMinMs!.Value, 1000, frequency);
+        HighlightMax = QpcTime.Rescale(spec.HighlightMaxMs!.Value, 1000, frequency);
     }
 
     /// <summary>The profile id, or empty for the defaults on their own.</summary>
@@ -42,6 +44,12 @@ internal sealed class CurveProfile
     public long Refractory { get; }
 
     public float PeakScore { get; }
+
+    /// <summary>Shortest highlight, in ticks.</summary>
+    public long HighlightMin { get; }
+
+    /// <summary>Longest highlight, in ticks; longer candidates get highlights.</summary>
+    public long HighlightMax { get; }
 
     /// <summary>
     /// Resolves each spec over the defaults and lays them all out against one

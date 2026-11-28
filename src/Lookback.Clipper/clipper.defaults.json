@@ -31,5 +31,9 @@
   "refractoryMs": 3000,
   // A peak exactly at high adds this to a candidate's raw score (up to 3x as
   // much for a peak three times as high); an event adds weight x confidence.
-  "peakScore": 0.5
+  "peakScore": 0.5,
+  // A candidate longer than highlightMaxMs gets highlights: its most exciting
+  // 10 to 20 s, each a candidate of its own (parent_candidate_id set).
+  "highlightMinMs": 10000,
+  "highlightMaxMs": 20000
 }

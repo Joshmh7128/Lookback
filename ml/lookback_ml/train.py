@@ -204,6 +204,7 @@ def train(ds: Dataset, options: Options) -> TrainResult:
             "rows": len(ds),
             "sessions": len(set(ds.sessions.tolist())),
             "origins": {o: int((ds.origins == o).sum()) for o in sorted(set(ds.origins.tolist()))},
+            "highlights": int(ds.highlights.sum()) if len(ds.highlights) == len(ds) else 0,
             "gameRows": game_rows,
             "games": covered,
             "excluded": ds.excluded,
@@ -251,7 +252,8 @@ def report_markdown(report: dict) -> str:
         "",
         f"Trained {report['trainedAt']} on {report['rows']} ratings from {report['sessions']} sessions; "
         f"{report['folds']}-fold cross-validation by session; C = {report['C']}.",
-        f"Ratings by origin: {report.get('origins', {})} (own: your footage; check: the clipper check, numbers only).",
+        f"Ratings by origin: {report.get('origins', {})} (own: your footage; check: the clipper check, numbers only); "
+        f"{report.get('highlights', 0)} of them rate highlights (10-20 s parts of longer candidates).",
         "Held-out numbers. AUC and precision@k count 4-5 stars as highlights and 1-2 stars as not.",
         "",
     ]

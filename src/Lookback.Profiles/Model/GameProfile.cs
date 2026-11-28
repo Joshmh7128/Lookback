@@ -114,6 +114,12 @@ public sealed record ClipperSpec
     /// <summary>How much a peak at exactly <see cref="High"/> adds to a candidate's raw score (an event adds weight × confidence).</summary>
     public float? PeakScore { get; init; }
 
+    /// <summary>The shortest highlight picked inside a long candidate.</summary>
+    public int? HighlightMinMs { get; init; }
+
+    /// <summary>The longest highlight; a candidate longer than this gets highlights of its most exciting parts.</summary>
+    public int? HighlightMaxMs { get; init; }
+
     /// <summary>This spec over <paramref name="parent"/>: own components replace the parent's of the same signal; unset numbers inherit.</summary>
     public ClipperSpec Over(ClipperSpec parent)
     {
@@ -135,6 +141,8 @@ public sealed record ClipperSpec
             PostMs = PostMs ?? parent.PostMs,
             RefractoryMs = RefractoryMs ?? parent.RefractoryMs,
             PeakScore = PeakScore ?? parent.PeakScore,
+            HighlightMinMs = HighlightMinMs ?? parent.HighlightMinMs,
+            HighlightMaxMs = HighlightMaxMs ?? parent.HighlightMaxMs,
         };
     }
 }
