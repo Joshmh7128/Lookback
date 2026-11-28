@@ -211,6 +211,18 @@ still be watched and saved; the shell's default **Highlights** view shows the
 highlights in place of their parent. Highlights come only from candidates the
 clipper finishes; a candidate shorter than `highlightMaxMs` has none.
 
+### Probes
+
+`ClipperOptions.Probes` names windows to describe as the stream passes them:
+each is built exactly like a candidate over its span (score, reasons,
+features and QA from the events and peaks whose moment falls inside it) and
+handed to `ClipperOptions.Probed` instead of being published. A probe is
+described once nothing still to come can fall inside it, so the result does
+not depend on when frames arrive; a window in which nothing happened is still
+described, with a score of 0. The [rating backfill](Clip-Scoring#backfill)
+uses probes to recompute the features of candidates rated before the clipper
+computed them.
+
 ## 5 · QA gates v1
 
 Each candidate gets a `QaReport` over its own window, from signals already

@@ -49,6 +49,17 @@ public sealed record ClipperOptions
     /// </summary>
     public Func<Lookback.Contracts.V1.ClipCandidate, CandidateFeatures, double>? RankHighlight { get; init; }
 
+    /// <summary>
+    /// Windows to describe as the stream passes them, without publishing them:
+    /// each is built like a candidate over exactly its span (score, features and
+    /// QA from what happened inside it) and handed to <see cref="Probed"/>. Used to
+    /// recompute the features of candidates rated before the clipper had them.
+    /// </summary>
+    public IReadOnlyList<ProbeWindow> Probes { get; init; } = [];
+
+    /// <summary>Receives each of <see cref="Probes"/>, once, in the order their windows end; required with probes.</summary>
+    public Action<ProbeWindow, ClipperOutput>? Probed { get; init; }
+
     /// <summary>How much QA history (black, frozen and silence flags) is kept; must cover a candidate's length plus the clipper's latency.</summary>
     public double HistorySeconds { get; init; } = 300;
 
@@ -81,9 +92,22 @@ public sealed record ClipperOptions
             throw new ArgumentException("Clipper options must be positive (merge gap and curve interval may be 0).");
         }
 
+        if (Probes.Count > 0 && Probed is null)
+        {
+            throw new ArgumentException("Probes need a Probed callback.");
+        }
+
+        if (Probes.Any(p => p.End <= p.Start))
+        {
+            throw new ArgumentException("A probe window must end after it starts.");
+        }
+
         Qa.Validate();
     }
 }
+
+/// <summary>A window to describe (see <see cref="ClipperOptions.Probes"/>), in the session's ticks; <paramref name="Peak"/> stands in when nothing happened inside it.</summary>
+public readonly record struct ProbeWindow(string Id, long Start, long End, long Peak);
 
 /// <summary>QA gates v1: each candidate is checked against existing signals only.</summary>
 public sealed record QaOptions

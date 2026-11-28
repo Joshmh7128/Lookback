@@ -213,6 +213,74 @@ internal sealed partial class CaptureService : IAsyncDisposable
     }
 
     /// <summary>Why a candidate cannot be cut at all: unknown, or from a session that may not persist. Null when it can.</summary>
+    /// <summary>The largest recording <see cref="ExportSessionAsync"/> writes as one file (it is read into memory to be muxed).</summary>
+    public const long MaxExportBytes = 1_500_000_000;
+
+    /// <summary>
+    /// A recorded live session's footage (its first run) as one file in the
+    /// clip cache, for re-analysis by the rating backfill, and the QPC of the
+    /// file's first frame (the file's time 0). The file is a preview: it pins
+    /// nothing, and the cache sweeps it like any other. Refused for the session
+    /// being recorded, one whose footage is gone, and one too large.
+    /// </summary>
+    public async Task<(string? Path, long StartQpc, string? Error)> ExportSessionAsync(string sessionId)
+    {
+        if (_live?.Game.Id == sessionId)
+        {
+            return (null, 0, "The session is still being recorded.");
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_store.Coverage(sessionId) is not { } range)
+            {
+                return (null, 0, "The session's footage is no longer stored.");
+            }
+
+            if (_store.SessionBytes(sessionId) > MaxExportBytes)
+            {
+                return (null, 0, "The recording is too large to re-analyse in one go.");
+            }
+
+            if (!_store.TryReadClip(sessionId, range.Start, range.End + 1, out ClipSource clip))
+            {
+                return (null, 0, "The session's footage could not be read.");
+            }
+
+            HashSet<int> video = [.. clip.Tracks.Where(t => t.IsVideo).Select(t => t.Id)];
+            long start = clip.Packets.Where(p => video.Contains(p.Info.TrackId)).Select(p => p.Info.DtsQpc).DefaultIfEmpty(range.Start).Min();
+            return (_store.WritePreview(sessionId, "backfill", clip), start, null);
+        }
+        catch (IOException ex)
+        {
+            return (null, 0, $"The footage could not be written for analysis: {ex.Message}");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return (null, 0, ex.Message);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>How much of a recorded session's footage is stored, and when it is swept (null when kept); null when none is.</summary>
+    public (long Bytes, DateTimeOffset? SweepUtc)? StoredFootage(string sessionId)
+    {
+        SessionManifest? m = Recorded().FirstOrDefault(x => x.Id == sessionId);
+        if (m is null || _store.Coverage(sessionId) is null)
+        {
+            return null;
+        }
+
+        return (_store.SessionBytes(sessionId), m.Keep || m.Id == LiveSessionId ? null : (m.EndedUtc ?? m.StartedUtc) + _store.Options.Grace);
+    }
+
+    /// <summary>Removes a file <see cref="ExportSessionAsync"/> wrote.</summary>
+    public void DeleteExport(string path) => _store.DeleteFile(path);
+
     private SaveResult? Refusal(string sessionId, string candidateId, out ClipCandidate? candidate)
     {
         candidate = _sessions.Candidate(sessionId, candidateId);

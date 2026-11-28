@@ -13,6 +13,8 @@ import type { FootageRequest, Rating, StorageState } from "../shared/api";
 //   {"type":"storage","id"}            sessions, saved clips and the clip cache with sizes, in "data"
 //   {"type":"storage-delete","id","kind":"session"|"clip"|"cache","sessionId"?,"path"?}
 //   {"type":"storage-keep","id","sessionId","keep":true|false}
+//   {"type":"backfill-plan","id"}      ratings stored without features, by session, with job progress, in "data"
+//   {"type":"backfill","id","sessionId","path"?}  recompute them from the session's footage (a file needs "path")
 //
 // The recorder answers the sending client only:
 //
@@ -101,6 +103,14 @@ export function storageDeleteMessage(id: string, kind: "session" | "clip" | "cac
 
 export function storageKeepMessage(id: string, sessionId: string, keep: boolean): string {
   return JSON.stringify({ type: "storage-keep", id, sessionId, keep });
+}
+
+export function backfillPlanMessage(id: string): string {
+  return JSON.stringify({ type: "backfill-plan", id });
+}
+
+export function backfillMessage(id: string, sessionId: string, path?: string): string {
+  return JSON.stringify(path === undefined ? { type: "backfill", id, sessionId } : { type: "backfill", id, sessionId, path });
 }
 
 /** The envelopes of a history ack: objects with a session id; anything else is dropped. */

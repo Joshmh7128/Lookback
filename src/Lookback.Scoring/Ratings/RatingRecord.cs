@@ -87,6 +87,14 @@ public sealed record RatingRecord
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ParentCandidateId { get; init; }
 
+    /// <summary>A footage file's fingerprint (<c>SessionStarted.source_digest</c>), so the footage can be re-analysed later; null for live recordings.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourceDigest { get; init; }
+
+    /// <summary>When <see cref="Features"/> were recomputed from the footage (backfill); null for features from the rating itself.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? BackfilledAt { get; init; }
+
     /// <summary>The official player a clipper-check rating came from (<c>youtube</c>, <c>twitch</c>); null otherwise. Never the video.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Platform { get; init; }

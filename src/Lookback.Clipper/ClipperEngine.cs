@@ -73,6 +73,8 @@ public sealed class ClipperEngine
     private readonly List<ProfileDetected> _profileChanges = [];
     private readonly List<CandidateGroup> _closed = [];
     private readonly List<CurvePeak> _flushed = [];
+    private readonly List<ProbeWindow> _probes;
+    private readonly List<Contribution> _seen = [];
     private readonly bool _following;
     private readonly long _eventLag;
     private readonly long _eventReach;
@@ -155,6 +157,7 @@ public sealed class ClipperEngine
         _curveReach = profiles.Max(p => p.Pre);
         _attack = Ms(_o.AttackMs);
         _release = Ms(_o.ReleaseMs);
+        _probes = [.. _o.Probes.OrderBy(p => p.End)];
     }
 
     /// <summary>Names of every candidate's <see cref="CandidateFeatures"/>, in order.</summary>
@@ -317,6 +320,7 @@ public sealed class ClipperEngine
         }
 
         Emit(output);
+        Describe(long.MaxValue);
     }
 
     private void Tick(long t, List<ClipperOutput> output)
@@ -377,8 +381,44 @@ public sealed class ClipperEngine
             AddPeak(peak);
         }
 
-        _fuser.Close(Horizon(t), _closed);
+        long horizon = Horizon(t);
+        _fuser.Close(horizon, _closed);
         Emit(output);
+        Describe(horizon);
+    }
+
+    /// <summary>
+    /// Describes every probe that nothing still to come can fall inside: a
+    /// contribution not yet seen starts at or after <paramref name="horizon"/>,
+    /// and its moment is not before its start.
+    /// </summary>
+    private void Describe(long horizon)
+    {
+        while (_probes.Count > 0 && _probes[0].End < horizon)
+        {
+            ProbeWindow p = _probes[0];
+            _probes.RemoveAt(0);
+            var window = new CandidateGroup(p.Start, p.End, _seen.Where(c => c.At >= p.Start && c.At <= p.End));
+            if (window.Items.Count == 0)
+            {
+                // Nothing happened inside: the window is still described, with no score.
+                window.Items.Add(new Contribution { Start = p.Start, End = p.End, At = Math.Clamp(p.Peak, p.Start, p.End), Score = 0, Profile = _active.Id });
+            }
+
+            ClipperOutput o = Build(window, p.Id, null);
+            _o.Probed!(p, o);
+            long keepFrom = _probes.Count > 0 ? _probes.Min(q => q.Start) : long.MaxValue;
+            _seen.RemoveAll(c => c.At < keepFrom);
+        }
+    }
+
+    private void Contribute(Contribution c)
+    {
+        _fuser.Add(c);
+        if (_probes.Count > 0)
+        {
+            _seen.Add(c);
+        }
     }
 
     /// <summary>Every event at or before this time has been delivered.</summary>
@@ -417,7 +457,7 @@ public sealed class ClipperEngine
         while (taken < _events.Count && (long)_events[taken].AtQpc <= safe)
         {
             GameEvent e = _events[taken++];
-            _fuser.Add(new Contribution
+            Contribute(new Contribution
             {
                 Start = (long)e.WindowStartQpc,
                 End = (long)e.WindowEndQpc,
@@ -434,7 +474,7 @@ public sealed class ClipperEngine
         }
     }
 
-    private void AddPeak(CurvePeak peak) => _fuser.Add(new Contribution
+    private void AddPeak(CurvePeak peak) => Contribute(new Contribution
     {
         Start = peak.Start,
         End = peak.End,

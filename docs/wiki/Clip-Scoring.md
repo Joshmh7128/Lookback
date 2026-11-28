@@ -226,6 +226,41 @@ score, duration and peak position, the rest missing. Missing values are
 replaced by the training mean at inference, so a model trained on full
 vectors still scores a sparse one sensibly.
 
+## Backfill
+
+Ratings stored before the clipper computed its full feature set (the first
+38, from 27 November) carry only the floor features: heuristic score, window
+length and peak position. Training learns little from 3 numbers out of 30, so
+the recorder can recompute the rest from the footage the ratings came from
+(`src/Lookback.Recorder/RatingBackfill.cs`), without re-rating anything:
+
+1. `backfill-plan` lists the rated sessions with ratings that need features
+   (fewer than 10 values and never backfilled), with where their footage is.
+2. `backfill` re-analyses one session's footage on a private bus that
+   publishes nothing, with the rated windows as clipper
+   [probes](Clipper#probes): each window is described exactly, from what
+   happened inside it.
+   - A **live recording** is read back from the store into the clip cache
+     (its first run, up to 1.5 GB), analysed, and that file deleted. The
+     footage must still be stored, so keep a session in Storage if it is
+     about to be swept.
+   - A **footage file** is chosen by you. Ratings of footage analysed from
+     now on carry the file's fingerprint (`sourceDigest`, from
+     `SessionStarted.source_digest`), and a file that does not match is
+     refused. Older ratings have none, so the file must at least be long
+     enough to cover every rated window.
+3. Each rating is appended again with the new vector and `backfilledAt`
+   (`RatingStore.AppendBackfill`), keeping its stars, times, scores and
+   rating time; the last line wins. The write applies `RetentionRules` to the
+   rating's own retention and source again, refuses clipper-check lines, and
+   refuses a rating that was changed or cleared since.
+
+The analysis starts in the deepest profile all the session's rated
+candidates share, as the original analysis most likely did. A re-analysis is
+not bit-identical to the original (a live recording is re-read from its
+encoded footage rather than the capture), so the numbers are close, not
+equal. The desktop app runs this from its **Training** tab.
+
 ## Training
 
 `python -m lookback_ml.train` (in `ml/`) reads every

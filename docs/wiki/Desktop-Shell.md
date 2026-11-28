@@ -163,6 +163,13 @@ for going through candidates quickly:
    [highlights](Clipper#highlights) (tagged *highlight*) in place of the long
    candidate itself, so a session is rated moment by moment; **All** shows
    both.
+4. **Rate queue** (on by default): rating the selected candidate jumps to the
+   next unrated one in the table's order, then on to the next session that
+   has one, so a session's highlights can be rated back to back with the
+   number keys alone. <kbd>N</kbd> jumps without rating. Sort **model least
+   sure first** puts the candidates whose probability is nearest an even
+   chance first, so each rating teaches the model the most (time order
+   without a model).
 
 YouTube and Twitch sessions are listed too, but nothing of them is recorded:
 the preview says to replay the moment in the viewer (▶ in its panel), and
@@ -202,6 +209,13 @@ their footage is kept (24 h after the session, or longer with **keep** on
 the Storage tab).
 
 ### Storage
+
+The **Training** tab lists ratings stored without the clipper's full feature
+set, by session (`backfill-plan`), and fills them in from the footage
+(`backfill`, see [Clip Scoring](Clip-Scoring#backfill)): **Backfill** for a
+live recording whose footage is still stored, **Choose file…** for footage
+analysed from a file. It shows each job's progress and result; your stars are
+never changed.
 
 The **Storage** tab shows everything the recorder's store holds (`storage`):
 the footage, saved clips and cache against their budgets and the drive's free
