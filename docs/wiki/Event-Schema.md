@@ -231,7 +231,7 @@ Defined in `src/Lookback.Contracts/Topics.cs`.
 | `session` | `SessionStarted`, `SessionEnded` |
 | `game.lifecycle` | `GameLifecycle` |
 | `signals.video`, `signals.audio`, `signals.input` | `SignalSchema`, `SignalFrame` |
-| `signals.rules` | `SignalSchema`, `SignalFrame`: one margin per profile condition, published by the profile runner |
+| `signals.rules` | `SignalSchema`, `SignalFrame`: one margin per profile condition, published by the profile runner; when the game's tree has [menu states](Game-Profiles#menu-states), then per state `menu.<state>` (1 while held) and `menu.<state>.margin` (`maxDistance` minus the frame's distance; positive when the screen matches, −1 when the active profile has no such state), then `menu.any` |
 | `signals.clipper` | `SignalSchema` (schema id 4), `SignalFrame` every 100 ms: the excitement curve, its thresholds and each component's z-score |
 | `game.event` | `GameEvent` |
 | `game.profile` | `ProfileDetected` |

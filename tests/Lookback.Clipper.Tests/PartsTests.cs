@@ -116,6 +116,16 @@ public class PartsTests
         b.CloseAll(all);
         Assert.Equal((0L, 30L, 3), (Assert.Single(all).Start, all[0].End, all[0].Items.Count));
 
+        // Beside a full group, later windows join the newer group that still has room, instead of one group each.
+        var full = new CandidateFuser(gap: 0, maxLength: 100);
+        full.Add(C(0, 100));   // full
+        full.Add(C(90, 120));  // touches it, cannot join: its own
+        full.Add(C(95, 125));  // touches both: joins the newer one
+        full.Add(C(98, 130));
+        var split = new List<CandidateGroup>();
+        full.CloseAll(split);
+        Assert.Equal([(0L, 100L, 1), (90L, 130L, 3)], split.Select(x => (x.Start, x.End, x.Items.Count)));
+
         static Contribution C(long s, long e) => new() { Start = s, End = e, At = s, Score = 1, Profile = "" };
     }
 

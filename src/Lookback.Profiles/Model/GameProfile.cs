@@ -47,7 +47,7 @@ public sealed record GameProfile
     /// </summary>
     public IReadOnlyList<IdHint> IdHints { get; init; } = [];
 
-    /// <summary>Inherited events and composites this profile switches off.</summary>
+    /// <summary>Inherited events, composites and menu states this profile switches off.</summary>
     public IReadOnlyList<string> Disable { get; init; } = [];
 
     /// <summary>Executable names that identify the game during live detection. Games only.</summary>
@@ -81,6 +81,15 @@ public sealed record GameProfile
     /// clipper's defaults.
     /// </summary>
     public ClipperSpec Clipper { get; init; } = new();
+
+    /// <summary>
+    /// Screens that are not play (pause, main menu, loading, post-game, …),
+    /// each a reference colour signature over the game-agnostic colour grid.
+    /// The clipper ignores what happens in them and the big full-screen
+    /// change of entering or leaving one. Inherits down the tree: a child adds
+    /// states or replaces them by name, and <see cref="Disable"/> removes them.
+    /// </summary>
+    public MenuSpec Menus { get; init; } = new();
 }
 
 /// <summary>

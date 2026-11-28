@@ -4,6 +4,7 @@ using Lookback.Clipper.Curve;
 using Lookback.Clipper.Qa;
 using Lookback.Contracts.V1;
 using Lookback.Core.Time;
+using Lookback.Profiles.Detection;
 using Lookback.Profiles.Model;
 
 namespace Lookback.Clipper;
@@ -79,6 +80,15 @@ public sealed class ClipperEngine
     private readonly long _curveReach;
     private readonly long _attack;
     private readonly long _release;
+    private readonly MenuTracker? _menus;
+    private readonly FlagHistory _menuFlags;
+    private readonly List<(long From, long To)> _menuGuards = [];
+    private readonly List<CurvePeak> _deferred = [];
+    private readonly long _menuSettle;
+    private readonly long _guardBefore;
+    private readonly long _guardAfter;
+    private readonly long _historyTicks;
+    private int _menuDropped;
     private CurveProfile _active;
     private float _smooth;
     private long _lastTick = long.MinValue;
@@ -87,7 +97,7 @@ public sealed class ClipperEngine
 
     /// <summary>Curve only, with the default settings (optionally overridden by <paramref name="spec"/>); events are fused if given, but not waited for.</summary>
     public ClipperEngine(string sessionId, long frequency, ClipperOptions? options = null, ClipperSpec? spec = null)
-        : this(sessionId, frequency, options, [("", spec ?? new ClipperSpec())], "", following: false, eventLag: 0, eventReach: 0)
+        : this(sessionId, frequency, options, [("", spec ?? new ClipperSpec())], "", following: false, eventLag: 0, eventReach: 0, menus: null)
     {
     }
 
@@ -98,11 +108,12 @@ public sealed class ClipperEngine
     /// sub-game or mode chosen by hand.
     /// </summary>
     public ClipperEngine(ProfileCatalog catalog, string startId, string sessionId, long frequency, ClipperOptions? options = null)
-        : this(sessionId, frequency, options, Tree(catalog, startId, out long lag, out long reach), startId, following: true, eventLag: lag, eventReach: reach)
+        : this(sessionId, frequency, options, Tree(catalog, startId, out long lag, out long reach), startId, following: true, eventLag: lag, eventReach: reach,
+            menus: new MenuTracker(catalog, catalog.PathTo(startId)[0].Id, frequency))
     {
     }
 
-    private ClipperEngine(string sessionId, long frequency, ClipperOptions? options, IReadOnlyList<(string Id, ClipperSpec Spec)> specs, string startId, bool following, long eventLag, long eventReach)
+    private ClipperEngine(string sessionId, long frequency, ClipperOptions? options, IReadOnlyList<(string Id, ClipperSpec Spec)> specs, string startId, bool following, long eventLag, long eventReach, MenuTracker? menus)
     {
         ArgumentNullException.ThrowIfNull(sessionId);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(frequency);
@@ -155,6 +166,15 @@ public sealed class ClipperEngine
         _curveReach = profiles.Max(p => p.Pre);
         _attack = Ms(_o.AttackMs);
         _release = Ms(_o.ReleaseMs);
+
+        // Menus: a contribution is judged once every menu change that could cover it is known,
+        // that is once the screen has had time to change (guard before) and the state to follow (hysteresis).
+        _menus = menus is { HasMenus: true } ? menus : null;
+        _menuFlags = new FlagHistory(_menus is null ? 1 : (int)Math.Min(int.MaxValue, _o.HistorySeconds * VideoSamplesPerSecond));
+        _guardBefore = Ms(_o.MenuGuardBeforeMs);
+        _guardAfter = Ms(_o.MenuGuardAfterMs);
+        _menuSettle = _menus is null ? 0 : Ms(_o.MenuGuardBeforeMs + _menus.MaxHysteresisMs + 100);
+        _historyTicks = Ms((long)(_o.HistorySeconds * 1000));
     }
 
     /// <summary>Names of every candidate's <see cref="CandidateFeatures"/>, in order.</summary>
@@ -172,6 +192,12 @@ public sealed class ClipperEngine
     /// <summary>The profile whose weights and thresholds are in use; empty when not following a profile.</summary>
     public string ActiveProfileId => _active.Id;
 
+    /// <summary>The menu state held now (<c>play</c> when none matches, or when the profile has no menus).</summary>
+    public string MenuState => _menus?.HeldName ?? "play";
+
+    /// <summary>Peaks, events and candidates dropped because they were in a menu state or at a change into or out of one.</summary>
+    public int MenuDropped => _menuDropped;
+
     /// <summary>True when the engine fuses a profile tree's events and waits for them.</summary>
     public bool FollowsProfile => _following;
 
@@ -180,6 +206,7 @@ public sealed class ClipperEngine
     public void OnSchema(SignalSchema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
+        _menus?.OnSchema(schema);
         if (schema.Family is not (SignalFamily.Video or SignalFamily.Audio))
         {
             return;
@@ -294,7 +321,7 @@ public sealed class ClipperEngine
         bool black = map.Black >= 0 && map.Black < count && frame.Values[map.Black] > 0.5f;
         bool frozen = map.Frozen >= 0 && map.Frozen < count && frame.Values[map.Frozen] >= _o.Qa.FrozenSeconds;
         _videoFlags.Add(t, black, frozen);
-        Tick(t, output);
+        Tick(t, frame, output);
         return true;
     }
 
@@ -307,8 +334,10 @@ public sealed class ClipperEngine
         _peaks.Flush(_flushed);
         foreach (CurvePeak p in _flushed)
         {
-            AddPeak(p);
+            Contribute(p);
         }
+
+        ReleaseDeferred(long.MaxValue);
 
         _fuser.CloseAll(_closed);
         foreach (CandidateGroup g in _closed)
@@ -319,10 +348,24 @@ public sealed class ClipperEngine
         Emit(output);
     }
 
-    private void Tick(long t, List<ClipperOutput> output)
+    private void Tick(long t, SignalFrame frame, List<ClipperOutput> output)
     {
         ApplyProfileChanges(t);
         CurveProfile p = _active;
+        bool menuFrame = false;
+        if (_menus is not null)
+        {
+            _menus.OnVideoFrame(t, frame, p.Id);
+            menuFrame = _menus.InMenu || _menus.RawInMenu;
+            _menuFlags.Add(t, _menus.RawInMenu, _menus.InMenu);
+            if (_menus.Changed)
+            {
+                // From where the screen started changing (the first frame of the new raw match) to the curve settling.
+                long from = _menus.Active is { } d && d.HeldAt == t ? d.HeldFrom : t;
+                AddGuard(from - _guardBefore, t + _guardAfter);
+            }
+        }
+
         float sum = 0, weights = 0;
         for (int i = 0; i < _components.Length; i++)
         {
@@ -353,7 +396,10 @@ public sealed class ClipperEngine
                     sum += p.Weights[i] * z;
                 }
 
-                norm.Observe(t, x); // after scoring, so a spike is judged against the past
+                if (!menuFrame)
+                {
+                    norm.Observe(t, x); // after scoring, so a spike is judged against the past; menu screens are not play's baseline
+                }
             }
 
             _z[i] = z;
@@ -371,11 +417,13 @@ public sealed class ClipperEngine
         _z.CopyTo(_curve.AsSpan(3));
         _history.Add(t, _smooth, p.High, _z);
 
-        TakeEvents(EventSafe(t));
+        TakeEvents(_menus is null ? EventSafe(t) : Math.Min(EventSafe(t), t - _menuSettle));
         if (_peaks.Step(t, _smooth, p, _z) is { } peak)
         {
-            AddPeak(peak);
+            Contribute(peak);
         }
+
+        ReleaseDeferred(t - _menuSettle);
 
         _fuser.Close(Horizon(t), _closed);
         Emit(output);
@@ -388,7 +436,12 @@ public sealed class ClipperEngine
     private long Horizon(long t)
     {
         long curve = Math.Min(_peaks.Pending?.Start ?? long.MaxValue, (_peaks.Active ? _peaks.ActiveStart : t) - _curveReach);
-        long events = _following ? EventSafe(t) - _eventReach : long.MaxValue;
+        foreach (CurvePeak d in _deferred)
+        {
+            curve = Math.Min(curve, d.Start);
+        }
+
+        long events = _following ? EventSafe(t) - _menuSettle - _eventReach : long.MaxValue;
         return Math.Min(curve, events);
     }
 
@@ -417,6 +470,12 @@ public sealed class ClipperEngine
         while (taken < _events.Count && (long)_events[taken].AtQpc <= safe)
         {
             GameEvent e = _events[taken++];
+            if (InMenu((long)e.AtQpc))
+            {
+                _menuDropped++;
+                continue;
+            }
+
             _fuser.Add(new Contribution
             {
                 Start = (long)e.WindowStartQpc,
@@ -434,6 +493,68 @@ public sealed class ClipperEngine
         }
     }
 
+    /// <summary>A finished peak: straight into the fusion, or held until the menu state around it is known.</summary>
+    private void Contribute(CurvePeak peak)
+    {
+        if (_menus is null)
+        {
+            AddPeak(peak);
+        }
+        else
+        {
+            _deferred.Add(peak);
+        }
+    }
+
+    /// <summary>Peaks at or before <paramref name="safe"/>: into the fusion unless a menu state or a change of one covers them.</summary>
+    private void ReleaseDeferred(long safe)
+    {
+        int released = 0;
+        while (released < _deferred.Count && _deferred[released].At <= safe)
+        {
+            CurvePeak peak = _deferred[released++];
+            if (InMenu(peak.At))
+            {
+                _menuDropped++;
+            }
+            else
+            {
+                AddPeak(peak);
+            }
+        }
+
+        if (released > 0)
+        {
+            _deferred.RemoveRange(0, released);
+        }
+    }
+
+    /// <summary>True when a menu state was held at <paramref name="at"/>, or the screen was changing into or out of one.</summary>
+    private bool InMenu(long at)
+    {
+        if (_menus is null)
+        {
+            return false;
+        }
+
+        foreach ((long from, long to) in _menuGuards)
+        {
+            if (at >= from && at <= to)
+            {
+                return true;
+            }
+        }
+
+        long frame = Ms(20);
+        return _menuFlags.Count(at - frame, at + frame).B > 0;
+    }
+
+    private void AddGuard(long from, long to)
+    {
+        _menuGuards.RemoveAll(g => g.To < to - _historyTicks);
+        _menuGuards.Add((from, to));
+    }
+
     private void AddPeak(CurvePeak peak) => _fuser.Add(new Contribution
     {
         Start = peak.Start,
@@ -448,14 +569,29 @@ public sealed class ClipperEngine
     {
         foreach (CandidateGroup g in _closed)
         {
-            output.Add(Finish(g));
+            if (Finish(g) is { } finished)
+            {
+                output.Add(finished);
+            }
         }
 
         _closed.Clear();
     }
 
-    private ClipperOutput Finish(CandidateGroup g)
+    private ClipperOutput? Finish(CandidateGroup g)
     {
+        double menuShare = 0;
+        if (_menus is not null)
+        {
+            (long samples, _, long held) = _menuFlags.Count(g.Start, g.End);
+            menuShare = samples == 0 ? 0 : held / (double)samples;
+            if (menuShare >= _o.MenuDropShare)
+            {
+                _menuDropped++;
+                return null;
+            }
+        }
+
         Contribution best = g.Items[0];
         double raw = 0;
         foreach (Contribution c in g.Items)
@@ -467,6 +603,7 @@ public sealed class ClipperEngine
             }
         }
 
+        raw *= 1 - menuShare; // a window partly in a menu is worth that much less
         string id = string.Create(CultureInfo.InvariantCulture, $"{_sessionId}-c{++_count:0000}");
         double score = 1 - Math.Exp(-raw);
         var candidate = new ClipCandidate
@@ -480,6 +617,11 @@ public sealed class ClipperEngine
             GameProfile = best.Profile,
         };
         candidate.Reasons.AddRange(Reasons(g));
+        if (menuShare > 0)
+        {
+            candidate.Reasons.Add(string.Create(CultureInfo.InvariantCulture, $"menu {menuShare:P0} of the window (score scaled by {1 - menuShare:0.00})"));
+        }
+
         QaReport qa = QaGates.Evaluate(id, g.Start, g.End, _videoFlags, _audioFlags, _o.Qa, _frequency);
         return new ClipperOutput(candidate, qa, Features(g, candidate, qa, raw, best));
     }

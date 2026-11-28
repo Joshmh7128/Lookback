@@ -62,7 +62,18 @@ internal sealed record DatasetEntry
 
     /// <summary>Stretches a person would clip, in seconds; candidates are scored against them.</summary>
     public IReadOnlyList<ClipLabel> Clips { get; init; } = [];
+
+    /// <summary>
+    /// Stretches that show a menu state (pause, main menu, loading, post-game…),
+    /// in seconds. Teaches menu signatures (<c>lookback-testbench menus</c>): the
+    /// rest of the file counts as play. Absent: the file is not used for menus;
+    /// empty: the whole file is play.
+    /// </summary>
+    public IReadOnlyList<ScreenLabel>? Screens { get; init; }
 }
+
+/// <summary>A stretch showing one menu state, in seconds from the start of the file.</summary>
+internal sealed record ScreenLabel(string State, double Start, double End);
 
 /// <summary>A stretch of footage worth a clip, in seconds from the start of the file.</summary>
 internal sealed record ClipLabel(double Start, double End);

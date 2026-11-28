@@ -8,7 +8,7 @@ namespace Lookback.Profiles.Model;
 /// everything from its parent and adds to it:
 /// <list type="bullet">
 /// <item>Regions are added. A child may not move a parent's region; it names a new one.</item>
-/// <item>Events and composites are added, or replaced by name. <see cref="GameProfile.Disable"/> removes inherited ones.</item>
+/// <item>Events, composites and menu states are added, or replaced by name. <see cref="GameProfile.Disable"/> removes inherited ones.</item>
 /// <item>The capture policy can only get stricter: a child can never allow what its game forbids.</item>
 /// </list>
 /// </summary>
@@ -203,6 +203,7 @@ public sealed class ProfileCatalog
             Events = [.. parent.Events.Where(e => !disabled.Contains(e.Name) && !ownEvents.Contains(e.Name)), .. own.Events],
             Composites = [.. parent.Composites.Where(c => !disabled.Contains(c.Name) && !ownComposites.Contains(c.Name)), .. own.Composites],
             Clipper = own.Clipper.Over(parent.Clipper),
+            Menus = own.Menus.Over(parent.Menus, disabled),
         };
 
         // A composite whose source event was disabled goes too.

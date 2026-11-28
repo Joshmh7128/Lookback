@@ -1,0 +1,80 @@
+// Menu-state labels for Overwatch (lookback-testbench menus). Seconds from the start of each file.
+// Own footage, recorded by Lookback on 2026-11-27 (store sessions live-overwatch-<pid>-...).
+// Media is never committed: to rerun, put each session's init-001.mp4 followed by its seg-*.m4s, concatenated,
+// at the file path below. "ignore" marks footage that is neither play nor a state to learn (black, the intro
+// cinematic, event pop-ups, map title cards, hero select, the end-of-match pose, replay and progression).
+// Hero select (its backdrop is the hero and the map) and the post-game screens (3 s of footage) had no
+// learnable signature here. Unlabelled time is play.
+// manifest.menus-holdout.json labels two more sessions the states were NOT learned from, for --check.
+{
+  "game": "overwatch",
+  "entries": [
+    {
+      "file": "media/live-overwatch-30356.mp4",
+      "source": "own recording, 2026-11-27 (Lookback store session live-overwatch-30356), 2560x1440",
+      "retention": "owned",
+      "screens": [
+        { "state": "ignore", "start": 0, "end": 20 },
+        { "state": "title", "start": 20, "end": 30 },
+        { "state": "ignore", "start": 30, "end": 41 },
+        { "state": "main_menu", "start": 41, "end": 44 },
+        { "state": "ignore", "start": 44, "end": 45 },
+        { "state": "settings", "start": 45, "end": 50 },
+        { "state": "ignore", "start": 50, "end": 51 },
+        { "state": "main_menu", "start": 51, "end": 67 },
+        { "state": "ignore", "start": 67, "end": 73.5 },
+        { "state": "main_menu", "start": 73.5, "end": 77 },
+        { "state": "ignore", "start": 77, "end": 80 },
+        { "state": "loading", "start": 80.5, "end": 95.9 },
+        { "state": "loading_black", "start": 95.9, "end": 99 },
+        { "state": "ignore", "start": 99, "end": 105 },
+        { "state": "ignore", "start": 105, "end": 118 },
+        { "state": "pause", "start": 251.5, "end": 286 },
+        { "state": "ignore", "start": 318.5, "end": 322 },
+        { "state": "mode_select", "start": 322, "end": 327 },
+        { "state": "ignore", "start": 327, "end": 328 },
+        { "state": "mode_select", "start": 328, "end": 334 },
+        { "state": "ignore", "start": 334, "end": 342 },
+        { "state": "ignore", "start": 342, "end": 344 },
+        { "state": "pause", "start": 626.3, "end": 628 },
+        { "state": "ignore", "start": 628, "end": 641 }
+      ]
+    },
+    {
+      "file": "media/live-overwatch-9344.mp4",
+      "source": "own recording, 2026-11-27 (Lookback store session live-overwatch-9344), 2560x1440",
+      "retention": "owned",
+      "screens": [
+        { "state": "ignore", "start": 0, "end": 1 },
+        { "state": "title", "start": 1, "end": 10 },
+        { "state": "main_menu", "start": 10, "end": 19 },
+        { "state": "ignore", "start": 19, "end": 20 },
+        { "state": "mode_select", "start": 20, "end": 22 },
+        { "state": "ignore", "start": 22, "end": 23 },
+        { "state": "mode_select", "start": 23, "end": 26 },
+        { "state": "ignore", "start": 26, "end": 27 },
+        { "state": "mode_select", "start": 27, "end": 41 },
+        { "state": "ignore", "start": 41, "end": 42 },
+        { "state": "mode_select", "start": 42, "end": 65 },
+        { "state": "ignore", "start": 65, "end": 69 },
+        { "state": "mode_select", "start": 69, "end": 88 },
+        { "state": "ignore", "start": 88, "end": 91 },
+        { "state": "mode_select", "start": 91, "end": 98 },
+        { "state": "loading", "start": 97.6, "end": 99.1 },
+        { "state": "loading_black", "start": 99.1, "end": 101 },
+        { "state": "ignore", "start": 101, "end": 104 },
+        { "state": "ignore", "start": 104, "end": 106 },
+        { "state": "ignore", "start": 129, "end": 139 },
+        { "state": "ignore", "start": 139, "end": 168 },
+        { "state": "ignore", "start": 168, "end": 172 },
+        { "state": "ignore", "start": 368, "end": 386.5 },
+        { "state": "pause", "start": 386.5, "end": 388 },
+        { "state": "ignore", "start": 388, "end": 389.5 },
+        { "state": "ignore", "start": 389.5, "end": 392.5 },
+        { "state": "ignore", "start": 392.5, "end": 394.5 },
+        { "state": "pause", "start": 394.5, "end": 396 },
+        { "state": "ignore", "start": 396, "end": 440 }
+      ]
+    }
+  ]
+}

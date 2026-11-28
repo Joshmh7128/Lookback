@@ -43,6 +43,22 @@ public sealed record ClipperOptions
     public QaOptions Qa { get; init; } = new();
 
     /// <summary>
+    /// With menu states in the profile: a curve peak or event this long before
+    /// the screen starts changing into or out of a menu state belongs to the
+    /// change (a fade, the click that opened it), not to play, and is ignored.
+    /// </summary>
+    public int MenuGuardBeforeMs { get; init; } = 1000;
+
+    /// <summary>As <see cref="MenuGuardBeforeMs"/>, after the menu state changed: the curve is still settling from the full-screen change.</summary>
+    public int MenuGuardAfterMs { get; init; } = 1500;
+
+    /// <summary>
+    /// A candidate whose window is in a menu state for at least this share of
+    /// its frames is dropped; below it, its raw score is scaled by the share in play.
+    /// </summary>
+    public double MenuDropShare { get; init; } = 0.5;
+
+    /// <summary>
     /// Called by <see cref="ClipperRunner"/> for every finished candidate just
     /// <b>before</b> its <c>clip.candidate</c> and <c>qa.report</c> are
     /// published, so the host can put more on them, for example the learned
@@ -59,6 +75,11 @@ public sealed record ClipperOptions
         if (NormalisationWindowSeconds <= 0 || WarmupSeconds < 0 || WarmupSeconds > NormalisationWindowSeconds || StatsIntervalMs <= 0)
         {
             throw new ArgumentException("Normalisation: window must be positive, warm-up between 0 and the window, interval positive.");
+        }
+
+        if (MenuGuardBeforeMs < 0 || MenuGuardAfterMs < 0 || MenuDropShare is <= 0 or > 1)
+        {
+            throw new ArgumentException("Menu guards must not be negative; the menu drop share must be in (0, 1].");
         }
 
         if (ZCap <= 0 || AttackMs <= 0 || ReleaseMs <= 0 || MergeGapMs < 0 || MaxLengthMs <= 0 || HistorySeconds <= 0 || CurvePublishIntervalMs < 0)

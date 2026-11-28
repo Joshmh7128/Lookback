@@ -281,8 +281,9 @@
       // "rule.<event>.<n>": pre-create each event's lane so it is visible before it first fires.
       for (const r of s.rules.values()) if (r.schemaKey === key) r.conds = [];
       names.forEach((n, idx) => {
-        const m = /^rule\.(.+)\.([^.]+)$/.exec(n);
-        const ev = m ? m[1] : n, label = m ? "cond " + m[2] : n;
+        // "menu.<state>" (held) and "menu.<state>.margin" (the screen matches): one card per menu state.
+        const m = /^rule\.(.+)\.([^.]+)$/.exec(n), mm = m ? null : /^menu\.([^.]+?)(\.margin)?$/.exec(n);
+        const ev = m ? m[1] : mm ? "menu: " + mm[1] : n, label = m ? "cond " + m[2] : mm ? (mm[2] ? "match" : "held") : n;
         let r = s.rules.get(ev);
         if (!r) { r = { conds: [], schemaKey: key, armed: new Series(8192) }; s.rules.set(ev, r); }
         r.schemaKey = key; r.conds.push({ label, idx, scale: 1e-6 });
@@ -488,7 +489,7 @@
     for (const v of s.schemas.values()) {
       if (v.rules) continue;
       rows.push({ head: v.source + " · " + v.family, h: 22 });
-      v.names.forEach((n, i) => { if (!n.startsWith("mel.")) rows.push({ name: n, series: v.series[i], color: v.family === "audio" ? "#f0a35a" : "#5aa9ff", h: 26 }); });
+      v.names.forEach((n, i) => { if (!n.startsWith("mel.") && !n.startsWith("color.")) rows.push({ name: n, series: v.series[i], color: v.family === "audio" ? "#f0a35a" : "#5aa9ff", h: 26 }); });
       if (v.mel) rows.push({ name: "mel spectrum", mel: v.mel, h: 64 });
     }
     const total = rows.reduce((a, r) => a + r.h, 0);

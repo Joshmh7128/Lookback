@@ -106,5 +106,80 @@
     { "name": "multikill",   "of": "elimination",        "atLeast": 2, "withinMs": 4000, "weight": 2.5, "clip": { "preMs": 6000, "postMs": 4000 } },
     { "name": "triple_kill", "of": "elimination",        "atLeast": 3, "withinMs": 6000, "weight": 4.0, "clip": { "preMs": 6000, "postMs": 4000 } },
     { "name": "team_fight",  "of": "kill_feed_activity", "atLeast": 3, "withinMs": 8000, "weight": 1.5, "clip": { "preMs": 8000, "postMs": 4000 } }
-  ]
+  ],
+  // Screens that are not play, learned from own footage with `lookback-testbench menus`
+  // (labels: datasets/overwatch/manifest.menus.json; checked on manifest.menus-holdout.json).
+  // Colours are the 6 x 4 colour grid, row-major from the top left. The main menu (its backdrop art rotates),
+  // hero select (its backdrop is the hero and the map) and the post-game screens are not here: they had no
+  // stable signature in that footage. See docs/wiki/Game-Profiles.md, "Menu states".
+  "menus": {
+    "states": [
+      {
+        // Start-up screen: logo, "connecting" / "entering game" over the dark backdrop.
+        "name": "title",
+        "colors": [
+          "#0e1224", "#0f1427", "#28222d", "#27222c", "#0e1224", "#101428",
+          "#0e1224", "#141729", "#555764", "#565866", "#14182b", "#101428",
+          "#0e1224", "#131629", "#212435", "#222536", "#111528", "#101428",
+          "#3e4150", "#0e1225", "#191827", "#1a1928", "#0f1326", "#212434"
+        ],
+        "maxDistance": 0.044
+      },
+      {
+        // The game-mode grid (custom games, practice range, practice stadium...).
+        "name": "mode_select",
+        "colors": [
+          "#434b6f", "#3a4265", "#334770", "#344871", "#2f446e", "#364d7d",
+          "#6856a1", "#815089", "#b19648", "#b29647", "#a1a1a4", "#818fb5",
+          "#6f4fa0", "#7e3b79", "#aa7b2b", "#aa7a25", "#625c5a", "#5e6a8c",
+          "#686ea3", "#646295", "#76768a", "#78798e", "#636f94", "#63719a"
+        ],
+        "maxDistance": 0.087
+      },
+      {
+        // The options screen (from the main menu or the pause menu). Learned from 5 s of footage only.
+        "name": "settings",
+        "colors": [
+          "#7a7d98", "#5d627b", "#556383", "#58607d", null     , "#8687a5",
+          "#c6b8d1", "#74788f", "#5f6987", "#6b738f", "#afb8ca", "#c3b8d6",
+          "#aaa1bc", "#656980", "#505873", "#616982", "#c3c6d5", "#aba4bf",
+          "#72738c", "#585e77", "#4e5671", "#545c76", "#737a90", "#76778e"
+        ],
+        "maxDistance": 0.087
+      },
+      {
+        // "Entering practice range" and similar: a dark band over the blurred menu.
+        "name": "loading",
+        "colors": [
+          "#0e0f1a", "#0c0d18", "#080c19", "#080c19", "#080c19", "#0b0f1f",
+          "#181a2e", "#1a182c", "#26232a", "#25232a", "#212330", "#1c2031",
+          "#151326", "#171122", "#241e22", "#251f23", "#21212a", "#1c1f2c",
+          "#151625", "#131322", "#13141e", "#141520", "#1a1d28", "#181b27"
+        ],
+        "maxDistance": 0.028
+      },
+      {
+        // "Entering game" / "applying update": a dark band over black.
+        "name": "loading_black",
+        "colors": [
+          "#020202", "#030203", "#010408", "#010408", "#010102", "#020205",
+          "#0e1019", "#0e1019", "#14161f", "#12141d", "#0e1019", "#0e1019",
+          "#080a12", "#080a12", "#080a12", "#080a12", "#080a12", "#080a12",
+          "#000000", "#000000", "#000000", "#000000", "#000000", "#000000"
+        ],
+        "maxDistance": 0.037
+      },
+      {
+        // The menu Esc opens during a match (Social, Challenges, Career Profile, Options, Leave Game).
+        "name": "pause",
+        "colors": [
+          "#121235", "#0c0e23", "#0b0e1e", "#0a0d1e", "#0b0d22", "#101135",
+          "#161453", "#1f182f", "#2c2d3d", "#6e6f79", "#181935", "#161455",
+          "#151250", "#3b3c55", "#444654", "#b4b3b9", "#1f213a", "#14124f",
+          "#12123b", "#0c0e25", "#0a0d1e", "#090c1a", "#0b0e24", "#101138"
+        ],
+        "maxDistance": 0.044
+      }
+    ]
+  }
 }

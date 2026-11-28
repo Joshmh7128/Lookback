@@ -17,6 +17,7 @@ const string Usage = """
       lookback-testbench dataset <manifest.json> [--out <dir>] [--tolerance <seconds>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>]
       lookback-testbench fingerprint <manifest.json> [--out <dir>] [--profiles <file-or-folder>]
+      lookback-testbench menus <manifest.json> [--out <dir>] [--profiles <file-or-folder>] [--check]
       lookback-testbench rate <manifest.json> [--out <dir>] [--datasets <dir>] [--profile <id-or-path>]
                                         [--profiles <file-or-folder>] [--model <dir>] [--again] [--play]
       lookback-testbench profiles [--id <kind>=<value>] [--tag <tag>]
@@ -48,6 +49,17 @@ const string Usage = """
       `profiles` prints the tree.
       With a profile, the report gains an events lane, rule-margin lanes and a
       calibration overlay of the profile's HUD regions and the detected HUD mask.
+
+    Menus:
+      Learns the game's menu states (pause, main menu, loading, post-game...)
+      from the manifest's "screens" labels: each state's colour signature over
+      the 6x4 colour grid, the cells that stay steady, and a match distance in
+      the gap between its frames and play. Writes <out>/learned/<game>.json with
+      "menus" filled in; check it with analyze --profiles, then copy the block.
+      Label stretches that are neither play nor a state to learn (a cinematic,
+      a map card) "ignore". --check measures the game's current menu states
+      (with --profiles, the learned ones) on the labels instead: how many of
+      each state's frames match, and how many play frames match by mistake.
 
     Rate:
       Analyses each entry, then asks for 1 to 5 stars per clip candidate on its
@@ -90,6 +102,7 @@ try
         ["analyze", string file, .. var rest] => await AnalyzeAsync(file, ParseFlags(rest), cts.Token),
         ["dataset", string manifest, .. var rest] => await DatasetAsync(manifest, ParseFlags(rest), cts.Token),
         ["fingerprint", string manifest, .. var rest] => await FingerprintAsync(manifest, ParseFlags(rest), cts.Token),
+        ["menus", string manifest, .. var rest] => await MenusAsync(manifest, ParseFlags(rest), cts.Token),
         ["rate", string manifest, .. var rest] => await RateAsync(manifest, ParseFlags(rest), cts.Token),
         ["profiles", .. var rest] => PrintProfiles(ParseFlags(rest)),
         ["profile-view", .. var rest] => ProfileView(ParseFlags(rest)),
@@ -242,6 +255,32 @@ static async Task<int> FingerprintAsync(string manifest, Dictionary<string, stri
 
     Console.WriteLine($"\nprofiles  {Path.Combine(output, "learned")}  (use with --profiles, then check with the dataset command)");
     return 0;
+}
+
+static async Task<int> MenusAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
+{
+    string output = flags.GetValueOrDefault("out", Path.Combine(Environment.CurrentDirectory, "menus-out"));
+    bool check = flags.ContainsKey("check");
+    (IReadOnlyList<LearnedMenuState> states, string? path) = await MenuLearner.RunAsync(manifest, output, Extra(flags), ct, check);
+    if (states.Count == 0)
+    {
+        Console.WriteLine("no screens labelled: add \"screens\": [{ \"state\": \"main_menu\", \"start\": 0, \"end\": 20 }] to an entry");
+        return 1;
+    }
+
+    foreach (LearnedMenuState s in states)
+    {
+        Console.WriteLine(s.Problem is null ? MenuLearner.Describe(s) : $"{s.Name,-14} {(check ? "" : "not learned: ")}{s.Problem}");
+    }
+
+    if (check)
+    {
+        return 0;
+    }
+
+    Console.WriteLine();
+    Console.WriteLine(path is null ? "profile  nothing written" : $"profile  {path}  (use with --profiles, then copy its \"menus\" block into the profile)");
+    return states.Any(s => s.State is not null) ? 0 : 1;
 }
 
 static async Task<int> RateAsync(string manifest, Dictionary<string, string> flags, CancellationToken ct)
@@ -407,7 +446,7 @@ static Dictionary<string, string> ParseFlags(string[] args)
     var flags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     for (int i = 0; i < args.Length; i++)
     {
-        if (args[i] is "--loop" or "--no-wait" or "--again" or "--play")
+        if (args[i] is "--loop" or "--no-wait" or "--again" or "--play" or "--check")
         {
             flags[args[i][2..]] = "true";
             continue;

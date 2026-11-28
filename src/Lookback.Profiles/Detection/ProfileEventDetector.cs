@@ -43,6 +43,8 @@ public sealed class ProfileEventDetector
     private readonly List<Pending> _pending = [];
     private readonly Dictionary<string, Queue<long>> _recent = new(StringComparer.Ordinal);
     private readonly float[] _margins;
+    private readonly MenuTracker _menus;
+    private readonly int _menuOffset;
     private long _now;
 
     /// <summary>A single profile with no tree beneath it.</summary>
@@ -113,15 +115,24 @@ public sealed class ProfileEventDetector
             }
         }
 
+        _menus = new MenuTracker(catalog, _tracker.RootId, frequency);
+        _menuOffset = names.Count;
+        names.AddRange(_menus.ValueNames);
         MarginNames = names;
         _margins = new float[names.Count];
     }
 
-    /// <summary>One name per condition, in rule order: <c>rule.&lt;event&gt;.&lt;n&gt;</c>.</summary>
+    /// <summary>
+    /// One name per condition, in rule order: <c>rule.&lt;event&gt;.&lt;n&gt;</c>; then,
+    /// when the tree has menu states, the menu values (<see cref="MenuTracker.ValueNames"/>).
+    /// </summary>
     public IReadOnlyList<string> MarginNames { get; }
 
     /// <summary>Margins after the last video frame. Positive means the condition held.</summary>
     public ReadOnlySpan<float> Margins => _margins;
+
+    /// <summary>The menu state held now (<c>play</c> when none, or when the tree has no menus).</summary>
+    public string MenuState => _menus.HeldName;
 
     /// <summary>The profile whose rules are being evaluated.</summary>
     public string ActiveProfileId => _tracker.ActiveId;
@@ -140,6 +151,7 @@ public sealed class ProfileEventDetector
     {
         ArgumentNullException.ThrowIfNull(schema);
         _schemas[schema.SchemaId] = (schema.Family, [.. schema.Names]);
+        _menus.OnSchema(schema);
     }
 
     /// <summary>
@@ -191,6 +203,8 @@ public sealed class ProfileEventDetector
             }
 
             Evaluate(t);
+            _menus.OnVideoFrame(t, frame, _tracker.ActiveId);
+            _menus.WriteValues(_margins.AsSpan(_menuOffset));
         }
 
         FinalisePending(_now, events, force: false);

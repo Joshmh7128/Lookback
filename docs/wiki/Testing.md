@@ -67,7 +67,9 @@ Synthetic frames and audio with known answers (`Synth.cs`).
 | | `HudMaskFindsStaticOverlayAndWatchesIt` | Over noisy "gameplay" the mask is exactly the static bar; noise outside is ignored, the bar dropping is not |
 | | `HudIgnoresLetterboxBars` | Static black bars never become HUD |
 | | `BankConcatenatesSignalsInOrder` | One vector per frame, unique names, stable order |
-| | `BankDoesNotAllocatePerFrame` | 50 frames at 384×216 allocate zero bytes |
+| | `ColorGridAveragesEachCell` | A red top-left cell and a half-blue bottom-right cell come out as exactly those means; names run `color.r0c0.r` … `color.r3c5.b` |
+| | `ColorGridCoversOddSizes` | Every pixel of a frame that does not divide evenly lands in one cell; a frame of the wrong size is refused |
+| | `BankDoesNotAllocatePerFrame` | 50 frames at 384×216 allocate zero bytes (colour grid included) |
 | `AudioSignalTests.cs` | `FftMatchesNaiveDft` | The FFT equals a direct DFT to three decimals |
 | | `FftRejectsNonPowerOfTwo` | Invalid sizes fail fast |
 | | `MelScaleRoundTrips` | Hz ↔ mel conversions are inverses; 1 kHz ≈ 1000 mel |
@@ -107,6 +109,14 @@ Synthetic frames and audio with known answers (`Synth.cs`).
 | | `OnlyTheActiveProfilesRulesFire` | Rules of an inactive experience never fire; events carry the profile active when they fired |
 | | `CandidatesMergeOverlappingEventsAndSplitDistantOnes` | Overlapping events become one candidate with summed score and the strongest event as peak |
 | | `CandidatesNeverExceedTheMaximumLength` | A long run of events is split into candidates no longer than the maximum |
+| `MenuStateTests.cs` | `MenusLoadFromJsonAndValidate` | A `menus` block loads; `#rrggbb` and null cells parse and format back exactly; menus require the colour grid signals |
+| | `BadMenusAreRejected` (7 cases) | Upper-case or reserved `play` names, the wrong number of cells, bad hex, no compared cell, a zero `maxDistance`, a state defined twice |
+| | `ChildrenInheritReplaceAndDisableMenuStates` | A mode inherits its game's states, replaces one by name, disables another, and inherits `enterMs` while setting `exitMs` |
+| | `DetectorHoldsAStateOnlyAfterItLasts` | A few menu-like frames change nothing; a state is held after `enterMs`, dated from its first matching frame; menu to menu takes `enterMs`, back to play `exitMs` |
+| | `IgnoredCellsDoNotCount` | Null cells (the game seen through a menu) do not affect the distance |
+| | `TrackerPublishesMenuValuesAndFollowsTheActiveProfile` | `menu.pause`, `menu.pause.margin`, `menu.any` are written; a mode that disables the state leaves the menu with it |
+| | `ATreeWithoutMenusTracksNothing` | No menu states: no values, always `play`, and no `menu.*` margins on the profile runner |
+| | `ProfileDetectorPublishesTheMenuStateWithItsMargins` | The profile detector appends the menu values after the rule margins and holds `pause` on a pause screen |
 | `RegionSignalTests.cs` | `MeasuresOnlyInsideTheRegion` | Luma, activity, saturation and red are measured inside each region and nowhere else |
 | | `DoesNotAllocatePerFrame` | 100 frames allocate zero bytes |
 
@@ -130,10 +140,15 @@ loud bursts where a test puts them. No ffmpeg needed.
 | | `ProfilesCanAddComponentsFromExistingSignals` | A profile can weigh a region signal; it becomes a component and a curve lane |
 | | `EachCandidateCarriesItsFeaturesByName` | Every candidate's features follow the engine's name list and add up: sources, event counts and confidences, curve summary over the window, the clamped z of a flash, the QA black fraction |
 | | `SteadyFramesAllocateNothing` | Thousands of frames after warm-up allocate zero bytes |
+| `MenuTests.cs` | `EnteringAndLeavingAMenuOpensNoCandidate` | Synthetic play → flat dark-blue menu → play, with flash, motion and scene cut jumping at each change: candidates without menu states, none with them |
+| | `PlayAroundAMenuStillClips` | A flash in play 15 s after the menu closed is still one candidate, with no menu reason |
+| | `EventsInsideAMenuAreDroppedAndPartlyMenuWindowsArePenalised` | An event while the menu is held gives nothing; a kill whose window runs a quarter into the menu is kept with a lower score and a `menu` reason; one mostly in the menu is dropped |
+| | `AProfileWithoutMenusIsUnchangedByTheGrid` | With the colour grid in the schema and no menu states, candidates are identical to a session without the grid |
+| | `SteadyFramesWithMenusAllocateNothing` | With menu states, frames inside a held menu allocate zero bytes |
 | `PartsTests.cs` | `SelectMatchesSortingOnRandomInput` | Quickselect and the median agree with sorting on 200 random arrays |
 | | `NormaliserUsesMedianAndMadAfterWarmUp` | Warm-up, sampling interval, median and MAD with an outlier, the spread floor, and the window rolling |
 | | `PeaksUseHysteresisAndTheRefractoryPeriod` | Dips between `low` and `high` do not end a peak; its time is the maximum; it waits out the refractory period; two crossings 600 ms apart fold into one with a window covering both |
-| | `FuserMergesTouchingWindowsUpToTheMaximumLength` | Windows within the gap merge, distant ones do not, the maximum length is respected, a bridging window joins two groups, and a group closes only once the horizon passes it |
+| | `FuserMergesTouchingWindowsUpToTheMaximumLength` | Windows within the gap merge, distant ones do not, the maximum length is respected, a bridging window joins two groups, windows beside a full group join the newer group that still has room, and a group closes only once the horizon passes it |
 | | `FlagHistoryCountsAWindowAcrossTheRingWrap` | Black, frozen and silent counts are right for any window, including after the ring wraps |
 | | `ProfileClipperBlocksInheritAndAreValidated` | A child's components replace the parent's by signal and inherit unset values; bad blocks and typos are rejected; `low ≥ high` is caught after inheritance; unknown signals are reported |
 | | `DefaultsAreCompleteAndGameAgnostic` | The defaults set everything, use no region signals, and keep more pre-roll than post-roll |
@@ -168,6 +183,9 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | | `ManifestsAreCheckedAndResultsJoinedToTheirEntries` | Manifest problems are flagged and `scores.json` results land on the right entries |
 | | `ManifestTextCannotBreakOutOfThePage` | A `</script>` in a manifest cannot inject script |
 | | `BrokenManifestIsReportedNotFatal` | A manifest that fails to parse is shown as a problem; the rest still loads |
+| `MenuLearnerTests.cs` | `LearnsASteadyScreenAndLeavesOutItsBusyCell` | A dark steady screen with one wildly changing cell: the cell is left out, all its frames match and no play frame does, and the learned state validates |
+| | `AScreenThatLooksLikePlayIsNotLearned` | A "menu" with play's colours is reported as inseparable and not written; too few frames and no play are reported too |
+| | `LabelsSplitFramesIntoStatesPlayAndEdges` | Frames inside a screen label are that state, outside are play, near an edge or in an `ignore` label are left out |
 | `ProfileTests.cs` | `GenericProfileFindsTheFlashAsAnImpact` | Exactly one `impact` at 2.0 s, with its evidence; events and rule lanes reach the report |
 | | `OverwatchProfileAddsRegionSignalsAndCalibrationOverlay` | Region signals are produced, no missing-signal warnings, region boxes are in the page |
 | | `PngHasValidSignatureChunksAndPixels` | The HUD-mask PNG has a valid signature and CRCs (checked by an independent CRC) and decodes to the input pixels |
