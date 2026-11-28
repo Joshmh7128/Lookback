@@ -31,6 +31,63 @@ public sealed class RatingStoreTests : IDisposable
     }
 
     [Fact]
+    public void Backfill_replaces_the_features_of_the_current_rating_and_keeps_everything_else()
+    {
+        RatingStore store = Store();
+        Assert.True(store.Append(TestData.Session(), TestData.Rating(), TestData.Candidate(withFeatures: false), "shell").Written);
+        RatingRecord rated = Assert.Single(store.Read("overwatch").Records);
+        Assert.Equal(["overwatch"], store.Games());
+
+        float[] full = new float[ClipFeatureSchema.Count];
+        for (int i = 0; i < full.Length; i++)
+        {
+            full[i] = i;
+        }
+
+        full[ClipFeatureSchema.IndexOf(ClipFeatureSchema.LoudnessZ)] = float.NaN;
+        _time.Advance(TimeSpan.FromDays(1));
+        RatingWriteResult r = store.AppendBackfill(rated, full, "abc123");
+
+        Assert.True(r.Written, r.Reason);
+        RatingRecord now = Assert.Single(RatingStore.Current(store.Read("overwatch").Records));
+        Assert.Equal(rated with { Features = now.Features, BackfilledAt = now.BackfilledAt, SourceDigest = now.SourceDigest }, now);
+        Assert.Equal(_time.GetUtcNow(), now.BackfilledAt);
+        Assert.Equal(rated.RatedAt, now.RatedAt);
+        Assert.Equal("abc123", now.SourceDigest);
+        Assert.Equal(5f, now.Features[5]);
+        Assert.Null(now.Features[ClipFeatureSchema.IndexOf(ClipFeatureSchema.LoudnessZ)]);
+        Assert.Equal(2, store.Read("overwatch").Records.Count); // appended: the last line wins
+    }
+
+    [Fact]
+    public void Backfill_is_refused_for_a_changed_rating_a_check_rating_or_a_session_that_may_not_persist()
+    {
+        RatingStore store = Store();
+        store.Append(TestData.Session(), TestData.Rating(), TestData.Candidate(withFeatures: false), "shell");
+        RatingRecord rated = Assert.Single(store.Read("overwatch").Records);
+        float[] full = new float[ClipFeatureSchema.Count];
+
+        Assert.False(store.AppendBackfill(rated with { Stars = 5 }, full).Written); // re-rated since
+        Assert.False(store.AppendBackfill(rated with { Retention = "ephemeral" }, full).Written);
+        Assert.False(store.AppendBackfill(rated with { SourceKind = "official-player" }, full).Written);
+        Assert.False(store.AppendBackfill(rated with { Source = RatingStore.CheckSource }, full).Written);
+        Assert.False(store.AppendBackfill(rated, new float[3]).Written);
+        Assert.Single(store.Read("overwatch").Records);
+
+        store.Append(TestData.Session(), TestData.Rating(stars: 0), TestData.Candidate(withFeatures: false), "shell");
+        Assert.False(store.AppendBackfill(rated, full).Written); // cleared since
+    }
+
+    [Fact]
+    public void A_footage_sessions_digest_is_kept_on_its_ratings()
+    {
+        SessionStarted session = TestData.Session(Retention.Owned, SourceKind.File, "");
+        session.SourceDigest = "d1";
+        Assert.True(Store().Append(session, TestData.Rating(), TestData.Candidate(), "shell").Written);
+        Assert.Equal("d1", Assert.Single(Store().Read("overwatch").Records).SourceDigest);
+    }
+
+    [Fact]
     public void Line_matches_the_sample_the_ml_tests_read()
     {
         RatingWriteResult r = Store().Append(TestData.Session(), TestData.Rating(), TestData.Candidate(), "shell");

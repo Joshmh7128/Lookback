@@ -51,6 +51,7 @@ function showTab(name: string): void {
   if (name === "timeline") drawTimeline();
   if (name === "profiles" && !peLoaded) peLoadList(null);
   if (name === "storage") void stLoad();
+  if (name === "training") void trLoad();
 }
 
 function placeEmbed(): void {
@@ -187,7 +188,47 @@ function visibleCandidates(s: LibrarySessionSnapshot | undefined): CandidateView
         return true;
     }
   };
-  return (s?.candidates ?? []).filter(keep).sort((a, b) => (sort === "score" ? b.score - a.score : sort === "stars" ? b.rating - a.rating || a.peakQpc - b.peakQpc : a.peakQpc - b.peakQpc));
+  // "Least sure": closest to an even chance first, so each rating teaches the model the most; without a model, in time order.
+  const unsure = (c: CandidateView): number => (c.modelScore === null ? 1 : Math.abs(c.highlight - 0.5));
+  const order = (a: CandidateView, b: CandidateView): number => {
+    switch (sort) {
+      case "score":
+        return b.score - a.score;
+      case "stars":
+        return b.rating - a.rating || a.peakQpc - b.peakQpc;
+      case "unsure":
+        return unsure(a) - unsure(b) || a.peakQpc - b.peakQpc;
+      default:
+        return a.peakQpc - b.peakQpc;
+    }
+  };
+  return (s?.candidates ?? []).filter(keep).sort(order);
+}
+
+/** The rate queue's next stop: the next unrated candidate in this session's order after `after`, else the first in a later session that has one. */
+function nextUnrated(sessionId: string, after: string | null): { session: string; candidate: string } | null {
+  const sessions = library.sessions.filter((s) => s.sourceKind !== "official_player");
+  const start = Math.max(0, sessions.findIndex((s) => s.id === sessionId));
+  for (let i = 0; i < sessions.length; i++) {
+    const s = sessions[(start + i) % sessions.length]!;
+    const rows = visibleCandidates(s);
+    const from = i === 0 && after ? rows.findIndex((c) => c.id === after) + 1 : 0;
+    const next = rows.slice(from).find((c) => c.rating === 0 && c.id !== after);
+    if (next) return { session: s.id, candidate: next.id };
+  }
+
+  return null;
+}
+
+function goTo(stop: { session: string; candidate: string } | null): void {
+  if (!stop) return;
+  if (stop.session !== selectedSession) {
+    selectedSession = stop.session;
+    selectedCandidate = stop.candidate;
+    renderLibrary();
+  } else {
+    selectCandidate(stop.candidate);
+  }
 }
 
 /** A 1-5 star control; clicking the current star (or ×) clears it. */
@@ -223,7 +264,11 @@ function stars(c: CandidateView, s: LibrarySessionSnapshot, big = false): HTMLDi
 }
 
 function rate(sessionId: string, candidateId: string, rating: Rating): void {
+  // In the rate queue, rating the selected candidate moves on to the next unrated one.
+  const advance = rating > 0 && $<HTMLInputElement>("lib-queue").checked && sessionId === selectedSession && candidateId === selectedCandidate;
+  const next = advance ? nextUnrated(sessionId, candidateId) : null;
   void api.rate(sessionId, candidateId, rating);
+  goTo(next);
 }
 
 function renderLibrary(): void {
@@ -404,6 +449,9 @@ document.addEventListener("keydown", (e) => {
   } else if ((e.key === "ArrowUp" || e.key === "k") && rows.length) {
     e.preventDefault();
     selectCandidate(rows[Math.max(0, at - 1)]!.id);
+  } else if ((e.key === "n" || e.key === "N") && s) {
+    e.preventDefault();
+    goTo(nextUnrated(s.id, at >= 0 ? rows[at]!.id : null));
   } else if ((e.key === "s" || e.key === "S") && s && at >= 0) {
     e.preventDefault();
     const c = rows[at]!;
@@ -1141,4 +1189,74 @@ async function stLoad(): Promise<void> {
 }
 
 $("st-refresh").addEventListener("click", () => void stLoad());
+
+// ---------------------------------------------------------------- training: rating backfill
+
+let trTimer: number | null = null;
+
+function trSay(text: string | null): void {
+  const p = $("tr-status");
+  p.hidden = !text;
+  p.textContent = text ?? "";
+}
+
+async function trStart(sessionId: string): Promise<void> {
+  trSay(null);
+  const refused = await api.backfill(sessionId);
+  if (refused) trSay(refused);
+  await trLoad();
+}
+
+async function trLoad(): Promise<void> {
+  if (trTimer !== null) {
+    window.clearTimeout(trTimer);
+    trTimer = null;
+  }
+
+  const plan = await api.backfillPlan();
+  const body = $("tr-backfill");
+  body.replaceChildren();
+  if (!plan) {
+    $("tr-summary").textContent = "The recorder is not answering (is it running?).";
+    return;
+  }
+
+  const pending = plan.sessions.filter((s) => s.ratings > 0);
+  const count = pending.reduce((n, s) => n + s.ratings, 0);
+  $("tr-summary").textContent = count
+    ? `${count} rating${count === 1 ? "" : "s"} in ${pending.length} session${pending.length === 1 ? "" : "s"} need features.`
+    : "Every rating has the clipper's features.";
+  for (const s of plan.sessions) {
+    const live = s.sourceKind === "live-game";
+    const footage = live
+      ? s.footage
+        ? `stored, ${stSize(s.footage.bytes)}${s.footage.sweepUtc ? ` · swept ${stWhen(s.footage.sweepUtc)}` : " · kept"}`
+        : "gone (swept)"
+      : s.digest
+        ? "a file (fingerprint known)"
+        : `a file, at least ${Math.ceil(s.windowEndSeconds ?? 0)} s long`;
+    const job = s.job;
+    const status = job ? `${job.state === "failed" ? "failed: " : ""}${job.message}${job.refused.length ? ` (${job.refused.length} refused)` : ""}` : "–";
+    const actions = el("td", { class: "actions" });
+    if (s.ratings > 0) {
+      const b = stButton(live ? "Backfill" : "Choose file…", () => void trStart(s.sessionId));
+      b.disabled = plan.busy || (live && !s.footage);
+      actions.append(b);
+    }
+
+    body.append(el("tr", {},
+      el("td", { class: "name" }, s.sessionId),
+      el("td", {}, s.game),
+      el("td", {}, stWhen(s.ratedUtc)),
+      el("td", {}, String(s.ratings)),
+      el("td", {}, s.ratings > 0 ? footage : "–"),
+      el("td", { class: job?.state === "failed" ? "bad" : "" }, status),
+      actions));
+  }
+
+  if (!plan.sessions.length) body.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "Nothing to backfill.")));
+  if (plan.busy && activeTab === "training") trTimer = window.setTimeout(() => void trLoad(), 1000);
+}
+
+$("tr-refresh").addEventListener("click", () => void trLoad());
 $("st-clear-cache").addEventListener("click", () => void stDelete("cache", {}, "every cached clip (saved clips stay)"));

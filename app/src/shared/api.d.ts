@@ -327,6 +327,39 @@ export interface StorageListing {
   volumeFreeBytes: number;
 }
 
+/** How a backfill job on one session went (the recorder's backfill-plan). */
+export interface BackfillJob {
+  state: "starting" | "running" | "done" | "failed";
+  message: string;
+  written: number;
+  total: number;
+  refused: string[];
+}
+
+/** A rated session whose ratings lack the clipper's features. */
+export interface BackfillSession {
+  sessionId: string;
+  game: string;
+  /** "live-game" (read back from the store) or "file" (you choose the file). */
+  sourceKind?: string;
+  /** Ratings that need features; 0 once a job filled them all. */
+  ratings: number;
+  ratedUtc?: string;
+  /** How far into the footage the latest rated window ends, in seconds. */
+  windowEndSeconds?: number;
+  /** The footage's fingerprint, when its ratings carry one. */
+  digest?: string | null;
+  /** A live recording's stored footage; null when it is gone. */
+  footage?: { bytes: number; sweepUtc: string | null } | null;
+  job?: BackfillJob;
+}
+
+export interface BackfillPlan {
+  sessions: BackfillSession[];
+  /** A job is running. */
+  busy: boolean;
+}
+
 export interface LookbackApi {
   getState(): Promise<RecorderState>;
   onState(listener: (state: RecorderState) => void): () => void;
@@ -354,6 +387,10 @@ export interface LookbackApi {
   getStorage(): Promise<StorageState | null>;
   /** Everything in the recorder's store; null when the recorder cannot say. */
   listStorage(): Promise<StorageListing | null>;
+  /** Rated sessions whose ratings lack features; null when the recorder cannot say. */
+  backfillPlan(): Promise<BackfillPlan | null>;
+  /** Starts recomputing one session's features (asking for the footage file when it is a file session). Null when started; otherwise why not ("" when the file dialog was cancelled). */
+  backfill(sessionId: string): Promise<string | null>;
   /** Deletes a session's footage, a saved clip, a cached clip, or the whole cache; the reason when refused, else null. */
   deleteStored(kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }): Promise<string | null>;
   /** Keeps a session out of the sweep, or lets it go. */

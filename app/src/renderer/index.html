@@ -16,6 +16,7 @@
     <button data-tab="datasets">Datasets</button>
     <button data-tab="profiles">Profiles</button>
     <button data-tab="storage">Storage</button>
+    <button data-tab="training">Training</button>
     <button data-tab="settings">Settings</button>
     <span class="spacer"></span>
     <span id="pill-recorder" class="pill">recorder</span>
@@ -99,7 +100,7 @@
             <p class="rate-question"><strong>Is this moment a highlight worth keeping?</strong><br><span class="muted">Rate the content, not the video quality (that is checked automatically).</span></p>
             <div id="preview-stars" class="stars big"></div>
             <p id="preview-info" class="muted">Select a candidate to preview it.</p>
-            <p class="muted keys">Keys: <kbd>1</kbd>–<kbd>5</kbd> rate · <kbd>0</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> move · <kbd>S</kbd> save the clip (live recordings) · <kbd>Space</kbd> play or pause</p>
+            <p class="muted keys">Keys: <kbd>1</kbd>–<kbd>5</kbd> rate · <kbd>0</kbd> clear · <kbd>↑</kbd>/<kbd>↓</kbd> move · <kbd>N</kbd> next unrated · <kbd>S</kbd> save the clip (live recordings) · <kbd>Space</kbd> play or pause</p>
           </div>
         </div>
         <div class="row toolbar">
@@ -121,8 +122,10 @@
               <option value="time">by time</option>
               <option value="score">by score</option>
               <option value="stars">by stars</option>
+              <option value="unsure">model least sure first</option>
             </select>
           </label>
+          <label title="After you rate, jump to the next unrated candidate, then on to the next session with any"><input type="checkbox" id="lib-queue" checked> rate queue</label>
           <span id="lib-count" class="muted"></span>
           <span class="spacer"></span>
           <button id="lib-forget" title="Remove this session from the list (memory only)">Forget session</button>
@@ -193,6 +196,18 @@
     <h3>Clip cache</h3>
     <table class="clips storage"><thead><tr><th>Clip</th><th>Size</th><th>Deleted after</th><th></th></tr></thead><tbody id="st-cache"></tbody></table>
     <p class="muted note">Every candidate from a recording is cut into the cache as it is proposed, so it plays at once in the Library. Rating it keeps its clip: it moves to saved clips. Unrated clips leave the cache after a day unwatched, or the least recently watched first when the cache passes its budget. A session's footage is swept a day after it ends unless you keep it; deleting a session leaves its saved clips.</p>
+  </section>
+
+  <section id="tab-training" class="tab">
+    <h3>Ratings that need features</h3>
+    <p class="muted note">Ratings stored before the clipper computed its full feature set carry only 3 of its 30 numbers, so training learns little from them. Backfill re-analyses the session's footage and fills in each rated window's features; your stars are not touched. A live recording is read back from the store while its footage is kept (keep it in Storage if it is about to be swept); for a footage file, choose the file the ratings came from. Newer ratings carry the file's fingerprint, so a wrong file is refused.</p>
+    <div class="row toolbar">
+      <div id="tr-summary" class="muted">Loading…</div>
+      <span class="spacer"></span>
+      <button id="tr-refresh">Refresh</button>
+    </div>
+    <p id="tr-status" class="muted" hidden></p>
+    <table class="clips storage"><thead><tr><th>Session</th><th>Game</th><th>Rated</th><th>Ratings</th><th>Footage</th><th>Status</th><th></th></tr></thead><tbody id="tr-backfill"></tbody></table>
   </section>
 
   <section id="tab-settings" class="tab">

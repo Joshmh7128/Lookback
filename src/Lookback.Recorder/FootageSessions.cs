@@ -64,6 +64,7 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, Cli
             Title = request.Path, // the shell links previews to the file by this exact path
             QpcFrequency = Frequency,
             GameProfile = request.Profile ?? "",
+            SourceDigest = FootageDigest.TryOf(request.Path) ?? "", // lets a rating be matched back to this file later
         };
         string? problem = RetentionRules.Validate(started);
         if (problem is not null)
@@ -89,8 +90,6 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, Cli
         using var privateBus = new InProcessEventBus();
         using IEventSubscription forward = privateBus.Subscribe("*", capacity: 1 << 18);
         Task pump = Task.Run(() => ForwardAsync(forward, ct), CancellationToken.None);
-        ProfileRunner? profile = null;
-        ClipperRunner? clipper = null;
         string reason = "end of file";
         long endQpc = 0;
         try
@@ -107,35 +106,9 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, Cli
 
             endQpc = QpcTime.FromTimeSpan(media.Duration, Frequency);
             string? startId = request.Profile is { Length: > 0 } p ? p : null;
-            AnalysisFormat format = AnalysisFormat.Default;
-            IReadOnlyList<HudRegion> regions = startId is null ? [] : catalog.SubtreeRegions(catalog.PathTo(startId)[0].Id);
-            IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format.Width, format.Height)] : [];
-
-            // The clipper publishes the one candidate set: the profile's events fused with the excitement curve.
-            profile = startId is null ? null : new ProfileRunner(privateBus, catalog, startId, DetectionMethod.Manual, sessionId, Frequency, publishCandidates: false);
             // Every candidate gets its features (and a model score when there is a model) before it is published.
-            ClipperOptions clipping = scoring.Options(Frequency);
-            clipper = startId is null ? new ClipperRunner(privateBus, sessionId, Frequency, clipping) : new ClipperRunner(privateBus, catalog, startId, sessionId, Frequency, clipping);
-            ProfileRunner? p0 = profile;
-            ClipperRunner c0 = clipper;
-            var pacer = new ReplayPacer(() => Math.Max(p0?.Queued ?? 0, c0.Queued));
-            var analyzer = new FootageAnalyzer(privateBus, format, Frequency);
-            FootageAnalysisResult result = await analyzer.AnalyzeAsync(
-                request.Path,
-                sessionId,
-                new FootageAnalysisOptions { HasAudio = media.HasAudio, Pacer = pacer, ExtraVideoSignals = extra },
-                ct).ConfigureAwait(false);
-
-            // The profile flushes its last events first; the clipper waits on them.
-            if (profile is not null)
-            {
-                await profile.DisposeAsync().ConfigureAwait(false);
-                profile = null;
-            }
-
-            await clipper.DisposeAsync().ConfigureAwait(false);
-            LogFinished(logger, request.Path, sessionId, result.VideoFrames, c0.CandidatesPublished, result.Elapsed.TotalSeconds);
-            clipper = null;
+            (long frames, long candidates, TimeSpan elapsed) = await AnalyseAsync(privateBus, request.Path, media, catalog, startId, sessionId, scoring.Options(Frequency), ct).ConfigureAwait(false);
+            LogFinished(logger, request.Path, sessionId, frames, candidates, elapsed.TotalSeconds);
         }
         catch (OperationCanceledException)
         {
@@ -148,6 +121,57 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, Cli
         }
         finally
         {
+            Envelope end = factory.Create(Topics.Session, endQpc);
+            end.SessionEnded = new SessionEnded { Reason = reason };
+            privateBus.Publish(end);
+            forward.Dispose(); // drains what is queued, then ends the forwarder
+            await pump.ConfigureAwait(false);
+            _slots.Release();
+        }
+    }
+
+    /// <summary>
+    /// The analysis itself, on <paramref name="privateBus"/>: the footage
+    /// through the signals, the profile (when <paramref name="startId"/> is
+    /// set) and the clipper, as fast as they keep up. The clipper publishes the
+    /// one candidate set, the profile's events fused with the excitement curve.
+    /// Shared by <c>analyze</c> and the rating backfill.
+    /// </summary>
+    internal static async Task<(long Frames, long Candidates, TimeSpan Elapsed)> AnalyseAsync(
+        IEventBus privateBus, string path, MediaInfo media, ProfileCatalog catalog, string? startId, string sessionId, ClipperOptions clipping, CancellationToken ct)
+    {
+        AnalysisFormat format = AnalysisFormat.Default;
+        IReadOnlyList<HudRegion> regions = startId is null ? [] : catalog.SubtreeRegions(catalog.PathTo(startId)[0].Id);
+        IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format.Width, format.Height)] : [];
+        ProfileRunner? profile = startId is null ? null : new ProfileRunner(privateBus, catalog, startId, DetectionMethod.Manual, sessionId, Frequency, publishCandidates: false);
+        ClipperRunner? clipper = null;
+        try
+        {
+            clipper = startId is null ? new ClipperRunner(privateBus, sessionId, Frequency, clipping) : new ClipperRunner(privateBus, catalog, startId, sessionId, Frequency, clipping);
+            ProfileRunner? p0 = profile;
+            ClipperRunner c0 = clipper;
+            var pacer = new ReplayPacer(() => Math.Max(p0?.Queued ?? 0, c0.Queued));
+            var analyzer = new FootageAnalyzer(privateBus, format, Frequency);
+            FootageAnalysisResult result = await analyzer.AnalyzeAsync(
+                path,
+                sessionId,
+                new FootageAnalysisOptions { HasAudio = media.HasAudio, Pacer = pacer, ExtraVideoSignals = extra },
+                ct).ConfigureAwait(false);
+
+            // The profile flushes its last events first; the clipper waits on them.
+            if (profile is not null)
+            {
+                await profile.DisposeAsync().ConfigureAwait(false);
+                profile = null;
+            }
+
+            await clipper.DisposeAsync().ConfigureAwait(false);
+            long published = c0.CandidatesPublished;
+            clipper = null;
+            return (result.VideoFrames, published, result.Elapsed);
+        }
+        finally
+        {
             if (profile is not null)
             {
                 await profile.DisposeAsync().ConfigureAwait(false);
@@ -157,13 +181,6 @@ internal sealed partial class FootageSessions(IEventBus bus, ILogger logger, Cli
             {
                 await clipper.DisposeAsync().ConfigureAwait(false);
             }
-
-            Envelope end = factory.Create(Topics.Session, endQpc);
-            end.SessionEnded = new SessionEnded { Reason = reason };
-            privateBus.Publish(end);
-            forward.Dispose(); // drains what is queued, then ends the forwarder
-            await pump.ConfigureAwait(false);
-            _slots.Release();
         }
     }
 

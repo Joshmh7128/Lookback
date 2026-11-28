@@ -76,6 +76,7 @@ classDiagram
         string title
         fixed64 qpc_frequency
         string game_profile
+        string source_digest
     }
     class GameLifecycle {
         Kind kind
@@ -132,6 +133,11 @@ classDiagram
 **`SessionStarted`** opens every session and is always the first record in a
 session log. `source_kind` and `retention` drive [Data Retention](Data-Retention).
 `qpc_frequency` makes the log's timestamps interpretable anywhere.
+
+`source_digest` (field 7) is set on FILE sessions only: a fingerprint of the
+footage file (SHA-256 over its length and its first and last MiB, hex), which
+the session's ratings carry so the [rating backfill](Clip-Scoring#backfill)
+can tell whether a file is the footage they came from. It names no path.
 
 **`SessionEnded`** closes a session, with a reason.
 

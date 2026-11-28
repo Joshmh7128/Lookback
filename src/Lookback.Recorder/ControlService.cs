@@ -26,9 +26,12 @@ namespace Lookback.Recorder;
 /// (RAM ring, else the stored segments) into <c>clips/</c> and publishes
 /// <c>ClipSaved</c>; refused with <c>clips-full</c> at the clips budget, and
 /// <c>unsupported</c> for footage files or without live capture.</item>
+/// <item><c>backfill-plan</c> and <c>backfill</c>: ratings stored without the
+/// clipper's features, by session, and a job that recomputes them from the
+/// session's footage (<see cref="RatingBackfill"/>).</item>
 /// </list>
 /// </summary>
-internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger, CaptureService? capture = null)
+internal sealed partial class ControlService(IEventBus bus, SessionDirectory sessions, RatingStore ratings, FootageSessions footage, ILogger logger, CaptureService? capture = null, RatingBackfill? backfill = null)
 {
     private const int MaxIdLength = 128;
 
@@ -70,6 +73,8 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
                 "storage" => Storage(id),
                 "storage-delete" => await StorageDeleteAsync(id, root).ConfigureAwait(false),
                 "storage-keep" => StorageKeep(id, root),
+                "backfill-plan" => BackfillPlan(id),
+                "backfill" => Backfill(id, root),
                 string other => Ack(id, false, "bad-request", $"Unknown command \"{other}\"."),
                 null => Ack(id, false, "bad-request", "Missing \"type\"."),
             };
@@ -194,6 +199,24 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         }
 
         return Ack(id, true, null, null, data: lines);
+    }
+
+    private string BackfillPlan(string id) =>
+        backfill is null
+            ? Ack(id, false, "unsupported", "Backfill is not available in this recorder.")
+            : Ack(id, true, null, null, data: backfill.Plan());
+
+    private string Backfill(string id, JsonElement root)
+    {
+        string? sessionId = Str(root, "sessionId");
+        if (backfill is null || sessionId is null)
+        {
+            return Ack(id, false, backfill is null ? "unsupported" : "bad-request", backfill is null ? "Backfill is not available in this recorder." : "backfill needs \"sessionId\" (and \"path\" for a footage file).");
+        }
+
+        return backfill.Start(sessionId, Str(root, "path")) is { } refused
+            ? Ack(id, false, "bad-request", refused)
+            : Ack(id, true, null, null);
     }
 
     private string Storage(string id) =>

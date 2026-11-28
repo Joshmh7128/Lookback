@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { readFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
 import { dirname, join } from "node:path";
-import type { BrowseState, CandidateView, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
+import type { BackfillPlan, BrowseState, CandidateView, EmbeddedView, FootageJob, LibrarySnapshot, PreviewSource, RecorderState, Settings, ShellPaths, StorageListing, StorageState, StreamState, ViewBounds, ViewerReport } from "../shared/api";
 import { browseArgs, runBrowse } from "./browse";
-import { HISTORY_TIMEOUT_MS, historyEnvelopes, historyMessage, newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "./control";
+import { backfillMessage, backfillPlanMessage, HISTORY_TIMEOUT_MS, historyEnvelopes, historyMessage, newRequestId, parseStorage, PREVIEW_TIMEOUT_MS, previewMessage, previewPath, rateMessage, refusal, SAVE_TIMEOUT_MS, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "./control";
 import { parseEmbedSource, validateEmbedSource } from "./embeds";
 import { FootageManager } from "./footage";
 import { validRect } from "./frames";
@@ -609,6 +609,35 @@ function registerIpc(): void {
     }
 
     return null;
+  });
+  // Rating backfill: the plan is cached so a start knows whether to ask for the footage file.
+  let backfillPlan: BackfillPlan | null = null;
+  handle("lookback:backfill-plan", fromMain, async (): Promise<BackfillPlan | null> => {
+    const id = newRequestId();
+    const ack = await stream.request(id, backfillPlanMessage(id), HISTORY_TIMEOUT_MS);
+    backfillPlan = ack?.ok && typeof ack.data === "object" && ack.data !== null ? (ack.data as BackfillPlan) : null;
+    return backfillPlan;
+  });
+  handle("lookback:backfill", fromMain, async (sessionId): Promise<string | null> => {
+    if (typeof sessionId !== "string") return "Unknown session.";
+    const row = backfillPlan?.sessions.find((s) => s.sessionId === sessionId);
+    if (!row) return "Refresh the list and try again.";
+    let path: string | undefined;
+    if (row.sourceKind !== "live-game") {
+      if (!mainWindow) return "";
+      const picked = await dialog.showOpenDialog(mainWindow, {
+        title: `The footage the ${row.game} ratings of ${sessionId} came from`,
+        properties: ["openFile"],
+        filters: [{ name: "Video", extensions: VIDEO_EXTENSIONS }],
+      });
+      path = picked.canceled ? undefined : picked.filePaths[0];
+      if (!path) return "";
+    }
+
+    const id = newRequestId();
+    const ack = await stream.request(id, backfillMessage(id, sessionId, path), HISTORY_TIMEOUT_MS);
+    if (!ack) return "The recorder did not answer.";
+    return ack.ok ? null : refusal(ack);
   });
   handle("lookback:storage-keep", fromMain, async (sessionId, keep): Promise<boolean> => {
     if (typeof sessionId !== "string" || typeof keep !== "boolean") return false;

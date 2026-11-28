@@ -71,6 +71,10 @@ message SessionStarted {
   fixed64 qpc_frequency = 5;
   // Optional game identity if already known (live capture knows it).
   string game_profile = 6;
+  // FILE sessions only: a fingerprint of the footage file (see FootageDigest:
+  // SHA-256 over its length and its first and last MiB, hex), so a rating can
+  // be matched back to the footage it came from without storing a path.
+  string source_digest = 7;
 }
 
 message SessionEnded {

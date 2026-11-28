@@ -181,3 +181,5 @@ dialog.notice h2 { color: #f3c0c0; }
 .pe-body tr.off td { opacity: 0.55; }
 .pe-body tr.reset td { text-decoration: line-through; opacity: 0.6; }
 .pe-body .add { margin-top: 8px; }
+
+table.storage td.bad { color: var(--bad); }

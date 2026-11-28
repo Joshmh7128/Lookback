@@ -29,6 +29,7 @@ internal sealed partial class StreamHostService(
     private FootageSessions? _footage;
     private ClipScoring? _scoring;
     private CaptureService? _capture;
+    private RatingBackfill? _backfill;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -56,7 +57,9 @@ internal sealed partial class StreamHostService(
                 _capture = CaptureService.Start(bus, o, _sessions, logger, _scoring, profiles);
             }
 
-            control = new ControlService(bus, _sessions, new RatingStore(o.ResolvedDatasetsDirectory), _footage, logger, _capture);
+            var ratings = new RatingStore(o.ResolvedDatasetsDirectory);
+            _backfill = new RatingBackfill(ratings, logger, _capture, profiles);
+            control = new ControlService(bus, _sessions, ratings, _footage, logger, _capture, _backfill);
             LogRatings(logger, o.ResolvedDatasetsDirectory);
         }
 
@@ -96,6 +99,12 @@ internal sealed partial class StreamHostService(
         {
             await _bridge.DisposeAsync().ConfigureAwait(false);
             _bridge = null;
+        }
+
+        if (_backfill is not null)
+        {
+            await _backfill.DisposeAsync().ConfigureAwait(false); // before the store it reads from closes
+            _backfill = null;
         }
 
         if (_capture is not null)

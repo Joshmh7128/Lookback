@@ -194,6 +194,7 @@ public sealed class ControlServiceTests : IAsyncDisposable
         Envelope header = mine.First(e => e.PayloadCase == Envelope.PayloadOneofCase.SessionStarted);
         Assert.Equal(clip, header.SessionStarted.Title); // the shell links previews by this exact path
         Assert.Equal(SourceKind.File, header.SessionStarted.SourceKind);
+        Assert.Equal(FootageDigest.Of(clip), header.SessionStarted.SourceDigest); // so its ratings can find this file again
         Assert.Equal("end of file", mine[^1].SessionEnded.Reason);
         Assert.DoesNotContain(mine, e => e.Topic.StartsWith("signals.", StringComparison.Ordinal));
         List<ClipCandidate> candidates = [.. mine.Where(e => e.Topic == Topics.ClipCandidate).Select(e => e.ClipCandidate)];
@@ -217,6 +218,72 @@ public sealed class ControlServiceTests : IAsyncDisposable
         using JsonDocument line = JsonDocument.Parse(File.ReadAllLines(RatingFiles()[0])[^1]);
         int known = line.RootElement.GetProperty("features").EnumerateArray().Count(v => v.ValueKind == JsonValueKind.Number);
         Assert.True(known > 10, $"only {known} features stored with the rating"); 
+    }
+
+    [Fact]
+    public async Task Ratings_without_features_are_backfilled_from_their_footage_and_a_wrong_file_is_refused()
+    {
+        Assert.SkipWhen(FfmpegLocator.FindFfmpeg() is null, "ffmpeg not installed");
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        string clip = MakeClip(Path.Combine(_dir, "flashes.mp4"), seconds: 10, moments: [3, 7]);
+        var store = new RatingStore(Path.Combine(_dir, "datasets"));
+        await using var backfill = new RatingBackfill(store, NullLogger.Instance);
+        var control = new ControlService(_bus, _sessions, store, _footage, NullLogger.Instance, backfill: backfill);
+
+        // Two ratings stored before the clipper's features: one session without a fingerprint, one with another file's.
+        SessionStarted Header(string digest) => new() { SourceKind = SourceKind.File, Retention = Retention.Owned, QpcFrequency = FootageSessions.Frequency, GameProfile = "generic", SourceDigest = digest };
+        ClipCandidate Bare(string id) => new() { CandidateId = id, StartQpc = 0, EndQpc = 5 * (ulong)FootageSessions.Frequency, PeakQpc = 3 * (ulong)FootageSessions.Frequency, HeuristicScore = 0.6f, GameProfile = "generic" };
+        Assert.True(store.Append(Header(""), new ClipRating { SessionId = "old", CandidateId = "old-c0001", Stars = 5 }, Bare("old-c0001"), "shell").Written);
+        Assert.True(store.Append(Header("00ff"), new ClipRating { SessionId = "other", CandidateId = "other-c0001", Stars = 2 }, Bare("other-c0001"), "shell").Written);
+        Assert.All(store.Read("generic").Records, r => Assert.True(RatingBackfill.NeedsFeatures(r)));
+
+        async Task<JsonElement> Send(object command)
+        {
+            string? reply = await control.HandleAsync(JsonSerializer.Serialize(command), ct);
+            using JsonDocument doc = JsonDocument.Parse(reply!);
+            return doc.RootElement.Clone();
+        }
+
+        async Task<JsonElement> Finished(string sessionId)
+        {
+            var wait = Stopwatch.StartNew();
+            while (wait.Elapsed < TimeSpan.FromSeconds(90))
+            {
+                JsonElement plan = (await Send(new { type = "backfill-plan", id = "p" })).GetProperty("data");
+                JsonElement row = plan.GetProperty("sessions").EnumerateArray().Single(x => x.GetProperty("sessionId").GetString() == sessionId);
+                if (row.TryGetProperty("job", out JsonElement job) && job.GetProperty("state").GetString() is "done" or "failed")
+                {
+                    return job;
+                }
+
+                await Task.Delay(100, ct);
+            }
+
+            throw new TimeoutException();
+        }
+
+        JsonElement listed = (await Send(new { type = "backfill-plan", id = "p0" })).GetProperty("data").GetProperty("sessions");
+        Assert.Equal(["old", "other"], listed.EnumerateArray().Select(x => x.GetProperty("sessionId").GetString()));
+        Assert.Equal("bad-request", Error(await Send(new { type = "backfill", id = "b0", sessionId = "old" }))); // no file chosen
+
+        // The right footage: the rating gets the full vector, keeping its stars.
+        Assert.True((await Send(new { type = "backfill", id = "b1", sessionId = "old", path = clip })).GetProperty("ok").GetBoolean());
+        JsonElement done = await Finished("old");
+        Assert.Equal("done", done.GetProperty("state").GetString());
+        RatingRecord now = RatingStore.Current(store.Read("generic").Records).Single(r => r.SessionId == "old");
+        Assert.Equal(5, now.Stars);
+        Assert.NotNull(now.BackfilledAt);
+        Assert.False(RatingBackfill.NeedsFeatures(now));
+        Assert.True(now.Features.Count(f => f is not null) > 10);
+        Assert.Equal(FootageDigest.Of(clip), now.SourceDigest);
+
+        // A file whose fingerprint is not the one on the ratings is refused, and nothing is written.
+        int lines = store.Read("generic").Records.Count;
+        Assert.True((await Send(new { type = "backfill", id = "b2", sessionId = "other", path = clip })).GetProperty("ok").GetBoolean());
+        JsonElement refused = await Finished("other");
+        Assert.Equal("failed", refused.GetProperty("state").GetString());
+        Assert.Contains("fingerprint", refused.GetProperty("message").GetString(), StringComparison.Ordinal);
+        Assert.Equal(lines, store.Read("generic").Records.Count);
     }
 
     /// <summary>A test pattern with a 0.2 s flash and a white-noise burst at each moment (as the clipper's footage tests make).</summary>

@@ -78,6 +78,15 @@ line means something upstream went wrong, so it is reported rather than
 skipped. The trained model (`model.onnx`, `model.json`) holds regression
 weights, feature means and calibration numbers, not footage.
 
+The [rating backfill](Clip-Scoring#backfill) writes through the same store:
+`RatingStore.AppendBackfill` re-checks the rating's own retention and source
+with `RetentionRules.CanPersist`, refuses clipper-check lines, and replaces
+only the feature vector. To re-read a live recording it writes the session's
+own footage once into the clip cache (a session that may persist, through
+`SegmentStore.WritePreview`, which checks the same rule) and deletes it after
+the analysis. A footage file is read where it is; only its fingerprint is
+kept on the ratings, never its path.
+
 ## The official-player viewer (M2)
 
 The viewer plays YouTube or Twitch videos through their official embedded

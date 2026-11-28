@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeMessage, historyEnvelopes, historyMessage, parseAck, parseStorage, previewMessage, previewPath, rateMessage, refusal, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "../main/control";
+import { analyzeMessage, backfillMessage, backfillPlanMessage, historyEnvelopes, historyMessage, parseAck, parseStorage, previewMessage, previewPath, rateMessage, refusal, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "../main/control";
 import { StreamClient } from "../main/stream";
 import { socketFactory } from "./fakes";
 
@@ -97,6 +97,9 @@ test("history, storage and their acks: data passes through, and only envelopes w
   assert.deepEqual(JSON.parse(storageMessage("s")), { type: "storage", id: "s" });
   assert.deepEqual(JSON.parse(storageDeleteMessage("d", "clip", { path: "C:/store/clips/a.mp4" })), { type: "storage-delete", id: "d", kind: "clip", path: "C:/store/clips/a.mp4" });
   assert.deepEqual(JSON.parse(storageKeepMessage("k", "live-1", true)), { type: "storage-keep", id: "k", sessionId: "live-1", keep: true });
+  assert.deepEqual(JSON.parse(backfillPlanMessage("p")), { type: "backfill-plan", id: "p" });
+  assert.deepEqual(JSON.parse(backfillMessage("b", "live-1")), { type: "backfill", id: "b", sessionId: "live-1" });
+  assert.deepEqual(JSON.parse(backfillMessage("b", "footage-1", "D:\f.mp4")), { type: "backfill", id: "b", sessionId: "footage-1", path: "D:\f.mp4" });
   const ack = parseAck({ type: "ack", id: "h", ok: true, data: [{ sessionId: "live-1", sessionStarted: {} }, { noSession: true }, 7, null] });
   assert.ok(ack);
   assert.equal(historyEnvelopes(ack).length, 1);

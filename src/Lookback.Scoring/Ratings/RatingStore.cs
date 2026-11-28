@@ -391,8 +391,89 @@ public sealed partial class RatingStore
             RatedAt = _time.GetUtcNow(),
             Source = source,
             ParentCandidateId = candidate?.ParentCandidateId is { Length: > 0 } parent ? parent : null,
+            SourceDigest = session.SourceDigest is { Length: > 0 } digest ? digest : null,
         };
     }
+
+    /// <summary>The games with a ratings file, in name order.</summary>
+    public IReadOnlyList<string> Games()
+    {
+        if (!Directory.Exists(DatasetRoot))
+        {
+            return [];
+        }
+
+        return [.. Directory.EnumerateDirectories(DatasetRoot)
+            .Select(Path.GetFileName)
+            .OfType<string>()
+            .Where(g => IsGameId(g) && File.Exists(PathFor(g)))
+            .Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Re-appends the current rating <paramref name="rated"/> with features
+    /// recomputed from its footage (<see cref="RatingRecord.BackfilledAt"/> set),
+    /// so training reads the full vector; the last line wins. Everything else
+    /// on the line is kept: the stars, times, scores, source and rating time.
+    /// Refused unless the rating may persist (its retention and source, as
+    /// <see cref="RetentionRules.CanPersist"/> judges them), is one of your own
+    /// ratings (not a clipper-check line), and is still the current rating of
+    /// that candidate with the same stars.
+    /// </summary>
+    /// <param name="rated">The rating as it was read from its file.</param>
+    /// <param name="features">The <c>clip-features/1</c> vector; NaN for a missing value.</param>
+    /// <param name="sourceDigest">The footage's fingerprint, kept when the rating had none.</param>
+    public RatingWriteResult AppendBackfill(RatingRecord rated, ReadOnlySpan<float> features, string? sourceDigest = null)
+    {
+        ArgumentNullException.ThrowIfNull(rated);
+        if (rated.DerivedWrite is not null || rated.Source == CheckSource)
+        {
+            return RatingWriteResult.Refused("Clipper-check ratings hold numbers only; there is no footage to backfill them from.");
+        }
+
+        if (features.Length != ClipFeatureSchema.Count)
+        {
+            return RatingWriteResult.Refused($"Expected {ClipFeatureSchema.Count} features, got {features.Length}.");
+        }
+
+        if (!IsGameId(rated.Game))
+        {
+            return RatingWriteResult.Refused($"'{rated.Game}' is not a game id.");
+        }
+
+        if (ParseEnum<SourceKind>(rated.SourceKind) is not { } kind || ParseEnum<Retention>(rated.Retention) is not { } retention)
+        {
+            return RatingWriteResult.Refused($"The rating's source '{rated.SourceKind}' or retention '{rated.Retention}' is unknown.");
+        }
+
+        var session = new SessionStarted { SourceKind = kind, Retention = retention, PermissionRef = rated.PermissionRef, QpcFrequency = rated.QpcFrequency };
+        if (!RetentionRules.CanPersist(session))
+        {
+            return RatingWriteResult.Refused(RetentionRules.Validate(session) ?? "That session may not be stored.");
+        }
+
+        RatingRecord? current = Current(Read(rated.Game).Records).LastOrDefault(r => r.SessionId == rated.SessionId && r.CandidateId == rated.CandidateId);
+        if (current is null || current.Stars != rated.Stars)
+        {
+            return RatingWriteResult.Refused($"Candidate '{rated.CandidateId}' was re-rated or cleared since; nothing was changed.");
+        }
+
+        float[] copy = features.ToArray();
+        RatingRecord record = current with
+        {
+            FeatureSchema = ClipFeatureSchema.Id,
+            Features = [.. copy.Select(f => float.IsFinite(f) ? f : (float?)null)],
+            BackfilledAt = _time.GetUtcNow(),
+            SourceDigest = current.SourceDigest ?? (sourceDigest is { Length: > 0 } d ? d : null),
+        };
+        string path = PathFor(rated.Game);
+        AppendLine(path, record);
+        return new RatingWriteResult(true, null, record, path);
+    }
+
+    private static T? ParseEnum<T>(string kebab)
+        where T : struct, Enum =>
+        Enum.GetValues<T>().Cast<T?>().FirstOrDefault(v => Kebab(v!.Value.ToString()) == kebab);
 
     [GeneratedRegex("^[a-z0-9][a-z0-9-]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex GameIdPattern();
