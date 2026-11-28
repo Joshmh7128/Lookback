@@ -46,6 +46,8 @@ public sealed class LiveAnalyzer : IAsyncDisposable
     private long _droppedAudio;
     private long _processedVideo;
     private long _processedAudio;
+    private long _videoBusyTicks;
+    private long _videoMaxTicks;
 
     public LiveAnalyzer(IEventBus bus, string sessionId, IClock clock, AnalysisFormat? format = null, IEnumerable<IVideoSignal>? extraVideoSignals = null)
     {
@@ -104,6 +106,12 @@ public sealed class LiveAnalyzer : IAsyncDisposable
     public long ProcessedVideo => Interlocked.Read(ref _processedVideo);
 
     public long ProcessedAudio => Interlocked.Read(ref _processedAudio);
+
+    /// <summary>Worker time spent in the video signal bank so far (summed over processed frames).</summary>
+    public TimeSpan VideoBusy => System.Diagnostics.Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _videoBusyTicks));
+
+    /// <summary>The slowest single frame in the video signal bank so far.</summary>
+    public TimeSpan VideoBusyMax => System.Diagnostics.Stopwatch.GetElapsedTime(0, Interlocked.Read(ref _videoMaxTicks));
 
     /// <summary>The standard video signals, for the HUD mask and similar state.</summary>
     public VideoSignalBank VideoBank => _videoBank;
@@ -196,7 +204,16 @@ public sealed class LiveAnalyzer : IAsyncDisposable
         while (_readyFrames.TryRead(out int slot))
         {
             VideoFrame f = _frames[slot];
-            _videoPublisher.Publish(f.Qpc, f.Qpc + _frameTicks, _videoBank.Process(f));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            ReadOnlySpan<float> values = _videoBank.Process(f);
+            long dt = System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            Interlocked.Add(ref _videoBusyTicks, dt);
+            if (dt > Interlocked.Read(ref _videoMaxTicks))
+            {
+                Interlocked.Exchange(ref _videoMaxTicks, dt); // only the worker writes it
+            }
+
+            _videoPublisher.Publish(f.Qpc, f.Qpc + _frameTicks, values);
             _freeFrames.TryWrite(slot);
             Interlocked.Increment(ref _processedVideo);
         }

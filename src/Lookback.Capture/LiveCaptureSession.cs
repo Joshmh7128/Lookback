@@ -7,6 +7,7 @@ using Lookback.Contracts.V1;
 using Lookback.Core.Bus;
 using Lookback.Core.Diagnostics;
 using Lookback.Core.Time;
+using Lookback.Media.Frames;
 using Lookback.Signals;
 using Lookback.Signals.Video;
 using Windows.Graphics.Capture;
@@ -49,8 +50,11 @@ public sealed record LiveSessionOptions
     /// <summary>For <see cref="CaptureBackend.Hook"/>: the test app <see cref="Hook.HookInjector"/> launched. The target's adapter must be the hook's.</summary>
     public Hook.HookedProcess? HookTarget { get; init; }
 
-    /// <summary>Extra per-frame signals, such as a game profile's regions.</summary>
+    /// <summary>Extra per-frame signals, such as a game profile's regions. Region signals must be laid out for <see cref="Analysis"/>.</summary>
     public IReadOnlyList<IVideoSignal> ExtraVideoSignals { get; init; } = [];
+
+    /// <summary>The analysis frame the GPU downscales to and the signals read. Default 384x216.</summary>
+    public AnalysisFormat Analysis { get; init; } = AnalysisFormat.Default;
 }
 
 /// <summary>
@@ -85,8 +89,8 @@ public sealed class LiveCaptureSession : IAsyncDisposable
         try
         {
             _source = CreateSource(_gpu, options);
-            _downscaler = new GpuDownscaler(_gpu);
-            _analyzer = new LiveAnalyzer(bus, SessionId, SystemClock.Instance, extraVideoSignals: options.ExtraVideoSignals);
+            _downscaler = new GpuDownscaler(_gpu, options.Analysis);
+            _analyzer = new LiveAnalyzer(bus, SessionId, SystemClock.Instance, options.Analysis, options.ExtraVideoSignals);
         }
         catch
         {
@@ -133,7 +137,14 @@ public sealed class LiveCaptureSession : IAsyncDisposable
         _analyzer.ProcessedVideo,
         _analyzer.DroppedVideo,
         _analyzer.ProcessedAudio,
-        _clock.Elapsed);
+        _clock.Elapsed)
+    {
+        TapBusy = _downscaler.Busy,
+        ReadbackBusy = _downscaler.ReadbackBusy,
+        ReadbackWaits = _downscaler.ReadbackWaits,
+        AnalysisBusy = _analyzer.VideoBusy,
+        AnalysisBusyMax = _analyzer.VideoBusyMax,
+    };
 
     /// <summary>Validates retention, starts capture and announces the session.</summary>
     public static LiveCaptureSession Start(IEventBus bus, LiveSessionOptions options)
@@ -219,6 +230,21 @@ public sealed class LiveCaptureSession : IAsyncDisposable
 /// <summary>Counters for a live session.</summary>
 public readonly record struct SessionStats(long Captured, long Analysed, long AnalysisDropped, long AudioHops, TimeSpan Elapsed)
 {
+    /// <summary>Capture-thread time in the analysis tap (GPU downscale dispatch plus readback).</summary>
+    public TimeSpan TapBusy { get; init; }
+
+    /// <summary>The readback part of <see cref="TapBusy"/>: mapping staging textures and copying the frame to the analyzer.</summary>
+    public TimeSpan ReadbackBusy { get; init; }
+
+    /// <summary>Times the readback ring was full and its oldest slot was mapped with a blocking wait (usually already finished).</summary>
+    public long ReadbackWaits { get; init; }
+
+    /// <summary>Analysis worker time in the video signal bank.</summary>
+    public TimeSpan AnalysisBusy { get; init; }
+
+    /// <summary>The slowest single analysis frame.</summary>
+    public TimeSpan AnalysisBusyMax { get; init; }
+
     public double CaptureFps => Elapsed.TotalSeconds > 0 ? Captured / Elapsed.TotalSeconds : 0;
 
     public double AnalysisFps => Elapsed.TotalSeconds > 0 ? Analysed / Elapsed.TotalSeconds : 0;

@@ -76,6 +76,11 @@ Synthetic frames and audio with known answers (`Synth.cs`).
 | | `CentroidAndMelPeakFollowTheTone` | A 1 kHz tone puts the centroid and the loudest mel band near 1 kHz |
 | | `OnsetFiresOnATransientNotOnASteadyTone` | 100 hops of steady tone give no onsets; a noise burst gives one |
 | | `BankDoesNotAllocatePerHop` | 100 hops allocate zero bytes |
+| `AnalysisFormatTests.cs` | `Parses_sizes_and_keeps_rate_and_audio` (7 cases) | `WxH` (any case, padded) and `default` parse; frame rate, sample rate and hop stay the defaults |
+| | `The_default_size_is_the_default_instance` | `384x216` is `AnalysisFormat.Default`; other sizes are not the default size |
+| | `Refuses_bad_sizes` (10 cases) | Missing parts, signs, odd sizes, sizes below 64x36 or above 8K, and `native` (only the testbench knows the footage size) are refused with a message |
+| | `With_size_validates_and_keeps_the_rest` | `WithSize` keeps the frame rate and refuses odd sizes |
+| | `Live_analyzer_runs_at_a_larger_size_and_times_its_work` | A 768x432 `LiveAnalyzer` refuses a 384x216 frame, takes padded rows, processes every frame and reports its signal time (`VideoBusy`, `VideoBusyMax`) |
 
 ## `Lookback.Profiles.Tests`
 
@@ -165,6 +170,8 @@ flash at 2.0 to 2.2 s and a space in its file name (`Fixture.cs`).
 | | `FlashInTheFootageShowsUpInTheTimeline` | The `flash.brighten` peak lands at 2.0 to 2.2 s |
 | | `EphemeralWritesNothing` | It analyses, and the output folder is never created |
 | | `PermissionedWithoutReferenceIsRefusedBeforeAnyWork` | Refused up front; nothing created |
+| | `AnalysisSizeReachesEverySignalIncludingRegions` (3 cases) | `--analysis native`, `768x432` and the default reach the analyzer and the Overwatch region signals (no missing-signal warnings), and the run reports its signal time per frame |
+| | `NativeAnalysisIsTheFootageSizeRoundedToEven` | `native` is the footage's size rounded down to even; `WxH` and the default pass through; a bad size is an error |
 | | `RelativeHrefIsEscaped` | The viewer's link to the footage survives spaces and `#` |
 | | `SessionIdIsFileNameSafe` | Odd file names give safe session ids |
 | `ReportWriterTests.cs` | `TitleCannotBreakOutOfThePage` | A `</script>` title cannot inject script |
@@ -413,6 +420,8 @@ included (build 19045), except the pre-19041 fallback test. See [Live Capture](L
 | `LiveSchemaTests.cs` | `A_clipper_created_after_the_analyzer_reads_frames_only_once_the_schemas_are_published_again` | No GPU: a clipper subscribed after the live analyzer named its signals reads nothing until `LiveAnalyzer.PublishSchemas`, then publishes its curve. This is why the live recorder fired no game events and proposed no candidates before the fix |
 | | `Ratings_without_features_are_backfilled_from_their_footage_and_a_wrong_file_is_refused` | Two ratings with floor features only are listed by `backfill-plan`; `backfill` with no file is refused; with the generated clip, the rating gets more than 10 features, `backfilledAt` and the clip's fingerprint, keeping its stars; a session whose ratings carry another file's fingerprint fails and writes nothing |
 | | `Footage_is_analysed_into_a_file_session_whose_candidates_can_be_rated` | A generated clip becomes a FILE session titled with its exact path, carrying the file's fingerprint, with candidates and no `signals.*` envelopes on the bus; one of its candidates is then rated and stored, with its full `clip-features/1` vector (more than 10 values, not the 3 floor ones) |
+| `AnalysisSizeOptionTests.cs` | `Analysis_size_resolves_with_the_default_as_fallback` (6 cases) | `Recorder:AnalysisSize` unset or empty is 384x216, `768x432` and `1920x1080` are used, an invalid value falls back to 384x216 |
+| | `Unset_is_todays_format` | Without the setting the recorder analyses exactly as before |
 | `ClipScoringTests.cs` | `Without_a_model_every_candidate_still_gets_its_features_and_keeps_its_heuristic` | No model: the clipper's features become all 30 of `clip-features/1`; no model score; the heuristic probability stands |
 | | `With_a_model_a_candidate_of_a_game_it_knows_gets_a_model_score_and_others_keep_the_heuristic` | The committed fixture model scores a `synth-a` mode's candidate (raw score, calibrated probability, copied to the QA report) and leaves other games on the heuristic, features attached either way |
 | | `Clipper_options_carry_the_annotation` | The options handed to every clipper carry the hook |

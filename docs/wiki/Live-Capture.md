@@ -25,7 +25,7 @@ flowchart LR
 | Stage | Type | What it does |
 |---|---|---|
 | Capture | `WgcCaptureSource`, `DxgiDuplicationSource`, `HookCaptureSource` | Frames as GPU textures with their present/compose QPC. WGC only sends a frame when the window changes. The hook source delivers every present of our own test apps with the QPC of the `Present` call ([Present Hook](Present-Hook)) |
-| Analysis tap | `GpuDownscaler` → `LiveAnalyzer` | Letterboxed 384x216 BGRA, read back through a 3-deep staging ring, thinned to 30 fps |
+| Analysis tap | `GpuDownscaler` → `LiveAnalyzer` | Letterboxed 384x216 BGRA (the size is `LiveSessionOptions.Analysis`; see [Analysis Resolution](Analysis-Resolution)), read back through a 3-deep staging ring, thinned to 30 fps. `SessionStats` reports the capture-thread time of the tap and its readback and the worker's signal time |
 | Convert | `Nv12Converter` | D3D11 video processor: scale to the encode size, BT.709 limited range, letterboxed. Runs on the capture thread for every frame and keeps the latest result |
 | Clock | `EncodeTicker` | A high-resolution waitable timer at the tier's fps encodes the latest converted frame at every tick, repeating it when nothing new arrived |
 | Encode | `MfVideoEncoder` | Media Foundation encoder MFT chosen by the capture adapter's LUID; async with the DXGI device manager for hardware, sync for the software H.264 fallback. CBR, 2 s GOP, no B-frames, low latency |
@@ -205,6 +205,13 @@ $cap = "src\Lookback.Capture.Cli\bin\Release\net10.0-windows10.0.22621.0\lookbac
 & $cap --monitor 0 --seconds 20 --profiler
 & $cap --monitor 0 --seconds 12 --encode 8 --out clip.mp4 --codec hevc --fps 60 --size 1920x1080 --mbps 20
 ```
+
+`--analysis <WxH>` sets the analysis frame size and `--regions <profile id>`
+adds a built-in profile's HUD region signals, so the bench measures the
+analysis cost of a real profile. Each line then also shows the capture-thread
+time of the tap (`tap`, with the `readback` part and how often the capture
+thread had to wait for one) and the worker's `signals` time, per analysed
+frame; [Analysis Resolution](Analysis-Resolution) has the numbers.
 
 `--encode <s> --out <file>` runs the encode path beside the analysis tap and,
 at the end, writes the last `s` seconds from the ring as an MP4 (starting on

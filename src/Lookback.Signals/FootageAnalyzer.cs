@@ -10,7 +10,20 @@ using Lookback.Signals.Video;
 namespace Lookback.Signals;
 
 /// <summary>Counts from one analysis run, and the HUD mask learned from the footage (null if warm-up never finished).</summary>
-public sealed record FootageAnalysisResult(long VideoFrames, long AudioHops, TimeSpan Elapsed, HudMask? HudMask = null);
+public sealed record FootageAnalysisResult(long VideoFrames, long AudioHops, TimeSpan Elapsed, HudMask? HudMask = null)
+{
+    /// <summary>The analysis format the frames were converted to.</summary>
+    public AnalysisFormat Format { get; init; } = AnalysisFormat.Default;
+
+    /// <summary>Time spent in the video signal bank, summed over every frame (decode and publishing excluded).</summary>
+    public TimeSpan VideoSignalTime { get; init; }
+
+    /// <summary>The slowest single frame in the video signal bank.</summary>
+    public TimeSpan VideoSignalMax { get; init; }
+
+    /// <summary>Mean video signal bank time per frame, in milliseconds.</summary>
+    public double VideoMsPerFrame => VideoFrames == 0 ? 0 : VideoSignalTime.TotalMilliseconds / VideoFrames;
+}
 
 /// <summary>A learned HUD mask at analysis resolution; true marks a HUD pixel.</summary>
 public sealed record HudMask(int Width, int Height, bool[] Pixels);
@@ -60,7 +73,8 @@ public sealed class FootageAnalyzer
         var source = new FfmpegFileSource(path, _format, _frequency);
         VideoSignalBank bank = VideoSignalBank.CreateDefault(_format, options.ExtraVideoSignals);
 
-        Task<long> video = Task.Run(() => RunVideoAsync(source, bank, sessionId, options.Pacer, options.Progress, cancellationToken), cancellationToken);
+        var timing = new BankTiming();
+        Task<long> video = Task.Run(() => RunVideoAsync(source, bank, sessionId, options.Pacer, options.Progress, timing, cancellationToken), cancellationToken);
         Task<long> audio = options.HasAudio
             ? Task.Run(() => RunAudioAsync(source, sessionId, options.Pacer, cancellationToken), cancellationToken)
             : Task.FromResult(0L);
@@ -69,10 +83,22 @@ public sealed class FootageAnalyzer
 
         HudSignal? hud = bank.Signals.OfType<HudSignal>().FirstOrDefault();
         HudMask? mask = hud is { IsReady: true } ? new HudMask(_format.Width, _format.Height, hud.Mask.ToArray()) : null;
-        return new FootageAnalysisResult(await video.ConfigureAwait(false), await audio.ConfigureAwait(false), started.Elapsed, mask);
+        return new FootageAnalysisResult(await video.ConfigureAwait(false), await audio.ConfigureAwait(false), started.Elapsed, mask)
+        {
+            Format = _format,
+            VideoSignalTime = System.Diagnostics.Stopwatch.GetElapsedTime(0, timing.Total),
+            VideoSignalMax = System.Diagnostics.Stopwatch.GetElapsedTime(0, timing.Max),
+        };
     }
 
-    private async Task<long> RunVideoAsync(FfmpegFileSource source, VideoSignalBank bank, string sessionId, ReplayPacer? pacer, IProgress<TimeSpan>? progress, CancellationToken ct)
+    private sealed class BankTiming
+    {
+        public long Total { get; set; }
+
+        public long Max { get; set; }
+    }
+
+    private async Task<long> RunVideoAsync(FfmpegFileSource source, VideoSignalBank bank, string sessionId, ReplayPacer? pacer, IProgress<TimeSpan>? progress, BankTiming timing, CancellationToken ct)
     {
         var publisher = new SignalPublisher(_bus, new EnvelopeFactory(new ManualClock(_frequency), sessionId, "signals.video"),
             Topics.SignalsVideo, SignalPublisher.VideoSchemaId, SignalFamily.Video, bank.Names);
@@ -82,7 +108,12 @@ public sealed class FootageAnalyzer
         long count = 0;
         await foreach (VideoFrame frame in source.ReadVideoAsync(ct).ConfigureAwait(false))
         {
-            publisher.Publish(frame.Qpc, frame.Qpc + frameTicks, bank.Process(frame));
+            long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+            ReadOnlySpan<float> values = bank.Process(frame);
+            long dt = System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            timing.Total += dt;
+            timing.Max = Math.Max(timing.Max, dt);
+            publisher.Publish(frame.Qpc, frame.Qpc + frameTicks, values);
             count++;
             if (pacer is not null)
             {

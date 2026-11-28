@@ -118,6 +118,14 @@ internal sealed partial class CaptureService : IAsyncDisposable
         };
         service._cacheWorker = Task.Run(service.CacheLoopAsync);
         LogStarted(logger, root, options.FootageBudgetGB, options.ClipsBudgetGB, swept.BytesFreed >> 20);
+        if (!AnalysisFormat.TryParse(options.AnalysisSize, out AnalysisFormat? analysis, out string? analysisProblem))
+        {
+            LogAnalysisSizeRefused(logger, analysisProblem!);
+        }
+        else if (!analysis!.IsDefaultSize)
+        {
+            LogAnalysisSize(logger, analysis.Size);
+        }
         service._worker = Task.Run(service.WorkAsync);
         service._status = Task.Run(service.StatusLoopAsync);
         service._detection = WindowsDetection.CreateRunner(bus, profiles.Current(), settingsPath: options.DetectionSettings);
@@ -817,9 +825,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
             // 2. Capture and analysis, with the game's HUD regions as extra signals.
             ProfileCatalog catalog = owner._profiles.Current(); // the profiles folder as it is now, so edits apply from this game on
             string profileId = catalog.Contains(game.Match.ProfileId) ? game.Match.ProfileId : "generic";
-            AnalysisFormat format = AnalysisFormat.Default;
+            AnalysisFormat format = o.ResolvedAnalysisFormat;
             IReadOnlyList<HudRegion> regions = catalog.SubtreeRegions(catalog.PathTo(profileId)[0].Id);
-            IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format.Width, format.Height)] : [];
+            IVideoSignal[] extra = regions.Count > 0 ? [new RegionSignal(regions, format)] : [];
             LiveCaptureSession session = LiveCaptureSession.Start(owner._bus, new LiveSessionOptions
             {
                 Target = target,
@@ -828,6 +836,7 @@ internal sealed partial class CaptureService : IAsyncDisposable
                 Title = profileId == "generic" ? Path.GetFileNameWithoutExtension(game.ExeName) : game.Match.DisplayName,
                 GameProfile = profileId,
                 ExtraVideoSignals = extra,
+                Analysis = format,
             });
 
             // The bridge's snapshot resets a session on SessionStarted: announce the game again after it.
@@ -928,6 +937,12 @@ internal sealed partial class CaptureService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Capture ready: store {Root}, footage budget {Footage} GB, clips budget {Clips} GB ({Swept} MB of expired segments swept)")]
     private static partial void LogStarted(ILogger logger, string root, double footage, double clips, long swept);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Analysis frames at {Size} (Recorder:AnalysisSize); profile thresholds were set at 384x216")]
+    private static partial void LogAnalysisSize(ILogger logger, string size);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Recorder:AnalysisSize ignored, analysing at 384x216: {Problem}")]
+    private static partial void LogAnalysisSizeRefused(ILogger logger, string problem);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Recording {Game}: {Encoder}, tier {Tier}, ring {Ring:F0} s; audio: {Audio}")]
     private static partial void LogLive(ILogger logger, string game, string encoder, string tier, double ring, string audio);

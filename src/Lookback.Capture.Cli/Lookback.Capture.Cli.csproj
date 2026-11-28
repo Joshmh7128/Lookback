@@ -14,5 +14,6 @@
     <ProjectReference Include="..\Lookback.Governor.Windows\Lookback.Governor.Windows.csproj" />
     <ProjectReference Include="..\Lookback.Stream\Lookback.Stream.csproj" />
     <ProjectReference Include="..\Lookback.Profiler\Lookback.Profiler.csproj" />
+    <ProjectReference Include="..\Lookback.Profiles\Lookback.Profiles.csproj" />
   </ItemGroup>
 </Project>
