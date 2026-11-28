@@ -47,7 +47,8 @@ current menu states (or, with `--profiles`, learned ones) against the labels:
 
 ```
 $ lookback-testbench menus datasets/overwatch/manifest.menus.json --out menus-out
-pause            1294 frames, 24/24 cells, maxDistance 0.071: matches 100% of its frames, 0.0% of 26890 play frames, 0.0% of 6000 other-state frames
+pause             996 frames, 24/24 cells, maxDistance 0.044: matches 100 % of its frames, 0.0 % of 19794 play frames, 0.0 % of 3837 other-state frames
+main_menu      not learned: its frames are no closer to its signature (95% within 0.125) than other frames are (1% within 0.089); it cannot be told apart by colour
 ```
 
 `profile-view` and `profile-save` are the desktop app's profile editor:

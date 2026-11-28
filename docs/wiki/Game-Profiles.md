@@ -445,7 +445,23 @@ On the same four sessions, the clipper's candidates with and without these
 states (`analyze --profile overwatch`; "menu" is the share of a candidate's
 window on labelled non-play screens):
 
-CANDIDATE_TABLE
+| Session | Candidates, main's clipper | This branch, without menu states | With menu states | Mostly on a learned menu screen (main → with menus) | Mostly on another non-play screen (main → with menus) |
+|---|---|---|---|---|---|
+| 30356 (learned from) | 39 | 13 | 13 | 3 → 0 | 5 → 1 |
+| 9344 (learned from) | 15 | 10 | 7 | 3 → 0 | 3 → 3 |
+| 30404 (held out) | 19 | 5 | 3 | 4 → 0 | 3 → 1 |
+| 28904 (held out) | 1 | 1 | 0 | 0 → 0 | 1 → 0 |
+| **All** | **74** | **29** | **23** | **10 → 0** | **12 → 5** |
+
+"Mostly" means half or more of the candidate's window, judged against the
+hand labels. The drop from 74 to 29 is the fuser no longer leaving piles of
+overlapping one-event candidates beside a full one (see
+[Clipper](Clipper#4--fusion-with-profile-events)). The rest is the menu states:
+no candidate is left on a screen they know. The five left on other non-play
+screens sit mostly on the main menu and hero select, which have no state yet.
+Overwatch's region rules are uncalibrated and fire often in the practice
+range, so many of the "play" candidates are noise either way. This measures
+what menus remove, not clip quality.
 
 ## Editing weights and thresholds
 
