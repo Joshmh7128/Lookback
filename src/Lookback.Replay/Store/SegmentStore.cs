@@ -394,10 +394,11 @@ public sealed class SegmentStore
         }
 
         Directory.CreateDirectory(ClipsRoot);
-        string path = Path.Combine(ClipsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
+        string stem = ClipStem(sessionId, candidateId);
+        string path = Path.Combine(ClipsRoot, stem + ".mp4");
         for (int n = 2; File.Exists(path); n++)
         {
-            path = Path.Combine(ClipsRoot, string.Create(CultureInfo.InvariantCulture, $"{SafeName(sessionId)}-{SafeName(candidateId)}-{n}.mp4"));
+            path = Path.Combine(ClipsRoot, string.Create(CultureInfo.InvariantCulture, $"{stem}-{n}.mp4"));
         }
 
         File.Move(source, path);
@@ -503,7 +504,11 @@ public sealed class SegmentStore
     }
 
     private string PreviewPath(string sessionId, string candidateId) =>
-        Path.Combine(PreviewsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
+        Path.Combine(PreviewsRoot, ClipStem(sessionId, candidateId) + ".mp4");
+
+    /// <summary>A clip's file name: the candidate id, prefixed with the session's unless it already starts with it.</summary>
+    private static string ClipStem(string sessionId, string candidateId) =>
+        candidateId.StartsWith(sessionId, StringComparison.Ordinal) ? SafeName(candidateId) : $"{SafeName(sessionId)}-{SafeName(candidateId)}";
 
     /// <summary>Re-reads every session folder. Called at open; cheap enough to call after a sweep.</summary>
     public void Rescan()

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 // without taking focus, prints "READY <hwnd>" on stdout, and closes when stdin
 // closes or after [seconds] (default 120), so a crashed test never leaves it
 // behind. With --action it plays a tiny "game" for the demo check: moving
-// blocks, and every 8 s a white flash with a short tone (played by this
+// blocks, and every 20 s a white flash with a short tone (played by this
 // process, so process loopback hears it), the bright and loud moment the
 // clipper proposes as a candidate.
 return TestWindow.Run(args);
@@ -87,7 +87,7 @@ internal static unsafe partial class TestWindow
         return 0;
     }
 
-    /// <summary>Paints the "game" at about 30 fps from its own thread: blocks moving over a dark field, a white flash with a tone every 8 s.</summary>
+    /// <summary>Paints the "game" at about 30 fps from its own thread: blocks moving over a dark field, a white flash with a tone every 20 s (far enough apart to be separate clips).</summary>
     private static void Act(nint hwnd)
     {
         byte[] tone = Tone(880, 0.35, 0.6);
@@ -97,7 +97,7 @@ internal static unsafe partial class TestWindow
         while (true)
         {
             double t = started.Elapsed.TotalSeconds;
-            bool flash = t % 8 is >= 5 and < 5.5;
+            bool flash = t % 20 is >= 5 and < 5.5;
             if (flash && !flashing)
             {
                 PlaySoundW((byte*)pinned.AddrOfPinnedObject(), 0, SndMemory | SndAsync | SndNoDefault);

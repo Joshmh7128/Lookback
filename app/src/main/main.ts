@@ -772,7 +772,7 @@ function runSmoke(): void {
     const session = live()!;
     steps["recordingAfterMs"] = Date.now() - t0;
 
-    // 2. The clipper proposes a real candidate (a flash with a tone every 8 s).
+    // 2. The clipper proposes a real candidate (a flash with a tone every 20 s).
     const firstCandidate = (): CandidateView | undefined => library.snapshot().sessions.find((s) => s.id === session.id)?.candidates[0];
     if (!(await wait(() => firstCandidate() !== undefined, 90_000))) return fail("no candidate within 90 s of recording");
     const candidate = firstCandidate()!;
@@ -824,7 +824,11 @@ function runSmoke(): void {
     const id = newRequestId();
     const listing = (await stream.request(id, storageMessage(id), HISTORY_TIMEOUT_MS))?.data as StorageListing | undefined;
     steps["storage"] = listing ? { sessions: listing.sessions.length, clips: listing.clips.length, cache: listing.cache.length, cacheBytes: listing.cacheBytes } : null;
-    const ok = cached && restored?.rating === 4 && restored?.savedPath === kept && (listing?.clips.some((c) => c.path === kept) ?? false);
+    // The window shows the session again (it gets the library at most four times a second).
+    await new Promise((r) => setTimeout(r, 1000));
+    const shown = await js(`document.getElementById("session-summary")?.textContent ?? ""`);
+    steps["windowSummary"] = shown;
+    const ok = cached && restored?.rating === 4 && restored?.savedPath === kept && (listing?.clips.some((c) => c.path === kept) ?? false) && typeof shown === "string" && !shown.startsWith("No sessions");
     return { ok, detail: { ...base, steps } };
   };
 
