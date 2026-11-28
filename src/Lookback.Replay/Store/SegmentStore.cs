@@ -272,7 +272,7 @@ public sealed class SegmentStore
         }
 
         Directory.CreateDirectory(PreviewsRoot);
-        string path = Path.Combine(PreviewsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
+        string path = PreviewPath(sessionId, candidateId);
         if (File.Exists(path))
         {
             File.SetLastWriteTimeUtc(path, DateTime.UtcNow); // watched again: kept longest
@@ -327,6 +327,183 @@ public sealed class SegmentStore
 
         return new string(chars);
     }
+
+    /// <summary>A session's own envelopes, one JSON line each (see <see cref="AppendEvent"/>).</summary>
+    public const string EventsFileName = "events.jsonl";
+
+    /// <summary>
+    /// Appends one line to <c>sessions/&lt;id&gt;/events.jsonl</c>: the session's
+    /// own envelopes (its start and end, candidates, QA reports, ratings,
+    /// saved clips; never signal frames), so its candidates can be listed,
+    /// previewed and saved after a restart. False when the session has no
+    /// folder (not recorded, or already swept).
+    /// </summary>
+    public bool AppendEvent(string sessionId, string jsonLine)
+    {
+        ArgumentNullException.ThrowIfNull(jsonLine);
+        string dir = Path.Combine(SessionsRoot, sessionId);
+        lock (_lock)
+        {
+            if (!_manifests.ContainsKey(sessionId) || !Directory.Exists(dir))
+            {
+                return false;
+            }
+
+            File.AppendAllText(Path.Combine(dir, EventsFileName), jsonLine.ReplaceLineEndings(" ") + "\n");
+            return true;
+        }
+    }
+
+    /// <summary>The lines <see cref="AppendEvent"/> wrote for a session, in order; empty when there are none.</summary>
+    public IReadOnlyList<string> ReadEvents(string sessionId)
+    {
+        string path = Path.Combine(SessionsRoot, sessionId, EventsFileName);
+        lock (_lock)
+        {
+            return File.Exists(path) ? [.. File.ReadLines(path).Where(l => l.Length > 0)] : [];
+        }
+    }
+
+    /// <summary>The cached preview of a candidate, when one exists.</summary>
+    public string? CachedPreview(string sessionId, string candidateId)
+    {
+        string path = PreviewPath(sessionId, candidateId);
+        return File.Exists(path) ? path : null;
+    }
+
+    /// <summary>
+    /// Keeps a candidate's cached preview as a saved clip: moves it into
+    /// <c>clips/</c> and pins its range, like <see cref="SaveClip"/> without
+    /// cutting it again. Null when there is no cached preview.
+    /// </summary>
+    public string? KeepPreview(string sessionId, string candidateId, long fromQpc, long toQpc)
+    {
+        string source = PreviewPath(sessionId, candidateId);
+        SessionManifest manifest;
+        lock (_lock)
+        {
+            if (!File.Exists(source) || !_manifests.TryGetValue(sessionId, out manifest!))
+            {
+                return null;
+            }
+        }
+
+        if (!RetentionRules.CanPersist(manifest.ToSessionStarted()))
+        {
+            throw new InvalidOperationException($"Session {sessionId} may not be persisted.");
+        }
+
+        Directory.CreateDirectory(ClipsRoot);
+        string path = Path.Combine(ClipsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
+        for (int n = 2; File.Exists(path); n++)
+        {
+            path = Path.Combine(ClipsRoot, string.Create(CultureInfo.InvariantCulture, $"{SafeName(sessionId)}-{SafeName(candidateId)}-{n}.mp4"));
+        }
+
+        File.Move(source, path);
+        lock (_lock)
+        {
+            manifest.Pins.Add(new QpcRange(fromQpc, toQpc));
+            manifest.Save(Path.Combine(SessionsRoot, sessionId));
+        }
+
+        return path;
+    }
+
+    /// <summary>Marks a session to keep (the sweeper and the budget leave it alone) or to sweep as usual.</summary>
+    public bool SetKeep(string sessionId, bool keep)
+    {
+        lock (_lock)
+        {
+            if (!_manifests.TryGetValue(sessionId, out SessionManifest? m))
+            {
+                return false;
+            }
+
+            m.Keep = keep;
+            m.Save(Path.Combine(SessionsRoot, sessionId));
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Deletes a recorded session: its footage, its candidates' cached
+    /// previews, and its folder. Saved clips stay. Refused (false) while the
+    /// session is still recording.
+    /// </summary>
+    public bool DeleteSession(string sessionId)
+    {
+        lock (_lock)
+        {
+            if (_open.Contains(sessionId) || !_manifests.ContainsKey(sessionId))
+            {
+                return false;
+            }
+        }
+
+        string prefix = SafeName(sessionId) + "-";
+        if (Directory.Exists(PreviewsRoot))
+        {
+            foreach (string f in Directory.EnumerateFiles(PreviewsRoot, prefix + "*.mp4"))
+            {
+                TryDelete(f);
+            }
+        }
+
+        try
+        {
+            Directory.Delete(Path.Combine(SessionsRoot, sessionId), recursive: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Rescan();
+            return false;
+        }
+
+        Rescan();
+        return true;
+    }
+
+    /// <summary>
+    /// Deletes a file the store made: a saved clip in <c>clips/</c> (and the
+    /// pin it held, when its range is given) or a cached preview. Anything
+    /// else is refused (false).
+    /// </summary>
+    public bool DeleteFile(string path, string? sessionId = null, QpcRange? pin = null)
+    {
+        string full = Path.GetFullPath(path);
+        string? dir = Path.GetDirectoryName(full);
+        bool ours = string.Equals(dir, Path.GetFullPath(ClipsRoot), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(dir, Path.GetFullPath(PreviewsRoot), StringComparison.OrdinalIgnoreCase);
+        if (!ours || !full.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+        {
+            return false;
+        }
+
+        TryDelete(full);
+        if (sessionId is not null && pin is { } range)
+        {
+            lock (_lock)
+            {
+                if (_manifests.TryGetValue(sessionId, out SessionManifest? m) && m.Pins.Remove(range))
+                {
+                    m.Save(Path.Combine(SessionsRoot, sessionId));
+                }
+            }
+        }
+
+        return !File.Exists(full);
+    }
+
+    /// <summary>Bytes on disk of one session's folder (footage and its own files).</summary>
+    public long SessionBytes(string sessionId)
+    {
+        string dir = Path.Combine(SessionsRoot, sessionId);
+        return Directory.Exists(dir) ? new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length) : 0;
+    }
+
+    private string PreviewPath(string sessionId, string candidateId) =>
+        Path.Combine(PreviewsRoot, $"{SafeName(sessionId)}-{SafeName(candidateId)}.mp4");
 
     /// <summary>Re-reads every session folder. Called at open; cheap enough to call after a sweep.</summary>
     public void Rescan()

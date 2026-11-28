@@ -282,6 +282,49 @@ export interface PreviewSource {
 }
 
 /** The API the main window's preload exposes as `window.lookback`. */
+/** One recorded session in the store. */
+export interface StoredSession {
+  id: string;
+  title: string;
+  profile: string;
+  startedUtc: string;
+  endedUtc: string | null;
+  live: boolean;
+  /** Kept out of the sweep. */
+  keep: boolean;
+  bytes: number;
+  candidates: number;
+  /** When its footage and unrated clips are swept; null when kept or live. */
+  sweepAfterUtc: string | null;
+}
+
+/** A file in the store: a saved clip or a cached one. */
+export interface StoredFile {
+  path: string;
+  name: string;
+  bytes: number;
+  createdUtc?: string;
+  lastUsedUtc?: string;
+  expiresUtc?: string;
+  sessionId?: string | null;
+  candidateId?: string | null;
+}
+
+/** Everything the recorder's store holds (the storage command). */
+export interface StorageListing {
+  root: string;
+  sessions: StoredSession[];
+  clips: StoredFile[];
+  cache: StoredFile[];
+  footageBytes: number;
+  footageBudgetBytes: number;
+  clipsBytes: number;
+  clipsBudgetBytes: number;
+  cacheBytes: number;
+  cacheBudgetBytes: number;
+  volumeFreeBytes: number;
+}
+
 export interface LookbackApi {
   getState(): Promise<RecorderState>;
   onState(listener: (state: RecorderState) => void): () => void;
@@ -307,6 +350,14 @@ export interface LookbackApi {
   saveClip(sessionId: string, candidateId: string): Promise<boolean>;
   /** The recorder's storage use, or null until it has reported. */
   getStorage(): Promise<StorageState | null>;
+  /** Everything in the recorder's store; null when the recorder cannot say. */
+  listStorage(): Promise<StorageListing | null>;
+  /** Deletes a session's footage, a saved clip, a cached clip, or the whole cache; the reason when refused, else null. */
+  deleteStored(kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }): Promise<string | null>;
+  /** Keeps a session out of the sweep, or lets it go. */
+  keepSession(sessionId: string, keep: boolean): Promise<boolean>;
+  /** Shows a stored file in the system file manager. */
+  revealStored(path: string): Promise<boolean>;
   onStorage(listener: (state: StorageState) => void): () => void;
   /** Opens the folder holding a saved clip. */
   openClipsFolder(): Promise<boolean>;

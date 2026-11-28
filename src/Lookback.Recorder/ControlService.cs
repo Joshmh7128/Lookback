@@ -66,6 +66,10 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
                 "analyze" => Analyze(id, root),
                 "save" => await SaveAsync(id, root).ConfigureAwait(false),
                 "preview" => await PreviewAsync(id, root).ConfigureAwait(false),
+                "history" => History(id),
+                "storage" => Storage(id),
+                "storage-delete" => await StorageDeleteAsync(id, root).ConfigureAwait(false),
+                "storage-keep" => StorageKeep(id, root),
                 string other => Ack(id, false, "bad-request", $"Unknown command \"{other}\"."),
                 null => Ack(id, false, "bad-request", "Missing \"type\"."),
             };
@@ -125,6 +129,10 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         e.ClipRating = rating;
         bus.Publish(e);
         LogRated(logger, sessionId, candidateId, stars);
+        if (stars > 0 && session.SourceKind == SourceKind.LiveGame)
+        {
+            capture?.KeepRated(sessionId, candidateId); // a rated moment keeps its clip; unrated ones leave the cache
+        }
         return Ack(id, true, null, null, stored: true);
     }
 
@@ -164,6 +172,64 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
         return r.Path is null ? Ack(id, false, r.Error, r.Message) : Ack(id, true, null, null, path: r.Path);
     }
 
+    /// <summary>Recorded sessions' own envelopes (oldest first), for the shell to rebuild its library after a restart.</summary>
+    private string History(string id)
+    {
+        if (capture is null)
+        {
+            return Ack(id, true, null, null, data: new System.Text.Json.Nodes.JsonArray());
+        }
+
+        var lines = new System.Text.Json.Nodes.JsonArray();
+        foreach (string line in capture.HistoryLines())
+        {
+            try
+            {
+                lines.Add(System.Text.Json.Nodes.JsonNode.Parse(line));
+            }
+            catch (JsonException)
+            {
+                // a torn line: skipped
+            }
+        }
+
+        return Ack(id, true, null, null, data: lines);
+    }
+
+    private string Storage(string id) =>
+        capture is null
+            ? Ack(id, false, "unsupported", "The store needs live capture in the recorder, which is off.")
+            : Ack(id, true, null, null, data: capture.Listing());
+
+    private async Task<string> StorageDeleteAsync(string id, JsonElement root)
+    {
+        string? kind = Str(root, "kind");
+        if (capture is null || kind is null)
+        {
+            return Ack(id, false, capture is null ? "unsupported" : "bad-request", capture is null ? "The store needs live capture in the recorder, which is off." : "storage-delete needs \"kind\": session, clip or cache.");
+        }
+
+        string? refused = await capture.DeleteAsync(kind, Str(root, "sessionId"), Str(root, "path")).ConfigureAwait(false);
+        string what = Str(root, "sessionId") ?? Str(root, "path") ?? "all";
+        if (refused is null)
+        {
+            LogDeleted(logger, kind, what);
+        }
+
+        return refused is null ? Ack(id, true, null, null) : Ack(id, false, "bad-request", refused);
+    }
+
+    private string StorageKeep(string id, JsonElement root)
+    {
+        string? sessionId = Str(root, "sessionId");
+        if (capture is null || sessionId is null || !root.TryGetProperty("keep", out JsonElement k) || k.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            return Ack(id, false, capture is null ? "unsupported" : "bad-request", "storage-keep needs \"sessionId\" and \"keep\" (true or false).");
+        }
+
+        return capture.SetKeep(sessionId, k.GetBoolean()) ? Ack(id, true, null, null) : Ack(id, false, "unknown-session", $"The store has no session '{sessionId}'.");
+    }
+
     private string Analyze(string id, JsonElement root)
     {
         string? path = Str(root, "path");
@@ -191,8 +257,11 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
     private static string? Str(JsonElement root, string name) =>
         root.TryGetProperty(name, out JsonElement v) && v.ValueKind == JsonValueKind.String && v.GetString() is { Length: > 0 } s ? s : null;
 
-    private static string Ack(string? id, bool ok, string? error, string? message, bool? stored = null, string? sessionId = null, string? path = null) =>
-        JsonSerializer.Serialize(new AckMessage("ack", id, ok, error, message, stored, sessionId, path), AckJson.Default.AckMessage);
+    private static string Ack(string? id, bool ok, string? error, string? message, bool? stored = null, string? sessionId = null, string? path = null, System.Text.Json.Nodes.JsonNode? data = null) =>
+        JsonSerializer.Serialize(new AckMessage("ack", id, ok, error, message, stored, sessionId, path, data), AckJson.Default.AckMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Storage: deleted {Kind} {What}")]
+    private static partial void LogDeleted(ILogger logger, string kind, string what);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Rated {Candidate} in {Session}: {Stars} stars")]
     private static partial void LogRated(ILogger logger, string session, string candidate, int stars);
@@ -202,7 +271,7 @@ internal sealed partial class ControlService(IEventBus bus, SessionDirectory ses
 }
 
 /// <summary>The reply to a control command.</summary>
-internal sealed record AckMessage(string Type, string? Id, bool Ok, string? Error, string? Message, bool? Stored, string? SessionId, string? Path);
+internal sealed record AckMessage(string Type, string? Id, bool Ok, string? Error, string? Message, bool? Stored, string? SessionId, string? Path, System.Text.Json.Nodes.JsonNode? Data = null);
 
 [System.Text.Json.Serialization.JsonSourceGenerationOptions(
     PropertyNamingPolicy = System.Text.Json.Serialization.JsonKnownNamingPolicy.CamelCase,

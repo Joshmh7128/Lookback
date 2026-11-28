@@ -50,6 +50,7 @@ function showTab(name: string): void {
   placeEmbed();
   if (name === "timeline") drawTimeline();
   if (name === "profiles" && !peLoaded) peLoadList(null);
+  if (name === "storage") void stLoad();
 }
 
 function placeEmbed(): void {
@@ -1031,3 +1032,109 @@ void api.getBrowseState().then((b) => {
 window.setInterval(() => {
   if (activeTab === "timeline") drawTimeline();
 }, 1000);
+
+// ---------------------------------------------------------------- storage
+
+function stWhen(iso: string | null | undefined): string {
+  if (!iso) return "–";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "–" : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function stSize(bytes: number): string {
+  return bytes >= 1024 ** 3 ? `${gb(bytes)} GB` : `${Math.max(0.1, bytes / 1024 ** 2).toFixed(bytes >= 100 * 1024 ** 2 ? 0 : 1)} MB`;
+}
+
+function stButton(label: string, onClick: () => void, danger = false): HTMLButtonElement {
+  const b = el("button", danger ? { class: "danger" } : {}, label);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function stSay(text: string | null): void {
+  const p = $("st-status");
+  p.hidden = !text;
+  p.textContent = text ?? "";
+}
+
+async function stDelete(kind: "session" | "clip" | "cache", target: { sessionId?: string; path?: string }, what: string): Promise<void> {
+  if (!window.confirm(`Delete ${what}? This cannot be undone.`)) return;
+  const refused = await api.deleteStored(kind, target);
+  stSay(refused);
+  await stLoad();
+}
+
+async function stLoad(): Promise<void> {
+  const listing = await api.listStorage();
+  if (!listing) {
+    $("st-summary").textContent = "The recorder's store is not available (is the recorder running, with live capture on?).";
+    return;
+  }
+
+  $("st-summary").textContent =
+    `Footage ${gb(listing.footageBytes)} of ${gb(listing.footageBudgetBytes)} GB · ` +
+    `saved clips ${gb(listing.clipsBytes)} of ${gb(listing.clipsBudgetBytes)} GB · ` +
+    `cache ${gb(listing.cacheBytes)} of ${gb(listing.cacheBudgetBytes)} GB · ` +
+    `${gb(listing.volumeFreeBytes)} GB free · ${listing.root}`;
+
+  const titles = new Map(listing.sessions.map((s) => [s.id, s.title || s.id]));
+  const sessions = $("st-sessions");
+  sessions.replaceChildren();
+  for (const s of listing.sessions) {
+    const keep = el("label", { title: "Keep this session's footage: the sweep leaves it alone" });
+    const box = el("input", { type: "checkbox" });
+    box.checked = s.keep;
+    box.disabled = s.live;
+    box.addEventListener("change", () => void api.keepSession(s.id, box.checked).then(() => stLoad()));
+    keep.append(box, " keep");
+    const open = stButton("Open in Library", () => {
+      selectedSession = s.id;
+      showTab("library");
+      renderLibrary();
+    });
+    const actions = el("td", { class: "actions" }, keep, open);
+    if (!s.live) actions.append(stButton("Delete", () => void stDelete("session", { sessionId: s.id }, `the session "${s.title || s.id}" (its footage and cached clips; saved clips stay)`), true));
+    sessions.append(el("tr", {},
+      el("td", { class: "name" }, s.title || s.id, s.live ? " · recording" : ""),
+      el("td", {}, s.profile || "–"),
+      el("td", {}, stWhen(s.startedUtc)),
+      el("td", {}, String(s.candidates)),
+      el("td", {}, stSize(s.bytes)),
+      el("td", {}, s.live ? "recording" : s.keep ? "kept" : stWhen(s.sweepAfterUtc)),
+      actions));
+  }
+
+  if (!listing.sessions.length) sessions.append(el("tr", {}, el("td", { colspan: "7", class: "muted" }, "No recorded sessions.")));
+
+  const clips = $("st-clips");
+  clips.replaceChildren();
+  for (const f of listing.clips) {
+    clips.append(el("tr", {},
+      el("td", { class: "name" }, f.name),
+      el("td", {}, f.sessionId ? (titles.get(f.sessionId) ?? f.sessionId) : "–"),
+      el("td", {}, stWhen(f.createdUtc)),
+      el("td", {}, stSize(f.bytes)),
+      el("td", { class: "actions" },
+        stButton("Show file", () => void api.revealStored(f.path)),
+        stButton("Delete", () => void stDelete("clip", { path: f.path }, `the saved clip ${f.name}`), true))));
+  }
+
+  if (!listing.clips.length) clips.append(el("tr", {}, el("td", { colspan: "5", class: "muted" }, "No saved clips. Rate a candidate, or press Save, to keep one.")));
+
+  const cache = $("st-cache");
+  cache.replaceChildren();
+  for (const f of listing.cache) {
+    cache.append(el("tr", {},
+      el("td", { class: "name" }, f.name),
+      el("td", {}, stSize(f.bytes)),
+      el("td", {}, stWhen(f.expiresUtc)),
+      el("td", { class: "actions" },
+        stButton("Show file", () => void api.revealStored(f.path)),
+        stButton("Delete", () => void stDelete("cache", { path: f.path }, `the cached clip ${f.name}`), true))));
+  }
+
+  if (!listing.cache.length) cache.append(el("tr", {}, el("td", { colspan: "4", class: "muted" }, "The cache is empty.")));
+}
+
+$("st-refresh").addEventListener("click", () => void stLoad());
+$("st-clear-cache").addEventListener("click", () => void stDelete("cache", {}, "every cached clip (saved clips stay)"));

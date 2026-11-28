@@ -49,7 +49,7 @@ function setup(ack: Ack | null, options: { testbench?: boolean; pipe?: string | 
 }
 
 const FILE = "D:\\videos\\my match.mp4";
-const ack = (ok: boolean, extra: Partial<Ack> = {}): Ack => ({ id: "", ok, error: null, message: null, stored: false, sessionId: null, path: null, ...extra });
+const ack = (ok: boolean, extra: Partial<Ack> = {}): Ack => ({ id: "", ok, error: null, message: null, stored: false, sessionId: null, path: null, data: null, ...extra });
 
 test("the recorder's analyze command is tried first, and its session is linked by title", async () => {
   const t = setup(ack(true));

@@ -176,17 +176,37 @@ renderer's CSP allows media from that scheme only.
 
 When the recorder records a game it detects, its LIVE_GAME session (titled
 with the game) lists candidates from the clipper like footage does. A live
-recording has no file of its own, so selecting a candidate asks the recorder
-for a **preview**: the shell sends `preview` and the recorder cuts the
-candidate's window from its footage, with no re-encode, into
-`store/previews/` and acks with the path, which the preview plays (up to 15 s;
-usually well under a second). A preview is not a saved clip: it pins no
-footage, uses no clips budget, is reused when watched again, and is deleted
-after a day unwatched or when previews pass 1 GB, least recently watched
-first. It works for as long as the footage holds the moment (24 h after the
-session, within the footage budget), and while the recorder that recorded
-the session is running: a restarted recorder no longer lists an earlier
-session's candidates.
+recording has no file of its own, so the recorder keeps a **clip cache**: as
+soon as the clipper proposes a candidate, the recorder cuts its window from
+the recording, with no re-encode, into `store/previews/`. Selecting the
+candidate sends `preview`, which answers with the cached clip at once (or
+cuts it then, for an older candidate), and the preview plays it. A cached clip
+is not a saved clip: it pins no footage and uses no clips budget. **Rating** a
+candidate (1–5) keeps its clip: the recorder moves it to `clips/` and reports
+it as saved. **Unrated** cached clips are deleted after a day unwatched, or
+the least recently watched first once the cache passes its budget
+(`CacheBudgetGB`, 5 GB).
+
+Recordings survive a restart. The recorder keeps each live session's own
+envelopes (its start and end, candidates, QA reports, ratings, saved clips;
+never signal frames) in its store folder (`events.jsonl`). When the shell
+connects it asks for them (`history`) and replays them into the library, so
+earlier sessions appear as they did live, with their ratings and saved clips,
+and their candidates can still be watched, rated and saved for as long as
+their footage is kept (24 h after the session, or longer with **keep** on
+the Storage tab).
+
+### Storage
+
+The **Storage** tab shows everything the recorder's store holds (`storage`):
+the footage, saved clips and cache against their budgets and the drive's free
+space; each recorded session (size, candidates, when its footage is swept,
+a **keep** switch that exempts it, **Open in Library**, **Delete**); each
+saved clip (**Show file**, **Delete**); and each cached clip with when it
+leaves the cache (**Show file**, **Delete**, **Clear cache**). Deleting asks
+first and cannot be undone; deleting a session removes its footage and cached
+clips but leaves its saved clips. The shell only reveals or deletes files the
+recorder listed.
 
 To keep a moment, press **Save** on a candidate (or <kbd>S</kbd>).
 The shell sends `save` and waits up to 30 s (the recorder cuts the clip from
@@ -358,6 +378,7 @@ cd app
 npm test                      # builds, then node:test over dist/test
 npm run smoke                 # app up: recorder ready, stream open, window rendered
 npm run smoke:viewer          # + viewer capture → /ingest on a synthetic player
+npm run smoke:demo            # the whole demo on the real recorder (asks first: it records a window and plays tones)
 npx electron . --smoke-viewer --viewer-link=https://www.youtube.com/watch?v=M7lc1UVf-VE
 npx electron . --smoke --smoke-footage=D:\path\to\match.mp4 --smoke-profile=overwatch
 ```

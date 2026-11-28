@@ -137,6 +137,17 @@ public sealed class ControlServiceTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task Storage_commands_need_live_capture_and_history_is_empty_without_it()
+    {
+        JsonElement history = await SendAsync(new { type = "history", id = "h" });
+        Assert.True(history.GetProperty("ok").GetBoolean());
+        Assert.Equal(0, history.GetProperty("data").GetArrayLength());
+        Assert.Equal("unsupported", Error(await SendAsync(new { type = "storage", id = "s" })));
+        Assert.Equal("unsupported", Error(await SendAsync(new { type = "storage-delete", id = "d", kind = "cache" })));
+        Assert.Equal("unsupported", Error(await SendAsync(new { type = "storage-keep", id = "k", sessionId = "s1", keep = true })));
+    }
+
+    [Fact]
     public async Task Preview_needs_a_candidate_and_live_capture()
     {
         Assert.Equal("bad-request", Error(await SendAsync(new { type = "preview", id = "p", sessionId = "s1" })));

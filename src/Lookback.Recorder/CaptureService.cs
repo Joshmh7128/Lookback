@@ -62,6 +62,9 @@ internal sealed partial class CaptureService : IAsyncDisposable
     private readonly StallWatchdog _watchdog = new(SystemClock.Instance, TimeSpan.FromMilliseconds(250));
     private readonly Channel<LifecycleChange> _changes = Channel.CreateUnbounded<LifecycleChange>(new UnboundedChannelOptions { SingleReader = true });
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly Channel<(string Session, string Candidate, bool Keep)> _cacheJobs = Channel.CreateUnbounded<(string, string, bool)>(new UnboundedChannelOptions { SingleReader = true });
+    private SessionHistory _history = null!; // set by Start
+    private Task? _cacheWorker;
     private readonly CancellationTokenSource _stop = new();
     private readonly long _clipsBudget;
     private readonly long _footageBudget;
@@ -92,11 +95,20 @@ internal sealed partial class CaptureService : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(options);
         string root = options.ResolvedStoreDirectory;
-        var store = SegmentStore.Open(new StoreOptions { Root = root, BudgetBytes = (long)(options.FootageBudgetGB * (1L << 30)) });
+        var store = SegmentStore.Open(new StoreOptions
+        {
+            Root = root,
+            BudgetBytes = (long)(options.FootageBudgetGB * (1L << 30)),
+            PreviewBudgetBytes = (long)(options.CacheBudgetGB * (1L << 30)),
+        });
         SweepResult swept = CacheSweeper.Sweep(store);
         profiles ??= ProfileSource.BuiltIn(logger);
         var service = new CaptureService(bus, options, sessions, logger, store, profiles);
         service._scoring = scoring ?? ClipScoring.HeuristicOnly();
+        service._history = new SessionHistory(bus, store);
+        service.RestoreHistory();
+        service._history.CandidateRecorded += (s, c) => service._cacheJobs.Writer.TryWrite((s, c, false)); // cut it into the cache at once
+        service._cacheWorker = Task.Run(service.CacheLoopAsync);
         LogStarted(logger, root, options.FootageBudgetGB, options.ClipsBudgetGB, swept.BytesFreed >> 20);
         service._worker = Task.Run(service.WorkAsync);
         service._status = Task.Run(service.StatusLoopAsync);
@@ -218,6 +230,300 @@ internal sealed partial class CaptureService : IAsyncDisposable
             : "Only live recordings can be cut into clips; footage files are already on disk.");
         return null;
     }
+
+    /// <summary>Most sessions reloaded at start: the newest, within what the session directory keeps.</summary>
+    public const int MaxRestoredSessions = 32;
+
+    /// <summary>Recorded live sessions newest first, as the store has them (footage may be partly swept).</summary>
+    private IEnumerable<SessionManifest> Recorded() =>
+        _store.Sessions().Where(m => m.SourceKind == SourceKind.LiveGame);
+
+    /// <summary>
+    /// Reloads recorded sessions' candidates into the session directory, so
+    /// they can be rated, watched and saved after a restart.
+    /// </summary>
+    private void RestoreHistory()
+    {
+        int restored = 0;
+        foreach (SessionManifest m in Recorded().Take(MaxRestoredSessions).Reverse())
+        {
+            IReadOnlyList<Envelope> lines = _history.Restore(m.Id);
+            if (lines.Count == 0)
+            {
+                continue;
+            }
+
+            if (!lines.Any(e => e.PayloadCase == Envelope.PayloadOneofCase.SessionStarted))
+            {
+                Envelope header = new EnvelopeFactory(SystemClock.Instance, m.Id, "recorder.capture").Create(Topics.Session);
+                header.SessionStarted = m.ToSessionStarted();
+                _sessions.Apply(header);
+            }
+
+            foreach (Envelope e in lines)
+            {
+                _sessions.Apply(e);
+            }
+
+            restored++;
+        }
+
+        if (restored > 0)
+        {
+            LogRestored(_logger, restored);
+        }
+    }
+
+    /// <summary>
+    /// Recorded sessions' own envelopes for the shell's library, oldest
+    /// session first, the live one left out (it streams). A session whose
+    /// end was never recorded (the recorder stopped) gets one.
+    /// </summary>
+    public IReadOnlyList<string> HistoryLines()
+    {
+        string? live = LiveSessionId;
+        var lines = new List<string>();
+        foreach (SessionManifest m in Recorded().Take(MaxRestoredSessions).Reverse())
+        {
+            if (m.Id == live)
+            {
+                continue;
+            }
+
+            IReadOnlyList<string> stored = _store.ReadEvents(m.Id);
+            if (stored.Count == 0)
+            {
+                continue;
+            }
+
+            if (!stored[0].Contains("\"sessionStarted\"", StringComparison.Ordinal))
+            {
+                Envelope header = new EnvelopeFactory(SystemClock.Instance, m.Id, "recorder.capture").Create(Topics.Session);
+                header.SessionStarted = m.ToSessionStarted();
+                lines.Add(SessionHistory.FormatLine(header));
+            }
+
+            lines.AddRange(stored);
+            if (!stored.Any(l => l.Contains("\"sessionEnded\"", StringComparison.Ordinal)))
+            {
+                Envelope end = new EnvelopeFactory(SystemClock.Instance, m.Id, "recorder.capture").Create(Topics.Session);
+                end.SessionEnded = new SessionEnded { Reason = "recorded earlier" };
+                lines.Add(SessionHistory.FormatLine(end));
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// The user rated a candidate of a live recording: keep its clip. The
+    /// cached cut moves to saved clips (or one is cut now); queued, so the
+    /// rating's reply does not wait on it.
+    /// </summary>
+    public void KeepRated(string sessionId, string candidateId) =>
+        _cacheJobs.Writer.TryWrite((sessionId, candidateId, true));
+
+    private async Task CacheLoopAsync()
+    {
+        try
+        {
+            await foreach ((string session, string candidate, bool keep) in _cacheJobs.Reader.ReadAllAsync(_stop.Token).ConfigureAwait(false))
+            {
+                // The session directory learns a candidate from the bus too: give it a moment.
+                for (int attempt = 0; attempt < 5; attempt++)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(250 * (attempt + 1)), _stop.Token).ConfigureAwait(false);
+                    SaveResult r = keep ? await KeepAsync(session, candidate).ConfigureAwait(false) : await PreviewAsync(session, candidate).ConfigureAwait(false);
+                    if (r.Error != "unknown-candidate")
+                    {
+                        if (r.Path is null && r.Error is not null)
+                        {
+                            LogCacheSkipped(_logger, candidate, r.Message ?? r.Error);
+                        }
+
+                        break;
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>Keeps a candidate's clip as a saved clip: moves its cached cut, or cuts one. Nothing when it is already kept.</summary>
+    private async Task<SaveResult> KeepAsync(string sessionId, string candidateId)
+    {
+        if (_history.IsKept(sessionId, candidateId))
+        {
+            return new SaveResult(null, null, null);
+        }
+
+        await _gate.WaitAsync().ConfigureAwait(false);
+        string? path;
+        long from, to;
+        try
+        {
+            if (Refusal(sessionId, candidateId, out ClipCandidate? candidate) is { } refused)
+            {
+                return refused;
+            }
+
+            if (Status().ClipsFull)
+            {
+                return new SaveResult(null, "clips-full", "Saved clips are full: the rated clip stays in the cache.");
+            }
+
+            from = (long)candidate!.StartQpc;
+            to = (long)candidate.EndQpc;
+            path = _store.KeepPreview(sessionId, candidateId, from, to);
+            if (path is null)
+            {
+                if (Read(sessionId, from, to, out SaveResult? gone) is not { } clip)
+                {
+                    return gone!.Value;
+                }
+
+                path = _store.SaveClip(sessionId, clip, from, to);
+            }
+        }
+        catch (IOException ex)
+        {
+            return new SaveResult(null, "bad-request", $"The clip could not be kept: {ex.Message}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        Envelope e = new EnvelopeFactory(SystemClock.Instance, sessionId, "recorder.capture").Create(Topics.ClipSaved);
+        e.ClipSaved = new ClipSaved { CandidateId = candidateId, Path = path, StartQpc = (ulong)from, EndQpc = (ulong)to };
+        _bus.Publish(e);
+        PublishStatus();
+        LogSaved(_logger, candidateId, path);
+        return new SaveResult(path, null, null);
+    }
+
+    /// <summary>Everything the store holds, for the shell's storage page.</summary>
+    public System.Text.Json.Nodes.JsonObject Listing()
+    {
+        string? live = LiveSessionId;
+        var sessions = new System.Text.Json.Nodes.JsonArray();
+        foreach (SessionManifest m in Recorded())
+        {
+            IReadOnlyList<string> lines = _store.ReadEvents(m.Id);
+            int candidates = lines.Count(l => l.Contains("\"clipCandidate\"", StringComparison.Ordinal));
+            DateTimeOffset? sweep = m.Keep || m.Id == live ? null : (m.EndedUtc ?? m.StartedUtc) + _store.Options.Grace;
+            sessions.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["id"] = m.Id,
+                ["title"] = m.Title,
+                ["profile"] = m.GameProfile,
+                ["startedUtc"] = m.StartedUtc,
+                ["endedUtc"] = m.EndedUtc,
+                ["live"] = m.Id == live,
+                ["keep"] = m.Keep,
+                ["bytes"] = _store.SessionBytes(m.Id),
+                ["candidates"] = candidates,
+                ["sweepAfterUtc"] = sweep,
+            });
+        }
+
+        var clips = new System.Text.Json.Nodes.JsonArray();
+        foreach (FileInfo f in Files(_store.ClipsRoot))
+        {
+            ClipSaved? saved = _history.SavedClip(f.FullName, out string? sessionId);
+            clips.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["path"] = f.FullName,
+                ["name"] = f.Name,
+                ["bytes"] = f.Length,
+                ["createdUtc"] = new DateTimeOffset(f.CreationTimeUtc, TimeSpan.Zero),
+                ["sessionId"] = sessionId,
+                ["candidateId"] = saved?.CandidateId,
+            });
+        }
+
+        var cache = new System.Text.Json.Nodes.JsonArray();
+        long cacheBytes = 0;
+        foreach (FileInfo f in Files(_store.PreviewsRoot))
+        {
+            cacheBytes += f.Length;
+            cache.Add(new System.Text.Json.Nodes.JsonObject
+            {
+                ["path"] = f.FullName,
+                ["name"] = f.Name,
+                ["bytes"] = f.Length,
+                ["lastUsedUtc"] = new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero),
+                ["expiresUtc"] = new DateTimeOffset(f.LastWriteTimeUtc, TimeSpan.Zero) + _store.Options.PreviewMaxAge,
+            });
+        }
+
+        StorageStatus s = Status();
+        return new System.Text.Json.Nodes.JsonObject
+        {
+            ["root"] = _store.Options.Root,
+            ["sessions"] = sessions,
+            ["clips"] = clips,
+            ["cache"] = cache,
+            ["footageBytes"] = (long)s.FootageBytes,
+            ["footageBudgetBytes"] = (long)s.FootageBudgetBytes,
+            ["clipsBytes"] = (long)s.ClipsBytes,
+            ["clipsBudgetBytes"] = (long)s.ClipsBudgetBytes,
+            ["cacheBytes"] = cacheBytes,
+            ["cacheBudgetBytes"] = _store.Options.PreviewBudgetBytes,
+            ["volumeFreeBytes"] = (long)s.VolumeFreeBytes,
+        };
+    }
+
+    private static IEnumerable<FileInfo> Files(string dir) =>
+        Directory.Exists(dir) ? new DirectoryInfo(dir).EnumerateFiles("*.mp4").OrderByDescending(f => f.LastWriteTimeUtc) : [];
+
+    /// <summary>
+    /// Deletes what the storage page asked for: a session's footage (with
+    /// its cached clips; never the live one), a saved clip (its pin goes too),
+    /// or a cached clip. Returns why it was refused, or null when done.
+    /// </summary>
+    public async Task<string?> DeleteAsync(string kind, string? sessionId, string? path)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            switch (kind)
+            {
+                case "session" when sessionId is not null:
+                    if (sessionId == LiveSessionId)
+                    {
+                        return "That session is still recording.";
+                    }
+
+                    return _store.DeleteSession(sessionId) ? null : "The session could not be deleted (unknown, or in use).";
+                case "clip" when path is not null:
+                    ClipSaved? saved = _history.SavedClip(path, out string? owner);
+                    QpcRange? pin = saved is null ? null : new QpcRange((long)saved.StartQpc, (long)saved.EndQpc);
+                    return _store.DeleteFile(path, owner, pin) ? null : "That is not a saved clip the recorder made.";
+                case "cache" when path is not null:
+                    return _store.DeleteFile(path) ? null : "That is not a cached clip.";
+                case "cache":
+                    foreach (FileInfo f in Files(_store.PreviewsRoot).ToList())
+                    {
+                        _store.DeleteFile(f.FullName);
+                    }
+
+                    return null;
+                default:
+                    return "Delete a \"session\" (with sessionId), a \"clip\" or one \"cache\" file (with path), or the whole \"cache\".";
+            }
+        }
+        finally
+        {
+            _gate.Release();
+            PublishStatus();
+        }
+    }
+
+    /// <summary>Keeps a session out of the sweep (or lets it go again).</summary>
+    public bool SetKeep(string sessionId, bool keep) => _store.SetKeep(sessionId, keep);
 
     /// <summary>The two budgets now: saved clips (never swept) and session footage.</summary>
     public StorageStatus Status()
@@ -348,7 +654,8 @@ internal sealed partial class CaptureService : IAsyncDisposable
         }
 
         _changes.Writer.TryComplete();
-        foreach (Task? t in (Task?[])[_worker, _status])
+        _cacheJobs.Writer.TryComplete();
+        foreach (Task? t in (Task?[])[_worker, _status, _cacheWorker])
         {
             if (t is not null)
             {
@@ -362,6 +669,7 @@ internal sealed partial class CaptureService : IAsyncDisposable
             _live = null;
         }
 
+        await _history.DisposeAsync().ConfigureAwait(false);
         _watchdog.Dispose();
         _gate.Dispose();
         _stop.Dispose();
@@ -565,6 +873,12 @@ internal sealed partial class CaptureService : IAsyncDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Message}")]
     private static partial void LogEncode(ILogger logger, string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Reloaded {Count} recorded sessions: their candidates can be watched, rated and saved")]
+    private static partial void LogRestored(ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Clip cache skipped {Candidate}: {Reason}")]
+    private static partial void LogCacheSkipped(ILogger logger, string candidate, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Saved clip of {Candidate} to {Path}")]
     private static partial void LogSaved(ILogger logger, string candidate, string path);

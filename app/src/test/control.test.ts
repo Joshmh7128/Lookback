@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { analyzeMessage, parseAck, parseStorage, previewMessage, previewPath, rateMessage, refusal, saveMessage, validFootageRequest } from "../main/control";
+import { analyzeMessage, historyEnvelopes, historyMessage, parseAck, parseStorage, previewMessage, previewPath, rateMessage, refusal, saveMessage, storageDeleteMessage, storageKeepMessage, storageMessage, validFootageRequest } from "../main/control";
 import { StreamClient } from "../main/stream";
 import { socketFactory } from "./fakes";
 
@@ -34,11 +34,11 @@ test("storage status: protobuf JSON with uint64 strings and defaults left out", 
 });
 
 test("acks are recognised; envelopes are not", () => {
-  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true }), { id: "r1", ok: true, error: null, message: null, stored: false, sessionId: null, path: null });
-  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true, stored: true }), { id: "r1", ok: true, error: null, message: null, stored: true, sessionId: null, path: null });
-  assert.deepEqual(parseAck({ type: "ack", id: "a1", ok: true, sessionId: "20261127-x" }), { id: "a1", ok: true, error: null, message: null, stored: false, sessionId: "20261127-x", path: null });
+  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true }), { id: "r1", ok: true, error: null, message: null, stored: false, sessionId: null, path: null, data: null });
+  assert.deepEqual(parseAck({ type: "ack", id: "r1", ok: true, stored: true }), { id: "r1", ok: true, error: null, message: null, stored: true, sessionId: null, path: null, data: null });
+  assert.deepEqual(parseAck({ type: "ack", id: "a1", ok: true, sessionId: "20261127-x" }), { id: "a1", ok: true, error: null, message: null, stored: false, sessionId: "20261127-x", path: null, data: null });
   const refused = parseAck({ type: "ack", id: "r1", ok: false, error: "ephemeral", message: "This session is ephemeral." });
-  assert.deepEqual(refused, { id: "r1", ok: false, error: "ephemeral", message: "This session is ephemeral.", stored: false, sessionId: null, path: null });
+  assert.deepEqual(refused, { id: "r1", ok: false, error: "ephemeral", message: "This session is ephemeral.", stored: false, sessionId: null, path: null, data: null });
   assert.equal(refusal(refused!), "This session is ephemeral.");
   for (const no of [null, {}, { type: "ack", id: 1, ok: true }, { type: "ack", id: "x" }, { sessionId: "s", topic: "session" }]) assert.equal(parseAck(no), null);
 });
@@ -64,7 +64,7 @@ test("a request resolves with the matching ack and acks are not envelopes", asyn
   assert.deepEqual(JSON.parse(s.sent[0] as string), { type: "rate", id: "r1", sessionId: "s1", candidateId: "c1", stars: 5 });
   s.receive(JSON.stringify({ type: "ack", id: "other", ok: true }));
   s.receive(JSON.stringify({ type: "ack", id: "r1", ok: false, error: "ephemeral" }));
-  assert.deepEqual(await pending, { id: "r1", ok: false, error: "ephemeral", message: null, stored: false, sessionId: null, path: null });
+  assert.deepEqual(await pending, { id: "r1", ok: false, error: "ephemeral", message: null, stored: false, sessionId: null, path: null, data: null });
   assert.deepEqual(envelopes, []);
   assert.equal(client.state.received, 0);
 });
@@ -90,4 +90,16 @@ test("a preview request names the candidate, and only a previews-folder .mp4 fro
   for (const bad of [null, { ok: false, path: "/s/previews/a.mp4" }, { ok: true, path: null }, { ok: true, path: "/s/clips/a.mp4" }, { ok: true, path: "/s/previews/a.exe" }]) {
     assert.equal(previewPath(bad), null, JSON.stringify(bad));
   }
+});
+
+test("history, storage and their acks: data passes through, and only envelopes with a session come back", () => {
+  assert.deepEqual(JSON.parse(historyMessage("h")), { type: "history", id: "h" });
+  assert.deepEqual(JSON.parse(storageMessage("s")), { type: "storage", id: "s" });
+  assert.deepEqual(JSON.parse(storageDeleteMessage("d", "clip", { path: "C:/store/clips/a.mp4" })), { type: "storage-delete", id: "d", kind: "clip", path: "C:/store/clips/a.mp4" });
+  assert.deepEqual(JSON.parse(storageKeepMessage("k", "live-1", true)), { type: "storage-keep", id: "k", sessionId: "live-1", keep: true });
+  const ack = parseAck({ type: "ack", id: "h", ok: true, data: [{ sessionId: "live-1", sessionStarted: {} }, { noSession: true }, 7, null] });
+  assert.ok(ack);
+  assert.equal(historyEnvelopes(ack).length, 1);
+  assert.deepEqual(historyEnvelopes({ ok: false, data: [{ sessionId: "x" }] }), []);
+  assert.deepEqual(historyEnvelopes(null), []);
 });
